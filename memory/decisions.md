@@ -10,3 +10,8 @@
 **Files**: PROJECT_SPEC.md, PRD.md, linear-tasks.md
 
 ## Infrastructure
+
+### 2026-11-14 — MCP SDK pinned to mcp>=1.2,<2 (FastMCP v1 API)
+**Decision**: easy-note uses the official SDK's v1 FastMCP API () and pins . Moving to the v2  API is a separate, owner-approved change.
+**Why**: HUN-252 found that  2.3.0 removed ; PROJECT_SPEC names FastMCP (D11).
+**Files**: pyproject.toml, src/easy_note/surfaces/mcp.py
