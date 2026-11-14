@@ -48,9 +48,9 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/test_skeleton.py` (7 tests). AC 3 `n`/`easy-note` version: `test_version_flag_prints_package_version`, `test_n_version_matches_easy_note_version`. AC 2 `n` = `add`: `test_n_dispatches_to_add_with_all_arguments`, `test_add_parses_text_words`. AC 5 no `mcp` in CLI: `test_cli_import_does_not_load_mcp`. AC 4 `serve` EOF: `test_serve_exits_cleanly_on_eof[]` and `[\n]`. AC 1, 6, 7 are file/CI facts checked by hand (see below). |
+| Verification command run | ☑ pass | `uv run pytest -q` -> `.......  [100%]` / `7 passed in 0.87s`. `uv tool install --force .` -> `Installed 2 executables: easy-note, n`; `easy-note --version` -> `0.1.0`; `n --version` -> `0.1.0`; `uv tool uninstall easy-note-mcp` -> `Uninstalled 2 executables: easy-note, n`. `uvx ruff check --isolated src tests` -> `All checks passed!`. CI workflow (`.github/workflows/ci.yml`) is not run here: it runs on GitHub after push. |
+| Negative cases hold | ☑ pass | Mutation: added `import mcp` at top of `src/easy_note/surfaces/cli.py` -> `FAILED tests/test_skeleton.py::test_cli_import_does_not_load_mcp` / `1 failed, 6 passed`; line removed again -> `7 passed`. Also: with `mcp` 2.3.0 resolved, `serve` died with `No module named 'mcp.server.fastmcp'` and the serve test went red, so the dependency is pinned `mcp>=1.2,<2`. |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
 | Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
@@ -68,12 +68,40 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE**: captured 2026-11-14T16:42Z in this worktree at commit cfa3c55, before any implementation commit (no `pyproject.toml`, no `src/`, no `tests/` exist):
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+```
+$ uv run pytest -q
+no tests ran in 0.05s
+(exit=5)
+$ easy-note --version
+(eval):1: command not found: easy-note
+exit=127
+$ n --version
+(eval):1: command not found: n
+exit=127
+```
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+**AFTER**: captured 2026-11-14T16:44Z, same worktree, after the change:
+
+```
+$ uv run pytest -q
+.......                                                                  [100%]
+7 passed in 0.87s
+$ uv tool install --force .
+...
+Installed 2 executables: easy-note, n
+$ easy-note --version
+0.1.0
+$ n --version
+0.1.0
+$ printf '\n' | easy-note serve ; echo $?     # stderr: pydantic "Invalid JSON" log for the blank line, no traceback
+exit 0
+$ uv tool uninstall easy-note-mcp
+Uninstalled 2 executables: easy-note, n
+```
+
+**DELTA**: A person can run `uv tool install .` and get the `easy-note` and `n` commands (both print `0.1.0`), start an MCP stdio server with `easy-note serve`, and run a green test suite locally and in CI.
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/Txxx.jsonl`, never the
 implementing agent alone]
