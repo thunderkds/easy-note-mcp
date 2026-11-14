@@ -57,7 +57,7 @@ Plan T011: "Hook tests with recorded event JSON: prefix → one file, `source: h
 
 ## Dependencies & Reachability
 
-**Depends on**: HUN-251 (plan T001) — hook facts and default prefix; HUN-255 (plan T005) — guard; HUN-257 (plan T007) — CLI and core add path
+**Depends on**: HUN-251 (plan T001) — hook facts and default prefix (result: `/note ` default; event keys and fixtures in `docs/experiments/T001-client-launch.md`, `tests/fixtures/claude_hook/`); HUN-255 (plan T005) — guard; HUN-257 (plan T007) — CLI and core add path
 
 **Entry point**: `easy-note hook-prompt`
 
@@ -72,7 +72,8 @@ Plan T011: "Hook tests with recorded event JSON: prefix → one file, `source: h
 | 3 | Malformed stdin or a core error: the prompt passes; the error is shown as the reason only when the prefix matched | FR-018 |
 | 4 | The pass path imports only the stdlib (subprocess test on `sys.modules`); core is imported only after a prefix match | NFR-009 |
 | 5 | Prefix is configurable (`config.toml` `capture_prefix`), default from T001's decision | D18 |
-| 6 | `install claude` on a temp settings file shows a diff, writes a timestamped backup (never overwrites an older one), adds exactly one `UserPromptSubmit` entry and `~/.claude/commands/note.md`; running it twice changes nothing | FR-019, DDR 0003 |
+| 6 | `install claude` on a temp settings file shows a diff, writes a timestamped backup (never overwrites an older one), adds exactly one `UserPromptSubmit` entry and `commands/note.md` in the Claude Code config dir; running it twice changes nothing | FR-019, DDR 0003 |
+| 6b | Config dir: with `CLAUDE_CONFIG_DIR=<tmp>/cfg` set, install/uninstall touch only `<tmp>/cfg/settings.json` and `<tmp>/cfg/commands/note.md`; unset, they use `<tmp HOME>/.claude`; the diff header names the resolved dir | FR-019, DDR 0003 item 7 (HUN-251 finding) |
 | 7 | Existing hook entries (e.g. easy-memory's) are byte-identical after install and uninstall; a symlinked settings file stays a symlink | DDR 0003 |
 | 8 | `uninstall claude` removes exactly its entry and `note.md` | FR-019 |
 | 9 | Hook surface registered in `tests/test_leak.py` and passing | NFR-002 |
@@ -117,7 +118,7 @@ N/A — pure backend / CLI task; no UI component. The three UI Evidence rows are
 
 **Vital slice**: the block-on-prefix path and the safe settings install
 
-**Cut list**: Windows settings paths beyond `~/.claude`; Auto-update of an old entry's command string
+**Cut list**: Windows settings paths beyond the resolved config dir; Auto-update of an old entry's command string
 
 Hook reads stdin JSON with `json`, checks the prefix, and only then imports core. Install edits settings JSON preserving key order (`json` with `object_pairs_hook`), identifies its own entry by command string `easy-note hook-prompt`, writes via temp + replace on the resolved path so symlinks stay.
 
