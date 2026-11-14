@@ -1,0 +1,9 @@
+{
+  "session_id": "cc86ee7c-d35e-4414-b983-d12aca7668a3",
+  "transcript_path": "/CLAUDE_CONFIG_DIR/projects/-work-proj-wt/cc86ee7c-d35e-4414-b983-d12aca7668a3.jsonl",
+  "cwd": "/work/proj-wt",
+  "prompt_id": "34a57134-9a2e-4585-8976-37e448f09cfb",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "/note queued while working"
+}

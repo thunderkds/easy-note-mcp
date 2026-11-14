@@ -1,0 +1,9 @@
+{
+  "session_id": "91efda9b-6afd-45d7-8e60-b9ce14727aba",
+  "transcript_path": "/CLAUDE_CONFIG_DIR/projects/-work-proj/91efda9b-6afd-45d7-8e60-b9ce14727aba.jsonl",
+  "cwd": "/work/proj",
+  "prompt_id": "a06d400a-9358-46e6-bca3-84fe60d9ec90",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "Reply with the single word OK"
+}

@@ -1,0 +1,9 @@
+{
+  "session_id": "c2207ac3-1d99-4a37-95f1-2bd53621e2e4",
+  "transcript_path": "/CLAUDE_CONFIG_DIR/projects/-work-proj-wt/c2207ac3-1d99-4a37-95f1-2bd53621e2e4.jsonl",
+  "cwd": "/work/proj-wt",
+  "prompt_id": "2dac3095-c443-46be-b0d6-0a105950d2f7",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "/note retry bug on firefox"
+}
