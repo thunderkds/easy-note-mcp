@@ -20,3 +20,8 @@
 **Decision**: `.claude/board.json` maps the Linear status `Todo` to the kit's Ready for Review section (`"status_map": {"Todo": "Ready for Review"}`). Open tasks sit in Linear `Backlog`, which the kit shows as Todo.
 **Why**: Team HUN has no "In Review" status and the Linear tools cannot create one; the owner chose a mapping over adding the status. `Backlog` was tried first and is wrong: all open tasks use it. Revert the map if an "In Review" status is added.
 **Files**: .claude/board.json, PROJECT_KANBAN.md
+
+### 2026-11-15 — HUN-251 merged by the owner over a failing Companion score
+**Decision**: The owner merged HUN-251 (client launch spike) into `main` (093f5cc) by hand, overriding the ☑ fail Companion score row (easy-verifier overall 67 < 80). Verify passed at 5116549; 27 tests pass on main.
+**Why**: Security 30 came from 152 hex hashes read as secrets (147 in `.claude/harness-lock.json`, 5 sha256 checksums used as AC 6 evidence); the rest of the gap is repo-wide (supply-chain 55: no SBOM/provenance; test-strategy 65). An SBOM CI step is the follow-up that would lift every branch.
+**Files**: tasks/TASK_REVIEW_HUN-251.md, .claude/harness-lock.json, .github/workflows/ci.yml
