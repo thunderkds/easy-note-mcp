@@ -2,6 +2,7 @@
 //! Both surfaces call only the core.
 
 pub mod config;
+pub mod context;
 pub mod format;
 mod fsutil;
 pub mod store;
