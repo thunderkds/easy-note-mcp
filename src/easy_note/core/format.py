@@ -26,7 +26,7 @@ KEY_ORDER = ("easy-note", "id", "created", "updated", "repo", "remote", "branch"
              "source", "client", "session", "commit")
 REQUIRED = ("easy-note", "id", "created", "tags", "source")
 
-_FRONT = re.compile(r"\A---\r?\n(.*?\r?\n)?---\r?(?:\n|\Z)", re.S)
+_FRONT = re.compile(r"\A---\r?\n(.*?\r?\n)?---\r?(?:\n|\Z)", re.DOTALL)
 # Chars a YAML 1.1 reader rejects or reads as a line break, even inside a quoted string.
 _YAML_UNSAFE = re.compile("[\x7f-\x9f  \ud800-\udfff￾￿]")
 
