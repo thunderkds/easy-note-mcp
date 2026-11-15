@@ -657,7 +657,7 @@ fn no_absolute_path_in_any_written_file() {
         .to_string();
     for file in files {
         let data = fs::read_to_string(&file).unwrap();
-        assert!(data.contains("repo: proj"), "{data}");
+        assert!(data.contains("repo: \"proj\""), "{data}");
         assert!(!data.contains(&root), "{data}");
         assert!(!data.contains(&canonical), "{data}");
         assert!(

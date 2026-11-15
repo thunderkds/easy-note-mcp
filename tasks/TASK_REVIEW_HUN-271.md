@@ -48,7 +48,7 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/context.rs` (25 tests; AC 7 and AC 9 store parts pending HUN-269) |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/context.rs` (29 tests). AC 7 and AC 9 store parts added: `slow_git_drops_the_fields_and_add_still_writes`, `no_absolute_path_in_any_written_file`; also `missing_folder_gives_no_fields_and_add_succeeds`, `token_in_remote_is_in_no_written_file` (ported from tests/test_context.py at 2d497fc). They write through `store::add` with `Context::fields()` into a temp `EASY_NOTE_DIR`. Red run against a stub `Context::fields` (returns no fields): `no_absolute_path_in_any_written_file` and `token_in_remote_is_in_no_written_file` FAILED, 27 passed; green: `cargo test` cli 5, format 13, store 29, context 29, lib 6, all ok; `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` clean |
 | Verification command run | ☐ pass / ☐ fail | [paste actual output] |
 | Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
@@ -84,7 +84,7 @@ test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 ```
 context.rs
 mod.rs
-tests/context.rs: test result: ok. 25 passed; 0 failed (cargo test, whole suite also green: cli 5, main 6)
+tests/context.rs: test result: ok. 29 passed; 0 failed (cargo test, whole suite also green: cli 5, lib 6, format 13, store 29)
 ```
 
 **DELTA**: `easy_note_mcp::core::context::capture` returns repo, remote, branch and task from read-only git (2 s timeout, no path, no token), which it could not before.

@@ -63,9 +63,14 @@ pub struct Context {
 }
 
 impl Context {
-    /// The fields in the form `Store::add` takes.
+    /// The fields in the form `Store::add` takes; an absent field stays `None` and is left out.
     pub fn fields(&self) -> Vec<(&'static str, Option<&str>)> {
-        vec![]
+        vec![
+            ("repo", self.repo.as_deref()),
+            ("remote", self.remote.as_deref()),
+            ("branch", self.branch.as_deref()),
+            ("task", self.task.as_deref()),
+        ]
     }
 }
 
