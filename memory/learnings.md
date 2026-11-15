@@ -34,3 +34,7 @@
 - **Pattern**: `[admin] for all` is refused by the merge gate: each `[admin]` request must name its task. The gate also needs a direct pytest call recorded in `memory/event-trace/<ID>.jsonl` (write the session state file first); a run made before the state file named the task does not count.
 - **Pattern**: The headless verify run may leave an untracked `skills/verify/SKILL.md` in the task worktree; move it out before merge.
 **Files**: tasks/TASK_REVIEW_HUN-256.md, templates/TASK_REVIEW_template.md
+
+### 2026-11-16 — Masking raw YAML misses escaped tokens (HUN-270)
+- **Pattern**: Running the secret guard on the raw YAML source of a front-matter value is not enough. In a double-quoted scalar, `\n`/`\t`/`\r` before a token removes the `\b` boundary the anchored patterns need, and `\x41` escapes can spell a token. Mask the decoded scalar strings too (`store.rs` `mask_decoded`), and test each escape before each anchored kind.
+**Files**: src/core/store.rs, src/core/guard.rs, tests/leak.rs
