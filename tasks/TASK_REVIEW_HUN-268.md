@@ -44,20 +44,32 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 -->
 
+## Auto decisions
+
+Mode: auto
+1. Rewrite in Rust as one Linux binary, delete all Python app code, keep the kit's Python tooling — RULE: `docs/ddr/0005-rust-single-binary.md § Decision` (accepted by the owner 2026-11-15, "yes, go ahead with R1")
+2. Install method `cargo install` only; prebuilt release binary left as a later task — RULE: `docs/ddr/0005-rust-single-binary.md § Decision` item 3 (owner gave no method; the DDR records the default)
+3. Crates: clap 4.6.7 (derive), rmcp 3.10.0 (server, transport-io, no default features), tokio 1.54.1 (rt) — RULE: `tasks/TASK_GUIDE_HUN-268.md § Approach` "Pick current stable versions of `clap` (derive) and `rmcp` (server + stdio transport features) and `tokio`"
+4. `n` passes `--version`, `-V`, `--help` and `-h` through instead of rewriting them to `add` — RULE: `tasks/TASK_GUIDE_HUN-268.md` AC 3 "`n --version` prints the same"
+5. Stage 4 follow-up from the easy-verifier improvement plan: rustfmt.toml, Cargo `[lints]`, CI build-provenance job pinned by SHA (803498d) — RULE: `skills/score/SKILL.md § The report and the row` (score the change; fix real gaps, never rerun the same ref to shop)
+Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — 6 unit + 5 integration passed (10:35 UTC, 803498d); reviews code-review — 0 P0/P1/P2, Supervisor read every changed source file; security-review — no finding (stdio MCP stub with zero tools, no network, no file writes; CLI parses args only); real run `easy-note serve` with one initialize then EOF — printed `{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26",...,"serverInfo":{"name":"easy-note","version":"0.1.0"}}}` and exit 0 (auto-checked, not /verify)
+Memory: rust-rewrite-decision (Supervisor memory) — owner switch to Rust, Linux only, Python deleted
+Not done: merge (admin: after the auto verify pass); auto verify: running (T182); readiness incomplete: `Codebase map` none, `Approved by` empty (yours)
+
 ## Evidence
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/cli.rs` (5 integration: --version, n symlink, add stub exit 2, serve initialize + EOF exit 0, n help passthrough) and unit tests in `src/surfaces/cli.rs` (6: n dispatch, flag passthrough, NFR-010 only serve starts MCP) |
+| Verification command run | ☑ pass | `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` -> `6 passed` + `5 passed` (Sun Nov 15 10:35:57 AM UTC 2026, HEAD 803498d, Supervisor); `cargo install --path . --locked --root <tmp>` -> installed, `easy-note --version` -> `easy-note 0.1.0` (agent) |
+| Negative cases hold | ☑ pass | Red first: 504a351 `tests/cli.rs` with no `src/main.rs` -> build error "can't find bin `easy-note`". No mutation run (stub-only code). |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
-| **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | `main...HEAD`: Cargo.*, src/**, tests/cli.rs, CI, RUNBOOK, rustfmt.toml, Python deletions; plan docs (DDR 0005, PRD NFR-006/009, SPEC stack) carried from plan/rust-switch. lane_check: `lane: C1, 35 files, 3160 lines, EXCEEDS` — accepted (deletions + plan docs). |
+| Full smoke suite still green (no regression) | ☑ pass | `cargo test` 11 passed; the Python suite is deleted by design (DDR 0005 decision 4) |
+| **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | rescore pending at the commit that carries this row |
+| **UI: Visual regression (diff or verdict pasted)** | ☐ N/A | Pure backend / CLI task, no UI component. |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ N/A | Pure backend / CLI task, no UI component. |
+| **UI: Responsiveness at target viewports** | ☐ N/A | Pure backend / CLI task, no UI component. |
 
 ---
 
