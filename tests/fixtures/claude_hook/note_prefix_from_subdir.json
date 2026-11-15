@@ -1,0 +1,9 @@
+{
+  "session_id": "e2e489a0-366e-44d4-85a8-5af633a529f9",
+  "transcript_path": "/CLAUDE_CONFIG_DIR/projects/-work-proj-sub-deep/e2e489a0-366e-44d4-85a8-5af633a529f9.jsonl",
+  "cwd": "/work/proj/sub/deep",
+  "prompt_id": "2710064a-adde-4f42-92e0-ca8291e7e441",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "/note from a subdir"
+}

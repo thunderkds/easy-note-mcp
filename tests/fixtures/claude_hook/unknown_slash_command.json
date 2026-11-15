@@ -1,0 +1,9 @@
+{
+  "session_id": "ad589487-924d-4df4-b1f8-1202dd0ece76",
+  "transcript_path": "/CLAUDE_CONFIG_DIR/projects/-work-proj/ad589487-924d-4df4-b1f8-1202dd0ece76.jsonl",
+  "cwd": "/work/proj",
+  "prompt_id": "d9e83508-6a48-4434-b960-31d42fea5fb3",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "/zzunknown foo"
+}
