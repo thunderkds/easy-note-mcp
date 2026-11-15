@@ -48,8 +48,9 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | Part 1 (guard module only; ACs 1, 2, 4 helper, 6, 7). Oracle `tests/guard.rs` (qa-expert, locked, not edited). Part 2 (store wiring, ACs 3, 5, 8-10) is not done. |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | Part 1 (ACs 1, 2, 4 helper, 6, 7): `tests/guard.rs`. Part 2 (store wiring, ACs 3, 4, 5, 6, 8, 9, 10): `tests/leak.rs` (40 tests) and `tests/store.rs` (30 tests, incl. `rm_moves_a_read_only_note_and_stamps_its_mtime`). All qa-expert oracle, locked, not edited. Output below in the verification row. |
 | Verification command run | ☐ pass / ☐ fail | Part 1, run 2026-11-15 14:28:39 UTC in the worktree: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` exit 0. `tests/guard.rs`: `test result: ok. 37 passed; 0 failed`. Other targets: `src/main.rs` 6 passed, `tests/cli.rs` 5 passed. |
+| Verification command run (part 2) | ☐ pass / ☐ fail | Run 2026-11-15 15:53:04 UTC after `cargo clean -p easy-note-mcp`, `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` exit 0: `tests/guard.rs` 37 passed; `tests/leak.rs` 40 passed; `tests/store.rs` 30 passed; `tests/format.rs` 13 passed; `tests/cli.rs` 5 passed; `src/lib.rs` 6 passed; 0 failed in every target. |
 | Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
@@ -81,7 +82,9 @@ warning: build failed, waiting for other jobs to finish...
 
 **AFTER** (part 1, same test target): `cargo test --test guard` printed `test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s`.
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+**AFTER** (part 2, 2026-11-15 15:53 UTC, `cargo test`): `tests/leak.rs` `test result: ok. 40 passed; 0 failed`, `tests/store.rs` `test result: ok. 30 passed; 0 failed`, `tests/guard.rs` `test result: ok. 37 passed; 0 failed`. BEFORE for part 2: those targets did not compile (missing `Added.masked`, `Updated`).
+
+**DELTA**: A secret typed into a note body, tag, context field or unknown front-matter text is now written, read, listed and reported only as `[masked:<kind>]`, and `add` and `update` report the kinds masked; the note is still kept.
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/Txxx.jsonl`, never the
 implementing agent alone]
@@ -97,3 +100,12 @@ implementing agent alone]
 - Deviation from the Python oracle: none found. A differential run of Python `guard.mask` (3c5e40f) against the Rust `mask` on 30 edge strings (short and punctuated values, unclosed quotes, markers, unicode, sk-ant boundary, bearer) gave identical `(text, kinds)` for all 30. The scratch files were not committed.
 - `guard.rs` holds no logging or printing macro; `guard_source_has_no_logging_or_printing` passes.
 - No token literal in any committed file; `git diff | grep -E "xox[abprs]-|ghp_|AKIA|sk-"` shows only pattern text.
+
+## Part 2 implementation notes (backend-developer)
+
+- Changed `src/core/store.rs` only. `add` masks text, tags and fields before the write; `read` and `iter_notes` mask body, tags, context values and `extra` without rewriting files; `update` reads the raw file, applies new text and tags, masks once over the whole note, re-terminates each `extra` chunk, renders, parses back, then writes (error `masking would leave the note unreadable; nothing written` quotes no note text).
+- `rm` now opens the moved note read-only for `set_modified` (0444 note fix, HUN-269 Stage 4 finding).
+- New crates: none.
+- Deviation from the Python oracle: none found. Python checks the size of the masked text; so does this code. Error order in `add`: guard and size check run before the source check, as in Python.
+- `store.rs` holds no printing or logging macro; `store_source_has_no_logging_or_printing` passes.
+- No token literal in the diff: `git diff | grep -E "xox[abprs]-|ghp_|AKIA|sk-"` printed nothing.

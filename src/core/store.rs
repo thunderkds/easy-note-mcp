@@ -19,6 +19,7 @@ use crate::core::format::{
     check_text, parse, render, FormatError, Note, TextTooLong, Value, SOURCES, VERSION,
 };
 use crate::core::fsutil::{create_temp, unlink_quiet, write_all_sync};
+use crate::core::guard;
 
 pub const CONTEXT_KEYS: [&str; 7] = [
     "repo", "remote", "branch", "task", "client", "session", "commit",
@@ -54,6 +55,16 @@ pub struct Added {
     pub path: PathBuf,
     /// True only for the add that created the notes dir.
     pub created_dir: bool,
+    /// Kinds the guard masked, in order: body, tags, fields as given. Never a value.
+    pub masked: Vec<&'static str>,
+}
+
+/// What `update` returns: the note as written (masked) and the kinds masked in that write.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Updated {
+    pub note: Note,
+    /// Kinds masked in what `update` wrote: body, tags, context fields, extra. Never a value.
+    pub masked: Vec<&'static str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,10 +148,20 @@ impl Store {
         tags: &[String],
         fields: &[(&str, Option<&str>)],
     ) -> Result<Added, StoreError> {
-        check_text(text)?;
+        // A secret never reaches the file; the note is still kept (D21).
+        let (text, mut masked) = guard::mask(text);
+        check_text(&text)?;
+        let text = text.as_str();
         if !SOURCES.contains(&source) || source == "inbox" {
             return Err(StoreError::Invalid(format!("unknown source {source:?}")));
         }
+        let mut masked_tags = Vec::with_capacity(tags.len());
+        for tag in tags {
+            let (tag, found) = guard::mask(tag);
+            masked_tags.push(tag);
+            masked.extend(found);
+        }
+        let tags = masked_tags.as_slice();
         let mut context = vec![];
         for (key, value) in fields {
             if !CONTEXT_KEYS.contains(key) {
@@ -149,7 +170,9 @@ impl Store {
                 )));
             }
             if let Some(value) = value {
-                context.push((key.to_string(), value.to_string()));
+                let (value, found) = guard::mask(value);
+                masked.extend(found);
+                context.push((key.to_string(), value));
             }
         }
 
@@ -204,10 +227,18 @@ impl Store {
             id,
             path,
             created_dir,
+            masked,
         })
     }
 
+    /// One note, its free text masked for output; the file is never rewritten by a read.
     pub fn read(&self, note_id: &str) -> Result<Note, StoreError> {
+        let mut note = self.read_raw(note_id)?;
+        mask_note(&mut note);
+        Ok(note)
+    }
+
+    fn read_raw(&self, note_id: &str) -> Result<Note, StoreError> {
         let path = self.note_path(note_id)?;
         let raw = match fs::read(&path) {
             Ok(raw) => raw,
@@ -231,17 +262,29 @@ impl Store {
         note_id: &str,
         text: Option<&str>,
         tags: Option<&[String]>,
-    ) -> Result<Note, StoreError> {
+    ) -> Result<Updated, StoreError> {
+        let mut masked = vec![];
+        let mut new_body = None;
         if let Some(text) = text {
-            check_text(text)?;
+            let (text, found) = guard::mask(text);
+            check_text(&text)?;
+            masked = found;
+            new_body = Some(with_newline(&text));
         }
-        let mut note = self.read(note_id)?;
-        if let Some(text) = text {
-            note.body = with_newline(text);
+        let mut note = self.read_raw(note_id)?;
+        if let Some(body) = new_body {
+            note.body = body;
         }
         if let Some(tags) = tags {
             note.fields
                 .insert("tags".to_string(), Value::List(tags.to_vec()));
+        }
+        // Also masks a secret a person typed into the file by hand, in any free-text part.
+        masked.extend(mask_note(&mut note));
+        // Each chunk is one YAML key and must stay newline-ended: an unclosed private key masks
+        // to the chunk end.
+        for chunk in &mut note.extra {
+            *chunk = format!("{}\n", chunk.trim_end_matches('\n'));
         }
         let stamp = self
             .local_time((self.now_ns)())
@@ -249,12 +292,20 @@ impl Store {
         note.fields.insert("updated".to_string(), Value::Str(stamp));
         let path = note.path.clone().expect("read sets the path");
         let dir = path.parent().expect("a note path has a parent");
+        let data = render(&note);
+        // Never write a file the reader cannot parse (masking can break a quoted value).
+        if parse(&data).is_err() {
+            return Err(FormatError {
+                reason: "masking would leave the note unreadable; nothing written".to_string(),
+            }
+            .into());
+        }
         let (mut file, tmp) = create_temp(dir)?;
-        let result = write_all_sync(&mut file, render(&note).as_bytes())
-            .and_then(|()| (self.rename)(&tmp, &path));
+        let result =
+            write_all_sync(&mut file, data.as_bytes()).and_then(|()| (self.rename)(&tmp, &path));
         unlink_quiet(&tmp);
         result?;
-        Ok(note)
+        Ok(Updated { note, masked })
     }
 
     /// Move a note to `<dir>/.easy-note/trash/`; its mtime becomes the time it was trashed.
@@ -266,10 +317,8 @@ impl Store {
         let dst = self.trash_dir().join(file_name(&src));
         fs::create_dir_all(self.trash_dir())?;
         self.move_no_replace(&src, &dst)?;
-        fs::OpenOptions::new()
-            .write(true)
-            .open(&dst)?
-            .set_modified(SystemTime::now())?;
+        // Open read-only: a 0444 note was moved already and a write-open would fail on it.
+        fs::File::open(&dst)?.set_modified(SystemTime::now())?;
         Ok(dst)
     }
 
@@ -329,7 +378,13 @@ impl Store {
         paths.into_iter().map(|path| {
             let path = std::path::absolute(&path).unwrap_or(path);
             match fs::read(&path) {
-                Ok(raw) => parse_file(&path, &raw),
+                Ok(raw) => match parse_file(&path, &raw) {
+                    Item::Note(mut note) => {
+                        mask_note(&mut note);
+                        Item::Note(note)
+                    }
+                    skipped => skipped,
+                },
                 Err(_) => Item::Skipped(Skipped {
                     path,
                     reason: "cannot read file".to_string(),
@@ -431,6 +486,33 @@ impl Store {
     }
 }
 
+/// Mask every free-text part in place: body, tags, context fields, unknown front-matter text.
+/// Returns the kinds masked, in that order. `id`, `created`, `updated`, `source` and the version
+/// key are never masked.
+fn mask_note(note: &mut Note) -> Vec<&'static str> {
+    let mut kinds = vec![];
+    let mut mask = |value: &str| {
+        let (value, found) = guard::mask(value);
+        kinds.extend(found);
+        value
+    };
+    note.body = mask(&note.body);
+    if let Some(Value::List(tags)) = note.fields.get_mut("tags") {
+        for tag in tags.iter_mut() {
+            *tag = mask(tag);
+        }
+    }
+    for key in CONTEXT_KEYS {
+        if let Some(Value::Str(value)) = note.fields.get_mut(key) {
+            *value = mask(value);
+        }
+    }
+    for chunk in &mut note.extra {
+        *chunk = mask(chunk);
+    }
+    kinds
+}
+
 fn with_newline(text: &str) -> String {
     if text.ends_with('\n') {
         text.to_string()
@@ -522,7 +604,7 @@ pub fn update(
     note_id: &str,
     text: Option<&str>,
     tags: Option<&[String]>,
-) -> Result<Note, StoreError> {
+) -> Result<Updated, StoreError> {
     Store::open()?.update(note_id, text, tags)
 }
 
