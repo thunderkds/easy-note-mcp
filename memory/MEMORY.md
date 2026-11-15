@@ -26,6 +26,7 @@
 - [easy-verifier flags harness-lock.json hashes](learnings.md#2026-11-15--easy-verifier-counts-claudeharness-lockjson-hashes-as-secrets-hun-251-hun-253) — security ~30 on every branch; fix in easy-verifier
 - [HUN-251 merged over failing score](decisions.md#2026-11-15--hun-251-merged-by-the-owner-over-a-failing-companion-score) — hash false positives; SBOM CI step is the follow-up
 - [HUN-253 merged over failing score](decisions.md#2026-11-15--hun-253-merged-by-the-owner-over-a-failing-companion-score) — 68 on fixed verifier; verify-log name false positive; build verifier from develop
+- [HUN-254 merged over failing score](decisions.md#2026-11-15--hun-254-merged-by-the-owner-over-a-failing-companion-score) — 72; review-file false positives; FR-005 tracker pattern mismatch left open (P2)
 - [Linear Todo = Ready for Review](decisions.md#2026-11-15--linear-todo-status-stands-for-ready-for-review) — no In Review status in team HUN; open tasks live in Backlog
 - [`[admin]` merge gate behaviour](learnings.md#2026-11-15--admin-merge-gate-behaviour-hun-251-hun-252) — name the task; whole-board check; no main merge-in; branch must hold task ID
 - [easy-verifier scores of early branches](learnings.md#2026-11-15--easy-verifier-scores-of-early-branches-hun-251-hun-252) — merge skeleton first; uv.lock makes change_risk abstain; pin CI SHAs + uv sync --locked
