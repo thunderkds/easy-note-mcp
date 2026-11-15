@@ -27,23 +27,22 @@ the secret guard and queries. **Surfaces** — CLI and MCP — call only the cor
 There is no database: the notes folder is the single source of truth.
 
 ```
-src/easy_note/
-  core/format.py     parse / render a note (front matter + body), version check (easy-note: 1)
-  core/store.py      resolve dir, new ID, atomic write, list files, trash/restore
-  core/context.py    cwd resolution (arg → roots → process cwd), git repo/remote/branch, task patterns
-  core/guard.py      declared secret patterns: mask on write and on read (never refuse, D21)
-  core/query.py      list / search / stats over parsed notes; bounded results
-  surfaces/cli.py    `easy-note` commands (FR-013)
-  surfaces/mcp.py    7 tools + 1 prompt (FR-012, D37), stdio + streamable-http
-  surfaces/hook.py   Claude Code UserPromptSubmit capture (FR-018); stdlib-only pass path
-  surfaces/quick.py  one-line native input box (FR-022)
-  surfaces/install.py `install|uninstall claude|launcher|tray` (FR-019, FR-026, FR-033, DDR 0003)
-  core/ai.py         AI detail files: write with caps + mask, hash staleness, pending list (FR-029–FR-032, DDR 0004)
-  surfaces/tray.py   optional system tray (FR-033), extra `[tray]`
-  surfaces/prompts.py fixed `enrich_notes` prompt text (FR-031)
-  console scripts:   `easy-note`, `n` (= `easy-note add`)
-tests/fixtures/      synthetic notes dirs incl. planted secrets, bad front matter, two-machine clash
-docs/NOTE_FORMAT.md  the public file contract (DDR 0002)
+src/  (one Rust crate, one binary `easy-note`; `n` is the same binary — DDR 0005)
+  main.rs              entry: `n` → `easy-note add`
+  core/format.rs       parse / render a note (front matter + body), version check (easy-note: 1)
+  core/store.rs        resolve dir, new ID, atomic write, list files, trash/restore
+  core/context.rs      cwd resolution (arg → roots → process cwd), git repo/remote/branch, task patterns
+  core/guard.rs        declared secret patterns: mask on write and on read (never refuse, D21)
+  core/query.rs        list / search / stats over parsed notes; bounded results
+  surfaces/cli.rs      `easy-note` commands (FR-013)
+  surfaces/mcp.rs      7 tools + 1 prompt (FR-012, D37), stdio + streamable-http (`rmcp`)
+  surfaces/hook.rs     Claude Code UserPromptSubmit capture (FR-018); no async runtime on the pass path
+  surfaces/quick.rs    one-line native input box (FR-022)
+  surfaces/install.rs  `install|uninstall claude|launcher|tray` (FR-019, FR-026, FR-033, DDR 0003)
+  core/ai.rs           AI detail files: write with caps + mask, hash staleness, pending list (FR-029–FR-032, DDR 0004)
+  surfaces/tray.rs     optional system tray (FR-033), behind a cargo feature
+tests/fixtures/       synthetic notes dirs incl. planted secrets, bad front matter, two-machine clash
+docs/NOTE_FORMAT.md   the public file contract (DDR 0002)
 ```
 
 Flow of `note_add("retry bug only on Firefox #flaky")` from Claude Code in `~/ws/easy-ui-mcp` on branch `fix/t120-firefox`:
