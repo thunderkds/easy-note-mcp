@@ -82,11 +82,7 @@ fn write_note(root: &Path, id: &str, created: &str, w: W) {
     lines.push(format!("tags: {}", serde_json::to_string(w.tags).unwrap()));
     lines.push(format!("source: \"{}\"", w.source.unwrap_or("cli")));
     lines.push("---".to_string());
-    let body = if w.body.is_empty() {
-        "hello\n"
-    } else {
-        w.body
-    };
+    let body = if w.body.is_empty() { "hello\n" } else { w.body };
     lines.push(body.to_string());
     let folder = root.join(&id[..4]).join(&id[4..6]);
     std::fs::create_dir_all(&folder).unwrap();
@@ -141,9 +137,7 @@ fn raw_notes() -> Vec<Raw> {
             tags: serde_json::from_str(&meta["tags"]).unwrap(),
             body: body.to_string(),
             local_day: created[..10].to_string(),
-            instant: DateTime::parse_from_rfc3339(&created)
-                .unwrap()
-                .timestamp(),
+            instant: DateTime::parse_from_rfc3339(&created).unwrap().timestamp(),
             created,
         });
     }
@@ -323,10 +317,7 @@ fn each_filter_matches_the_oracle() {
 #[test]
 fn tag_filter_is_exact_for_hierarchical_tags() {
     let st = basic();
-    let tag = |t: &str| Filters {
-        tag: s(t),
-        ..f()
-    };
+    let tag = |t: &str| Filters { tag: s(t), ..f() };
     assert_eq!(list(&st, &tag("idea/ui"), 20).total, 6);
     assert_eq!(
         ids(&list(&st, &tag("idea"), 50)),
@@ -368,16 +359,16 @@ fn unknown_filter_value_gives_nothing() {
         },
         20,
     );
-    assert_eq!((page.items.len(), page.total, page.truncated), (0, 0, false));
+    assert_eq!(
+        (page.items.len(), page.total, page.truncated),
+        (0, 0, false)
+    );
 }
 
 #[test]
 fn date_filters_use_local_dates() {
     let st = basic();
-    let day = |d: &str| Filters {
-        day: s(d),
-        ..f()
-    };
+    let day = |d: &str| Filters { day: s(d), ..f() };
     assert_eq!(
         ids(&list(&st, &day("2026-11-05"), 50)),
         expected(|n| n.local_day == "2026-11-05")
@@ -413,7 +404,9 @@ fn date_filters_use_local_dates() {
         ..f()
     };
     assert!(list(&st, &clash, 20).items.is_empty()); // filters AND
-    let as_date = chrono::NaiveDate::from_ymd_opt(2026, 11, 5).unwrap().to_string();
+    let as_date = chrono::NaiveDate::from_ymd_opt(2026, 11, 5)
+        .unwrap()
+        .to_string();
     assert_eq!(
         list(&st, &day(&as_date), 20).total,
         list(&st, &day("2026-11-05"), 20).total
@@ -447,7 +440,10 @@ fn bad_date_is_an_error() {
             };
             let err = query::list_notes_in(&st, &filters, 20).unwrap_err();
             assert!(matches!(err, QueryError::BadDate { .. }), "{name} {bad:?}");
-            assert_eq!(err.to_string(), format!("{name} must be a date like 2026-11-14"));
+            assert_eq!(
+                err.to_string(),
+                format!("{name} must be a date like 2026-11-14")
+            );
         }
     }
 }
@@ -468,14 +464,23 @@ fn late_evening_note_counts_for_its_local_day() {
             },
         )
     };
-    late("20261114-233000-aaaa", "2026-11-14T23:30:00+07:00", "late\n");
-    late("20261114-210000-bbbb", "2026-11-14T21:00:00-05:00", "west\n"); // UTC: 15th
-    late("20261115-013000-cccc", "2026-11-15T01:30:00+07:00", "early\n"); // UTC: 14th
+    late(
+        "20261114-233000-aaaa",
+        "2026-11-14T23:30:00+07:00",
+        "late\n",
+    );
+    late(
+        "20261114-210000-bbbb",
+        "2026-11-14T21:00:00-05:00",
+        "west\n",
+    ); // UTC: 15th
+    late(
+        "20261115-013000-cccc",
+        "2026-11-15T01:30:00+07:00",
+        "early\n",
+    ); // UTC: 14th
     let st = store(&root);
-    let day = |d: &str| Filters {
-        day: s(d),
-        ..f()
-    };
+    let day = |d: &str| Filters { day: s(d), ..f() };
     assert_eq!(
         ids(&list(&st, &day("2026-11-14"), 20)),
         ["20261114-210000-bbbb", "20261114-233000-aaaa"]
@@ -543,7 +548,11 @@ fn whole_fixture_is_newest_first_by_utc_instant() {
     let instants: Vec<i64> = got
         .items
         .iter()
-        .map(|i| DateTime::parse_from_rfc3339(&i.created).unwrap().timestamp())
+        .map(|i| {
+            DateTime::parse_from_rfc3339(&i.created)
+                .unwrap()
+                .timestamp()
+        })
         .collect();
     let mut sorted = instants.clone();
     sorted.sort_by(|a, b| b.cmp(a));
@@ -623,7 +632,11 @@ fn listing_order_ignores_the_order_the_files_are_found() {
     let (first, second) = (sb.0.join("a"), sb.0.join("b"));
     for (root, order) in [(&first, [1, 2, 3]), (&second, [3, 1, 2])] {
         for n in order {
-            plain(root, &format!("20261114-10000{n}-abcd"), "2026-11-14T10:00:00+07:00");
+            plain(
+                root,
+                &format!("20261114-10000{n}-abcd"),
+                "2026-11-14T10:00:00+07:00",
+            );
         }
     }
     assert_eq!(
@@ -652,7 +665,10 @@ fn limit_is_capped_at_fifty() {
     assert!(big.truncated);
     assert_eq!(search(&st, "hello", &f(), 51).items.len(), 50);
     let small = list(&st, &f(), 5);
-    assert_eq!((small.items.len(), small.total, small.truncated), (5, 60, true));
+    assert_eq!(
+        (small.items.len(), small.total, small.truncated),
+        (5, 60, true)
+    );
     assert_eq!(ids(&small), ids(&big)[..5]);
 }
 
@@ -664,7 +680,10 @@ fn default_limit_and_truncated_flag() {
     assert_eq!(default.items.len(), 20);
     assert_eq!((default.total, default.truncated), (30, true));
     let exact = list(&st, &f(), 30);
-    assert_eq!((exact.items.len(), exact.total, exact.truncated), (30, 30, false));
+    assert_eq!(
+        (exact.items.len(), exact.total, exact.truncated),
+        (30, 30, false)
+    );
     assert!(!list(&st, &f(), 50).truncated);
 }
 
@@ -691,7 +710,12 @@ fn zero_limit_is_an_error() {
 fn item_has_the_frozen_fields() {
     let item = search(&basic(), "retry firefox", &f(), 1).items.remove(0);
     let value = serde_json::to_value(&item).unwrap();
-    let mut keys: Vec<&str> = value.as_object().unwrap().keys().map(String::as_str).collect();
+    let mut keys: Vec<&str> = value
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
     keys.sort();
     assert_eq!(
         keys,
@@ -707,7 +731,11 @@ fn item_has_the_frozen_fields() {
 #[test]
 fn item_without_repo_or_task_has_none() {
     let sb = Sandbox::new("norepo");
-    plain(&sb.notes(), "20261114-100000-abcd", "2026-11-14T10:00:00+07:00");
+    plain(
+        &sb.notes(),
+        "20261114-100000-abcd",
+        "2026-11-14T10:00:00+07:00",
+    );
     let item = list(&store(&sb.notes()), &f(), 20).items.remove(0);
     assert!(item.repo.is_none() && item.task.is_none() && item.tags.is_empty());
     let value = serde_json::to_value(&item).unwrap();
@@ -732,7 +760,11 @@ fn one_note(name: &str, body: &str, tags: &[&str]) -> (Sandbox, Store) {
 
 #[test]
 fn snippet_is_cut_around_the_first_hit() {
-    let body = format!("Title line\n\n{}NEEDLE here {}\n", "alpha ".repeat(200), "omega ".repeat(200));
+    let body = format!(
+        "Title line\n\n{}NEEDLE here {}\n",
+        "alpha ".repeat(200),
+        "omega ".repeat(200)
+    );
     let (_sb, st) = one_note("snip", &body, &[]);
     let snippet = search(&st, "needle", &f(), 20).items.remove(0).snippet;
     assert!(snippet.chars().count() <= SNIPPET_MAX);
@@ -744,17 +776,30 @@ fn snippet_is_cut_around_the_first_hit() {
 
 #[test]
 fn snippet_picks_the_earliest_of_several_words() {
-    let body = format!("Title\n\n{}second {}first \n", "x ".repeat(300), "y ".repeat(50));
+    let body = format!(
+        "Title\n\n{}second {}first \n",
+        "x ".repeat(300),
+        "y ".repeat(50)
+    );
     let (_sb, st) = one_note("snip2", &body, &[]);
-    let snippet = search(&st, "first second", &f(), 20).items.remove(0).snippet;
+    let snippet = search(&st, "first second", &f(), 20)
+        .items
+        .remove(0)
+        .snippet;
     assert!(snippet.contains("second"));
 }
 
 #[test]
 fn snippet_never_exceeds_the_limit_at_any_hit_position() {
     let sb = Sandbox::new("snippos");
-    for n in [0usize, 30, 39, 40, 41, 150, 159, 160, 161, 199, 200, 201, 500] {
-        let body = format!("{}needle{}\n", "q".repeat(n), "q".repeat(400usize.saturating_sub(n)));
+    for n in [
+        0usize, 30, 39, 40, 41, 150, 159, 160, 161, 199, 200, 201, 500,
+    ] {
+        let body = format!(
+            "{}needle{}\n",
+            "q".repeat(n),
+            "q".repeat(400usize.saturating_sub(n))
+        );
         write_note(
             &sb.notes(),
             &format!("20261114-1000{:02}-{:04x}", n / 100, n % 100),
@@ -794,7 +839,10 @@ fn list_snippet_is_the_start_of_the_body() {
 #[test]
 fn hit_only_in_tags_gives_the_start_of_the_body() {
     let (_sb, st) = one_note("tagonly", "Body text\n", &["onlytag"]);
-    assert_eq!(search(&st, "onlytag", &f(), 20).items[0].snippet, "Body text");
+    assert_eq!(
+        search(&st, "onlytag", &f(), 20).items[0].snippet,
+        "Body text"
+    );
 }
 
 #[test]
@@ -819,15 +867,30 @@ fn stats_counts_match_the_oracle() {
     let pairs = |c: &query::Counts| c.as_pairs().to_vec();
     assert_eq!(
         pairs(&got.by_repo),
-        counts(notes.iter().filter_map(|n| n.repo.clone().map(|r| (r, 1))).collect())
+        counts(
+            notes
+                .iter()
+                .filter_map(|n| n.repo.clone().map(|r| (r, 1)))
+                .collect()
+        )
     );
     assert_eq!(
         pairs(&got.by_task),
-        counts(notes.iter().filter_map(|n| n.task.clone().map(|t| (t, 1))).collect())
+        counts(
+            notes
+                .iter()
+                .filter_map(|n| n.task.clone().map(|t| (t, 1)))
+                .collect()
+        )
     );
     assert_eq!(
         pairs(&got.by_tag),
-        counts(notes.iter().flat_map(|n| n.tags.iter().map(|t| (t.clone(), 1))).collect())
+        counts(
+            notes
+                .iter()
+                .flat_map(|n| n.tags.iter().map(|t| (t.clone(), 1)))
+                .collect()
+        )
     );
     assert_eq!(
         pairs(&got.by_source),
@@ -835,7 +898,12 @@ fn stats_counts_match_the_oracle() {
     );
     assert_eq!(
         pairs(&got.by_month),
-        counts(notes.iter().map(|n| (n.local_day[..7].to_string(), 1)).collect())
+        counts(
+            notes
+                .iter()
+                .map(|n| (n.local_day[..7].to_string(), 1))
+                .collect()
+        )
     );
     assert_eq!(
         pairs(&got.by_month),
@@ -846,15 +914,27 @@ fn stats_counts_match_the_oracle() {
     assert_eq!(got.oldest.as_deref(), Some("2026-10-28"));
     assert_eq!(got.newest.as_deref(), days.iter().max().copied());
     assert_eq!(got.newest.as_deref(), Some("2026-11-13"));
-    assert_eq!(got.by_repo.as_pairs().iter().map(|p| p.1).sum::<usize>(), 30);
+    assert_eq!(
+        got.by_repo.as_pairs().iter().map(|p| p.1).sum::<usize>(),
+        30
+    );
     // a third of the notes have no task
-    assert_eq!(got.by_task.as_pairs().iter().map(|p| p.1).sum::<usize>(), 20);
+    assert_eq!(
+        got.by_task.as_pairs().iter().map(|p| p.1).sum::<usize>(),
+        20
+    );
 }
 
 #[test]
 fn stats_counts_are_ordered_by_count_then_name() {
     let got = query::stats_in(&basic(), &f()).unwrap();
-    for c in [&got.by_repo, &got.by_task, &got.by_tag, &got.by_source, &got.by_month] {
+    for c in [
+        &got.by_repo,
+        &got.by_task,
+        &got.by_tag,
+        &got.by_source,
+        &got.by_month,
+    ] {
         let pairs = c.as_pairs().to_vec();
         let mut sorted = pairs.clone();
         sorted.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
@@ -874,7 +954,9 @@ fn stats_lists_skipped_files_with_path_and_reason() {
     assert_eq!(got.skipped.len(), 1);
     assert_eq!(
         got.skipped[0].path,
-        fixture().join("2026/11/20261110-100000-bad0.md").to_string_lossy()
+        fixture()
+            .join("2026/11/20261110-100000-bad0.md")
+            .to_string_lossy()
     );
     assert_eq!(got.skipped[0].reason, "no front matter");
 }
@@ -1012,7 +1094,10 @@ fn missing_notes_dir_is_empty_not_an_error() {
     std::fs::create_dir_all(&home).unwrap();
     with_env_dir(&sb.0.join("never-created"), &home, || {
         let page = query::list_notes(&f(), DEFAULT_LIMIT).unwrap();
-        assert_eq!((page.items.len(), page.total, page.truncated), (0, 0, false));
+        assert_eq!(
+            (page.items.len(), page.total, page.truncated),
+            (0, 0, false)
+        );
         assert_eq!(query::stats(&f()).unwrap().total, 0);
     });
 }
