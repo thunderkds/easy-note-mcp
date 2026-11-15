@@ -91,5 +91,5 @@ fn serve_answers_initialize_then_exits_on_eof() {
     let reply: serde_json::Value = serde_json::from_str(&first).expect("one JSON-RPC line");
     assert_eq!(reply["id"], 1);
     assert!(reply["result"].is_object(), "reply: {first}");
-    assert_eq!(reply["result"]["serverInfo"]["name"].is_string(), true);
+    assert_eq!(reply["result"]["serverInfo"]["name"], "easy-note");
 }
