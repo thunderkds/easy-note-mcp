@@ -48,9 +48,9 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/test_format.py`, `tests/test_store.py`, fixtures `tests/fixtures/notes/2026/11/*.md`. AC1 `test_round_trip_of_tool_written_fixture_is_byte_identical`, `test_added_note_round_trips_byte_identical`; AC2 `test_id_is_local_time_plus_sha256_of_ns_hostname_text`, `test_two_writes_same_second_same_text_get_clash_suffix`, `test_month_folder_uses_local_date_not_utc`; AC3 `test_write_never_replaces_existing_file[True/False]`; AC4 `test_killed_write_leaves_no_md_file` (child process os._exit inside os.link), `test_failing_replace_on_no_link_filesystem_leaves_no_md`, `test_failing_replace_during_update_keeps_old_bytes`; AC5 `test_rm_moves_to_trash_and_restore_brings_back_same_bytes`, `test_restore_never_replaces_a_note_at_the_target`, `test_empty_trash_deletes_only_files_older_than_cutoff`, `test_rm_stamps_trash_time_so_an_old_note_is_not_emptied_at_once`; AC6 `test_bad_files_are_skipped_with_path_and_left_unchanged`, `test_bad_fixture_files_raise_format_error`, `test_invalid_front_matter_raises_format_error`, `test_unreadable_file_is_skipped_not_fatal`; AC7 `test_update_keeps_unknown_keys_and_sets_updated`, `test_unknown_keys_render_verbatim_after_known_keys`; AC8 `test_first_add_creates_default_dir_once`, `test_env_dir_beats_config_and_config_beats_default`, `test_config_round_trips_awkward_paths`, `test_broken_config_raises_clear_error`; AC9 `test_title_is_first_line_cut_to_120_chars`, `test_long_first_line_is_kept_whole_in_the_file`, `test_check_text_refuses_over_20000_chars_with_clear_error`, `test_oversize_text_is_refused_before_any_write`; AC10 `test_note_format_doc_is_final_and_its_example_round_trips`, `test_note_format_doc_lists_every_key_the_code_knows`. Run: `uv run pytest tests/test_format.py tests/test_store.py -q` → 72 passed in 0.19s (2026-11-15T04:41:30Z). Filled by backend-developer. |
+| Verification command run | ☑ pass | 2026-11-15T04:41:27Z<br>HEAD 9b1659c<br>$ uv run --locked pytest -q<br>........................................................................ [ 72%]<br>...........................                                              [100%]<br>99 passed in 2.37s<br>$ uvx ruff check --isolated src tests<br>PLW1510 `subprocess.run` without explicit `check` argument<br>  --> tests/test_T001_probes.py:24:12<br>PLW1510 `subprocess.run` without explicit `check` argument<br>  --> tests/test_T001_probes.py:73:13<br>PLW1510 `subprocess.run` without explicit `check` argument<br>  --> tests/test_T001_probes.py:78:17<br>Found 3 errors.<br>(the 3 PLW1510 findings are in `tests/test_T001_probes.py`, unchanged from `main` (`git diff main -- tests/test_T001_probes.py` is empty); `uvx ruff check --isolated src tests/test_format.py tests/test_store.py` → All checks passed!) Filled by backend-developer. |
+| Negative cases hold | ☑ pass | 2026-11-15T04:41:17Z<br>## M1: store._write_new uses os.replace (overwrites) instead of os.link<br> src/easy_note/core/store.py \| 2 +-<br> 1 file changed, 1 insertion(+), 1 deletion(-)<br><br>tests/test_store.py:124: AssertionError<br>=========================== short test summary info ============================<br>FAILED tests/test_store.py::test_two_writes_same_second_same_text_get_clash_suffix<br>FAILED tests/test_store.py::test_write_never_replaces_existing_file[True] - A...<br>FAILED tests/test_store.py::test_write_never_replaces_existing_file[False] - ...<br>FAILED tests/test_store.py::test_killed_write_leaves_no_md_file - assert 0 == 9<br>4 failed, 26 passed in 0.24s<br>## M2: format._value writes strings unquoted<br> src/easy_note/core/format.py \| 2 +-<br> 1 file changed, 1 insertion(+), 1 deletion(-)<br>FAILED tests/test_format.py::test_render_quotes_strings_so_yaml_keeps_them_strings[del\x7f]<br>FAILED tests/test_format.py::test_render_quotes_strings_so_yaml_keeps_them_strings[]<br>FAILED tests/test_format.py::test_note_format_doc_is_final_and_its_example_round_trips<br>19 failed, 23 passed in 0.18s<br>## after revert<br>Both mutations reverted (empty `git diff --stat` after). Filled by backend-developer. |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
 | Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
@@ -91,9 +91,19 @@ ModuleNotFoundError: No module named 'easy_note.core.store'
 exit=1
 ```
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+**AFTER** (backend-developer, HEAD 9b1659c):
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+```text
+2026-11-15T04:41:30Z
+$ uv run pytest tests/test_format.py tests/test_store.py -q
+........................................................................ [100%]
+72 passed in 0.19s
+exit=0
+$ uv run python -c "import easy_note.core.store"
+exit=0
+```
+
+**DELTA**: core code can now write, read, edit, trash and restore one note in the final `easy-note: 1` format, with no overwrite and no partial file, where before `easy_note.core.store` did not exist.
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/HUN-253.jsonl`, never the
 implementing agent alone]
