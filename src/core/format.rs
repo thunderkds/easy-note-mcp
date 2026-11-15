@@ -332,7 +332,7 @@ fn value_text(value: &Value) -> String {
 }
 
 /// A JSON string is a valid YAML double-quoted scalar; escape what YAML would misread.
-fn quote(text: &str) -> String {
+pub(crate) fn quote(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 2);
     out.push('"');
     for c in text.chars() {

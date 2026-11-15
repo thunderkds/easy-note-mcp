@@ -5,4 +5,5 @@ pub mod config;
 pub mod context;
 pub mod format;
 mod fsutil;
+pub mod guard;
 pub mod store;
