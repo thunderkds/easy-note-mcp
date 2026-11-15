@@ -12,9 +12,9 @@
 
 - **Name**: easy-note-mcp (MCP server id `easy-note`, CLI `easy-note`)
 - **Repo**: `thunderkds/easy-note-mcp` (to be created; not created by this plan)
-- **Primary tech**: Python ≥ 3.11, official MCP Python SDK (FastMCP), PyYAML (front matter), `uv`
+- **Primary tech**: Rust (stable), one binary; official Rust MCP SDK (`rmcp`), `clap`; crates confirmed per task guide (DDR 0005)
 - **Type**: MCP server (stdio default, streamable HTTP opt-in on `127.0.0.1:8769`) + CLI
-- **Deployment target**: the owner's machine, native install (`uv tool install`), no Docker (DDR 0001)
+- **Deployment target**: the owner's machine, Linux only, native install (`cargo install`), no Docker (DDR 0001, DDR 0005)
 - **Key stakeholders**: thunderkds (owner)
 - **Family place**: plug-in. Usable with or without the kernel (easy-kit). Read by easy-personal through the file format only (DDR 0002).
 
@@ -96,7 +96,7 @@ flowchart LR
 - **Requirements**: PRD.md
 - **Direction**: BRAINSTORMING_LOG.md (Option B; rounds 2–3: BRAINSTORMING_LOG_capture.md, BRAINSTORMING_LOG_oneclick-enrich.md)
 - **Codebase map**: none — blank scaffold (code starts with HUN-252)
-- **Tech stack**: Python ≥ 3.11, official MCP Python SDK (FastMCP), PyYAML, uv; storage = plain Markdown files; hosting = the owner's machine, native install, no Docker
+- **Tech stack**: Rust (stable), `rmcp`, `clap`, cargo (DDR 0005); storage = plain Markdown files; hosting = the owner's machine, native install, no Docker
 - **Main flow**: PROJECT_SPEC.md (Mermaid flowchart in Architecture Summary)
 - **Approved by**: 
 
@@ -154,7 +154,7 @@ Base team only (no `craft-agent` role needed).
 
 | Agent | Role | CLI Spawn Command |
 |---|---|---|
-| Common-Infrastructure-Agent | Repo skeleton, `uv` project, CI, fixtures layout | `Agent({ subagent_type: "common-infrastructure", prompt: "Task T002 …" })` |
+| Common-Infrastructure-Agent | Repo skeleton, cargo project, CI, fixtures layout | `Agent({ subagent_type: "common-infrastructure", prompt: "Task T002 …" })` |
 | Backend-Implementer | Core + CLI + MCP | `Agent({ subagent_type: "backend-developer", prompt: "Task T00x …" })` |
 | QA-Automation-Agent | Spike, leak suite, perf check, Acceptance Criteria evidence | `Agent({ subagent_type: "qa-expert", prompt: "Task T00x …" })` |
 

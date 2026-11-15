@@ -104,10 +104,10 @@ search and read notes; only the person edits or deletes them. Everything stays o
 | NFR-003 | Writes only inside the notes dir, the config file, the one hook entry + command file owned by `install claude`, the launcher file owned by `install launcher` and the autostart file owned by `install tray` (DDR 0001, DDR 0003). Nothing in any code repo is ever written. | Safety |
 | NFR-004 | Search p95 < 500 ms and `note_add` p95 < 150 ms over 10,000 notes on a laptop (provisional until T010). | Performance |
 | NFR-005 | Safe under a sync tool: two machines adding notes at the same time never lose a note (per-file writes, unique IDs). | Reliability |
-| NFR-006 | Python 3.11+, native install `uv tool install easy-note-mcp`; macOS and Linux in v1; Windows best effort. | Portability |
+| NFR-006 | One Rust binary (`easy-note`, with `n` as a link to it), installed with `cargo install`; Linux (x86_64) only in v1 (DDR 0005). | Portability |
 | NFR-007 | Deterministic: same files + same query → same output order; no LLM in the server. | Correctness |
 | NFR-008 | Works with no kernel installed, and with no other plug-in installed. | Microkernel |
-| NFR-009 | *(round 2)* Hook pass path (prompt without the prefix) p95 < 50 ms, stdlib imports only; hook save path p95 < 150 ms. | Performance |
+| NFR-009 | *(round 2)* Hook pass path (prompt without the prefix) p95 < 50 ms, no interpreter start (native binary, DDR 0005); hook save path p95 < 150 ms. | Performance |
 | NFR-011 | *(round 3)* `quick` box visible p95 < 300 ms after the key press. | Performance |
 | NFR-012 | *(round 3)* AI detail never changes a note file and never feeds a count other than `enriched`. | Correctness |
 | NFR-010 | *(round 2)* `n` / `easy-note add` cold start to confirmation p95 < 150 ms; the CLI never imports the MCP SDK. | Performance |

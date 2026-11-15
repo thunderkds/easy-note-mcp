@@ -19,7 +19,7 @@ DDR gate: hard to reverse (the write rules shape every surface) ✅, surprising 
 
 ## Decision
 
-1. **Native only** (`uv tool install easy-note-mcp`). No Docker image in v1.
+1. **Native only** (`uv tool install easy-note-mcp`; amended by DDR 0005: one Rust binary via `cargo install`, Linux only). No Docker image in v1.
 2. easy-note may write **only**:
    - new note files under the notes dir, and `.easy-note/trash/` inside it;
    - an existing note, only through `easy-note edit` / `easy-note tag` (person-run CLI);
