@@ -101,9 +101,24 @@ uv.lock
 ls: cannot access 'Cargo.toml': No such file or directory
 ```
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+**AFTER**: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` and the install check (Verification Command) all passed (6 unit + 5 integration tests); then, from an `--root` temp install with an `n` symlink:
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+```
+easy-note 0.1.0
+easy-note 0.1.0
+easy-note: add is not implemented yet
+n hello exit=2
+AFTER:
+scripts/board_sync.py
+scripts/gen_sandbox_profile.py
+scripts/lane_check.py
+scripts/pull_moment.py
+scripts/verify_trace.py
+Cargo.lock
+Cargo.toml
+```
+
+**DELTA**: A user can `cargo install --path .` one Rust binary and run `easy-note --version`, `n hello` (stub) and `easy-note serve` (MCP initialize over stdio), and the repo holds no Python app code.
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/HUN-268.jsonl`, never the
 implementing agent alone]
