@@ -48,12 +48,12 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/query.rs` (45 tests, port of Python `tests/test_query.py`; fixture `tests/fixtures/notes_basic/`). 45 passed, 0 failed (output in the next row) |
+| Verification command run | ☑ pass | implementation commit 07ee8a2; `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`:<br>```<br>Sun Nov 15 03:06:50 PM UTC 2026<br>FMT-OK<br>    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.08s<br>     Running unittests src/lib.rs (target/debug/deps/easy_note_mcp-87e71ad8fdbf8075)<br>test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s<br>     Running unittests src/main.rs (target/debug/deps/easy_note-6a6adfaa05f54c21)<br>test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s<br>     Running tests/cli.rs (target/debug/deps/cli-2de62b2d428d147e)<br>test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s<br>     Running tests/format.rs (target/debug/deps/format-ef25e05f7a981a6a)<br>test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s<br>     Running tests/query.rs (target/debug/deps/query-2042827d1767a431)<br>test result_does_not_depend_on_the_reader_zone ... ok<br>test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s<br>     Running tests/store.rs (target/debug/deps/store-a18f8bbc91b20273)<br>test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s<br>test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s<br>``` |
+| Negative cases hold | ☑ pass | Red run (commit before `src/core/query.rs` existed): `error[E0432] unresolved import easy_note_mcp::core::query` / `could not compile easy-note-mcp (test "query")`. Mutation (tie order of IDs reversed, `SNIPPET_MAX` 200 to 201) made 5 tests fail:<br>```<br>Cargo.lock      |  26 ++++++++<br> Cargo.toml      |   2 +<br> src/core/mod.rs |   1 +<br> tests/query.rs  | 179 +++++++++++++++++++++++++++++++++++++++++---------------<br> 4 files changed, 161 insertions(+), 47 deletions(-)<br>test equal_instants_are_ordered_by_id ... FAILED<br>test clash_suffix_ids_tie_break_as_text ... FAILED<br>test list_snippet_is_the_start_of_the_body ... FAILED<br>test result_does_not_depend_on_the_reader_zone ... ok<br>test snippet_is_cut_around_the_first_hit ... FAILED<br>test snippet_never_exceeds_the_limit_at_any_hit_position ... FAILED<br>assertion `left == right` failed<br>assertion `left == right` failed<br>assertion `left == right` failed<br>assertion `left == right` failed<br>test result: FAILED. 40 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s<br>error: test failed, to rerun pass `--test query`<br>```<br>Source restored after the mutation. |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | New files `src/core/query.rs`, `tests/query.rs`; one line in `src/core/mod.rs`; `Cargo.toml`/`Cargo.lock` (2 crates). `src/core/store.rs` and `src/surfaces` untouched. |
+| Full smoke suite still green (no regression) | ☑ pass | whole `cargo test`: 6 + 0 + 5 + 13 + 45 + 29 passed, 0 failed |
 | **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
 | **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
 | **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
@@ -81,9 +81,26 @@ store.rs
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 ```
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+**AFTER** (same command after the change, from the verification run above): `src/core/query.rs` is listed in `src/core/`; `cargo test` shows `Running tests/query.rs ... test result: ok. 45 passed; 0 failed`.
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+**DELTA**: Code can now call `easy_note_mcp::core::query::{list_notes, search, stats}` to get deterministic, bounded (50 items, snippet at most 200 chars) answers over the notes folder.
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/Txxx.jsonl`, never the
 implementing agent alone]
+
+
+---
+
+## Implementation notes (backend-developer)
+
+Crates: `caseless` 0.2.2 (Unicode default case folding, same as Python `casefold`, so `ß` folds to `ss`; Rust `to_lowercase` does not), `serde` 1.0 with `derive` (result structs serialize for the MCP surface later). Existing: `chrono`, `thiserror`. No new dev-dependencies.
+
+API: `list_notes(&Filters, limit)`, `search(query, &Filters, limit)`, `stats(&Filters)` open the store from the env; `list_notes_in`, `search_in`, `stats_in` take a `&Store` (used by the tests). Results: `Page`, `NoteItem`, `Stats`; `Counts` serializes as a JSON object in count-then-name order.
+
+Deviations from the Python oracle (all forced by Rust types or listed in the port rules):
+1. Bad `limit` of another type (bool, float, string, None) and `query=None` / a `datetime` as a date cannot compile. Checks kept: `limit = 0` gives `BadLimit`; an empty query gives `EmptyQuery`; a date-time string as a date gives `BadDate`. Negative `limit` is impossible (`usize`).
+2. Dates are `&str`/`String` and must be strictly `YYYY-MM-DD` (10 chars). Python `fromisoformat` also accepts `20261105`; the Python test refused it only because it was an int. Rust refuses the string `"20261105"` and `"2026-1-5"`.
+3. Snippet position uses folded-length mapping like Python `_find`; behaviour equal. Whitespace split matches Python `str.split()` (Unicode whitespace plus `\x1c-\x1f`).
+4. `limit` is a required argument of the Rust functions (Python default 20 is the exported `DEFAULT_LIMIT`; the surface passes it).
+
+Cut list (not built): no `date`-typed filter fields (strings only), no index or cache.
