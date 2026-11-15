@@ -1,6 +1,6 @@
 # 0002. Files are the store, and the file format is the public contract
 
-**Status**: Proposed (Supervisor, autonomous run; owner to accept)
+**Status**: Accepted (owner, 2026-11-15)
 **Date**: 2026-11-14
 **Deciders**: thunderkds
 **Related**: PRD FR-002, FR-015, FR-017, US-004, US-009 · GRILL D2, G12 · easy-personal DDR 0002, DDR 0003
@@ -20,7 +20,7 @@ DDR gate: hard to reverse (other tools and the person's own files depend on the 
 ## Decision
 
 1. The notes dir is the **only** store. No database, no cache in v1.
-2. One note = one file `<dir>/YYYY/MM/<id>.md` in format `easy-note: 1`, specified in `docs/NOTE_FORMAT.md` (draft beside this DDR). The spec is versioned; a breaking change needs `easy-note: 2`, a new DDR, and continued reading of v1 files.
+2. One note = one file `<dir>/YYYY/MM/<id>.md` in format `easy-note: 1`, specified in `docs/NOTE_FORMAT.md` (final since HUN-253). The spec is versioned; a breaking change needs `easy-note: 2`, a new DDR, and continued reading of v1 files.
 3. Unknown front matter keys (for example ones Obsidian adds) are kept unchanged on edit and ignored on read.
 4. **Readers** (easy-personal follow-up F1, any script) may read the files read-only. A reader that must not hold note text (easy-personal NFR-002) reads the front matter only and never the body. easy-note does not know its readers and never depends on them.
 5. `easy-note stats --json` gives the same counts for readers that prefer a command.
