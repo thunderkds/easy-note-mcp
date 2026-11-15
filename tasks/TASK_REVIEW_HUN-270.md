@@ -44,21 +44,32 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 -->
 
+## Auto decisions
+
+Mode: auto
+1. The guard restates Python's look-ahead patterns without look-around and uses the `regex` crate only (no `fancy-regex`): `openai_key` skips a match that starts with `sk-ant-` in code; `password_assign`/`secret_assign` match the key by regex and read the value with a hand-written scanner that stops at a `[masked:` marker — RULE: `docs/ddr/0005-rust-single-binary.md § Decision` item 6 ("Either restate them without look-around, or use `fancy-regex` for those patterns only. The leak oracle decides."); the implementer compared Python and Rust `mask` on 30 edge strings with identical output
+2. AC 6 (no note text in logs) is checked by a source scan of `src/core/guard.rs` and `src/core/store.rs` for printing and logging macros, not by a log capture — RULE: `docs/ddr/0005-rust-single-binary.md § Decision` item 5 ("The Python test suite is the behaviour oracle ... ports the tests"): the core has no logger, so Python's handler capture has no Rust equivalent; process surfaces add stdout/stderr capture to the leak harness when they register
+3. Planted secrets in fixtures and tests are split into parts and joined at runtime, so no token literal is in the repo — RULE: `tasks/TASK_GUIDE_HUN-270.md § Edge Case Checklist` ("Build planted values at runtime (`concat!`, `format!`, or joining parts), keep them fake")
+4. `Store::rm` sets the trash mtime through a read-only handle (Stage 4 finding carried from HUN-269) — RULE: `tasks/TASK_REVIEW_HUN-269.md § Auto decisions` Checks: "fix carried to HUN-270 part 2 (same file)"
+Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — guard 37, leak 40, store 30, format 13, cli 5, unit 6 passed (a946a46); reviews code-review (Skill) — 0 P0/P1; P2 lane_check `EXCEEDS (files 10 > 6; lines 2587 > 250)` for C1 — about 2,100 lines are the locked oracle tests and fixtures, label kept; P3 `src/core/store.rs` error text echoes caller input for a bad ID or source (`not a note id: {id:?}`, `unknown source {source:?}`), as the Python oracle did (`git show 3c5e40f:src/easy_note/core/store.py` lines 76, 264) — the surface tasks must mask error text before output (HUN-257, HUN-258); startup reads: part 2 implementer listed PROJECT_SPEC.md, the guide, agents/backend.md (system prompt) and the DDR (first 30 lines) — none missing; security-review — see below
+Memory: nothing new yet (pass runs at merge)
+Not done: merge (owner, by hand if the score fails); auto verify: pending
+
 ## Evidence
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | Part 1 (ACs 1, 2, 4 helper, 6, 7): `tests/guard.rs`. Part 2 (store wiring, ACs 3, 4, 5, 6, 8, 9, 10): `tests/leak.rs` (40 tests) and `tests/store.rs` (30 tests, incl. `rm_moves_a_read_only_note_and_stamps_its_mtime`). All qa-expert oracle, locked, not edited. Output below in the verification row. |
-| Verification command run | ☐ pass / ☐ fail | Part 1, run 2026-11-15 14:28:39 UTC in the worktree: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` exit 0. `tests/guard.rs`: `test result: ok. 37 passed; 0 failed`. Other targets: `src/main.rs` 6 passed, `tests/cli.rs` 5 passed. |
-| Verification command run (part 2) | ☐ pass / ☐ fail | Run 2026-11-15 15:53:04 UTC after `cargo clean -p easy-note-mcp`, `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` exit 0: `tests/guard.rs` 37 passed; `tests/leak.rs` 40 passed; `tests/store.rs` 30 passed; `tests/format.rs` 13 passed; `tests/cli.rs` 5 passed; `src/lib.rs` 6 passed; 0 failed in every target. |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | Part 1 (ACs 1, 2, 4 helper, 6, 7): `tests/guard.rs`. Part 2 (store wiring, ACs 3, 4, 5, 6, 8, 9, 10): `tests/leak.rs` (40 tests) and `tests/store.rs` (30 tests, incl. `rm_moves_a_read_only_note_and_stamps_its_mtime`). All qa-expert oracle, locked, not edited. Output below in the verification row. |
+| Verification command run | ☑ pass | Part 1, run 2026-11-15 14:28:39 UTC in the worktree: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` exit 0. `tests/guard.rs`: `test result: ok. 37 passed; 0 failed`. Other targets: `src/main.rs` 6 passed, `tests/cli.rs` 5 passed. |
+| Verification command run (part 2) | ☑ pass | Run 2026-11-15 15:53:04 UTC after `cargo clean -p easy-note-mcp`, `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` exit 0: `tests/guard.rs` 37 passed; `tests/leak.rs` 40 passed; `tests/store.rs` 30 passed; `tests/format.rs` 13 passed; `tests/cli.rs` 5 passed; `src/lib.rs` 6 passed; 0 failed in every target. |
+| Negative cases hold | ☑ pass | Red runs: part 1 `cargo test --test guard` E0432 on missing `mask`, `mask_for_output`, `KINDS` (c83f667); part 2 `cargo test --no-run` 40 + 2 compile errors on missing `Added.masked`, `Updated` (c655b39). Supervisor mutations on a946a46: drop `mask_note` in `iter_notes` (`src/core/store.rs \| 3 +--`) → `FAILED. 37 passed; 3 failed` (hand_edited_file_is_masked_on_read_and_iter_notes_and_bytes_unchanged, hand_edited_front_matter_is_masked_on_read_and_iter_notes_and_bytes_unchanged, hand_edited_front_matter_with_all_three_places_and_two_notes); skip `guard::mask` on the body in `add` (`src/core/store.rs \| 2 +-`) → `FAILED. 32 passed; 8 failed`; both reverted. QA no-op guard check: 16 of 37 guard tests fail |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Reviewed `src/core/guard.rs` (part 1 report and tests), the full `src/core/store.rs` diff (c655b39..a946a46), `src/core/mod.rs`, `Cargo.toml`; tests read for contract only; no surface calls the core yet |
+| Full smoke suite still green (no regression) | ☑ pass | cli 5, unit 6, format 13 pass; HUN-269 store tests still pass (30 with the new rm test) |
 | **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| **UI: Visual regression (diff or verdict pasted)** | ☑ N/A | No UI: core library task |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ N/A | No UI: core library task |
+| **UI: Responsiveness at target viewports** | ☑ N/A | No UI: core library task |
 
 ---
 
