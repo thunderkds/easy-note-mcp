@@ -5,8 +5,8 @@
 //! EASY_NOTE_DIR only. The tests change process-wide state (cwd, PATH), so each one holds a
 //! global lock for its whole run, as pytest runs them one after another.
 //!
-//! Store part pending HUN-269: AC 7 "add still writes the note" and AC 9 "no path in any
-//! written note" are checked on the `capture` output only.
+//! Store part (HUN-269 is on main): AC 7 "add still writes the note" and AC 9 "no path in any
+//! written note" are checked on the files that `store::add` writes from the `capture` output.
 
 use std::ffi::OsString;
 use std::fs;
@@ -17,6 +17,7 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use easy_note_mcp::core::context::{capture, remote_slug, task_from_branch, Context, GIT_TIMEOUT};
+use easy_note_mcp::core::{format, store};
 use tempfile::TempDir;
 
 const TOKEN_URL: &str = "https://user:tok@github.com/o/r.git";
@@ -159,6 +160,38 @@ fn text_of(c: &Context) -> String {
         .join("\n")
 }
 
+/// Every file the store wrote under the temp notes dir.
+fn written_files(env: &Env) -> Vec<PathBuf> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, out);
+            } else {
+                out.push(path);
+            }
+        }
+    }
+    let mut out = vec![];
+    walk(&env.path().join("notes"), &mut out);
+    out
+}
+
+/// Capture at `cwd`, then write one note with the result through the free `store::add`.
+fn add_note(cwd: &Path) -> PathBuf {
+    let fields = at(cwd);
+    store::add("a note", "cli", &[], &fields.fields())
+        .unwrap()
+        .path
+}
+
+fn front_matter(path: &Path) -> format::Note {
+    format::parse(&fs::read_to_string(path).unwrap()).unwrap()
+}
+
 // AC 1
 
 #[test]
@@ -234,9 +267,19 @@ fn no_git_gives_no_fields() {
 
 #[test]
 fn missing_folder_gives_no_fields() {
-    // Store part pending HUN-269: `add` still succeeds with these (empty) fields.
     let env = Env::new();
     assert_eq!(at(&env.path().join("nope")), Context::default());
+}
+
+#[test]
+fn missing_folder_gives_no_fields_and_add_succeeds() {
+    let env = Env::new();
+    let path = add_note(&env.path().join("nope"));
+    assert!(path.is_file());
+    let meta = front_matter(&path);
+    assert!(["repo", "remote", "branch", "task"]
+        .iter()
+        .all(|k| !meta.fields.contains_key(*k)));
 }
 
 #[test]
@@ -300,13 +343,30 @@ fn remote_that_is_a_path_or_has_no_owner_gives_none() {
 
 #[test]
 fn token_in_remote_is_in_no_field() {
-    // Store part pending HUN-269: the same check on every file the store writes.
     let env = Env::new();
     let repo = make_repo(env.path(), "proj", Some(TOKEN_URL), "main");
     let got = at(&repo);
     assert_eq!(got.remote.as_deref(), Some("o/r"));
     let text = text_of(&got);
     assert!(!text.contains("tok") && !text.contains("user"), "{text}");
+}
+
+#[test]
+fn token_in_remote_is_in_no_written_file() {
+    let env = Env::new();
+    let repo = make_repo(env.path(), "proj", Some(TOKEN_URL), "main");
+    let path = add_note(&repo);
+    assert_eq!(
+        front_matter(&path).fields.get("remote"),
+        Some(&format::Value::Str("o/r".into()))
+    );
+    let files = written_files(&env);
+    assert!(!files.is_empty());
+    for file in files {
+        let data = fs::read(&file).unwrap();
+        let has = |needle: &[u8]| data.windows(needle.len()).any(|w| w == needle);
+        assert!(!has(b"tok") && !has(b"user"), "{}", file.display());
+    }
 }
 
 #[test]
@@ -438,7 +498,6 @@ fn a_source_that_is_not_a_repo_does_not_fall_through_to_a_guess() {
 
 #[test]
 fn slow_git_drops_the_fields() {
-    // Store part pending HUN-269: `add` still writes the note with these (empty) fields.
     let env = Env::new();
     let repo = make_repo(env.path(), "proj", Some(TOKEN_URL), "fix/t120-x");
     env.fake_git("#!/bin/sh\nexec sleep 3\n");
@@ -451,6 +510,21 @@ fn slow_git_drops_the_fields() {
         start.elapsed()
     );
     assert_eq!(got, Context::default());
+}
+
+#[test]
+fn slow_git_drops_the_fields_and_add_still_writes() {
+    let env = Env::new();
+    let repo = make_repo(env.path(), "proj", Some(TOKEN_URL), "fix/t120-x");
+    env.fake_git("#!/bin/sh\nexec sleep 3\n");
+
+    let path = add_note(&repo);
+    assert!(path.is_file());
+    let meta = front_matter(&path);
+    for key in ["repo", "remote", "branch", "task"] {
+        assert!(!meta.fields.contains_key(key), "{key} must be absent");
+    }
+    assert!(meta.body.contains("a note"));
 }
 
 #[test]
@@ -506,7 +580,7 @@ fn git_dir_from_the_environment_does_not_redirect_git() {
     assert_eq!(at(&here).repo.as_deref(), Some("here"));
 }
 
-// AC 9: store part pending HUN-269 (grep of the written files); here, no field holds a path
+// AC 9: no field holds a path (here), and no written file holds the temp root (below)
 
 #[test]
 fn no_absolute_path_in_any_field() {
@@ -542,6 +616,53 @@ fn no_absolute_path_in_any_field() {
         assert!(
             !text.contains("/home/") && !text.contains("file://"),
             "{text}"
+        );
+    }
+}
+
+#[test]
+fn no_absolute_path_in_any_written_file() {
+    let env = Env::new();
+    let repo = make_repo(
+        env.path(),
+        "proj",
+        Some("git@github.com:o/r.git"),
+        "fix/t120-x",
+    );
+    fs::create_dir(repo.join("sub")).unwrap();
+    let wt = env.path().join("wt-t148");
+    git(
+        &repo,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            wt.to_str().unwrap(),
+            "-b",
+            "fix/t148-x",
+        ],
+    );
+    add_note(&repo.join("sub"));
+    add_note(&wt);
+    let by_root = capture(None, None, &[uri(&repo)]);
+    store::add("a note", "cli", &[], &by_root.fields()).unwrap();
+
+    let files = written_files(&env);
+    assert_eq!(files.len(), 3);
+    let root = env.path().to_str().unwrap().to_string();
+    let canonical = fs::canonicalize(env.path())
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    for file in files {
+        let data = fs::read_to_string(&file).unwrap();
+        assert!(data.contains("repo: proj"), "{data}");
+        assert!(!data.contains(&root), "{data}");
+        assert!(!data.contains(&canonical), "{data}");
+        assert!(
+            !data.contains("/home/") && !data.contains("file://"),
+            "{data}"
         );
     }
 }

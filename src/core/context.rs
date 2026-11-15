@@ -62,6 +62,13 @@ pub struct Context {
     pub task: Option<String>,
 }
 
+impl Context {
+    /// The fields in the form `Store::add` takes.
+    pub fn fields(&self) -> Vec<(&'static str, Option<&str>)> {
+        vec![]
+    }
+}
+
 /// git is missing or exceeded the timeout: all git fields are dropped.
 struct GitUnavailable;
 
