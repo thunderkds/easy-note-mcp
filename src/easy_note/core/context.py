@@ -27,7 +27,7 @@ GIT_TIMEOUT = 2  # seconds, per git call (NFR-001)
 # A hit may not touch a letter or digit on either side, so `art1234` and `T1234x` do not match.
 _TASK_PATTERNS = (
     (re.compile(r"(?<![A-Za-z0-9])([Tt]\d{3,4})(?![A-Za-z0-9])"), str.upper),
-    (re.compile(r"(?<![A-Za-z0-9])([A-Z]{2,}-\d{1,6})(?![A-Za-z0-9])"), str),
+    (re.compile(r"(?<![A-Za-z0-9])([A-Z][A-Z0-9]+-\d+)(?![A-Za-z0-9])"), str),
 )
 _SCP_REMOTE = re.compile(r"^(?:[^@/\s]+@)?[^:/\s]+:(?!//)(?P<path>.+)$")
 _BAD_SEGMENT = re.compile(r"[\s@:?#]")
