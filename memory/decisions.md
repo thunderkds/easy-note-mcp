@@ -15,3 +15,8 @@
 **Decision**: easy-note uses the official SDK's v1 FastMCP API (`mcp.server.fastmcp`) and pins `mcp>=1.2,<2`. Moving to the v2 `MCPServer` API is a separate, owner-approved change.
 **Why**: HUN-252 found that `mcp` 2.3.0 removed `mcp.server.fastmcp`; PROJECT_SPEC names FastMCP (D11).
 **Files**: pyproject.toml, src/easy_note/surfaces/mcp.py
+
+### 2026-11-15 — Linear "Todo" status stands for Ready for Review
+**Decision**: `.claude/board.json` maps the Linear status `Todo` to the kit's Ready for Review section (`"status_map": {"Todo": "Ready for Review"}`). Open tasks sit in Linear `Backlog`, which the kit shows as Todo.
+**Why**: Team HUN has no "In Review" status and the Linear tools cannot create one; the owner chose a mapping over adding the status. `Backlog` was tried first and is wrong: all open tasks use it. Revert the map if an "In Review" status is added.
+**Files**: .claude/board.json, PROJECT_KANBAN.md
