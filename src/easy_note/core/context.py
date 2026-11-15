@@ -164,7 +164,7 @@ def _git(folder: str, *args: str) -> str | None:
     env["GIT_TERMINAL_PROMPT"] = "0"
     try:
         done = subprocess.run(["git", *args], cwd=folder, env=env, capture_output=True,
-                              text=True, timeout=GIT_TIMEOUT, stdin=subprocess.DEVNULL)
+                              text=True, timeout=GIT_TIMEOUT, stdin=subprocess.DEVNULL, check=False)
     except subprocess.TimeoutExpired:
         raise _GitUnavailable from None
     except (OSError, ValueError):
