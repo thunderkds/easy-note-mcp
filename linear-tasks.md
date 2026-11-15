@@ -1,9 +1,9 @@
-# easy-note-mcp — tasks (ready to sync to Linear; NOT synced)
+# easy-note-mcp — tasks (synced to Linear 2026-11-14)
 
 Team: **HUN** · Project: **easy-note-mcp** (create when the owner asks) · Assignee: Thunder
 Labels: `complexity:<Cn>`, `risk:<level>` · Priority: P0 = Urgent, P1 = High, P2 = Medium
 Each issue description: the Summary, the Acceptance Criteria, then "Source: PROJECT_SPEC.md / PRD.md in thunderkds/easy-note-mcp".
-Status: all **Todo**. No GitHub repo or Linear issue was created (owner did not ask).
+Status: all **Todo**. Synced 2026-11-14 to Linear project `easy-note-mcp` (P-HUN-8); the board is now the source of truth and each issue description is its `tasks/TASK_GUIDE_<ID>.md`. Plan ID → board ID: T001=HUN-251 · T002=HUN-252 · T003=HUN-253 · T004=HUN-254 · T005=HUN-255 · T006=HUN-256 · T007=HUN-257 · T008=HUN-258 · T009=HUN-264 · T010=HUN-265 · T011=HUN-259 · T012=HUN-260 · T013=HUN-261 · T014=HUN-262 · T015=HUN-263.
 
 | Local | Title | Complexity | Risk | Priority | Depends on |
 |---|---|---|---|---|---|
@@ -37,7 +37,7 @@ Status: all **Todo**. No GitHub repo or Linear issue was created (owner did not 
 
 **T006** — Tests: AND-of-words, case-insensitive; each filter; local-date `day`/`since`/`until` across a timezone offset; newest-first order stable for equal times (by ID); `limit` cap 50 with `total` + `truncated`; snippet ≤ 200 chars; stats counts by repo/task/tag/source/month and `skipped`; same output twice on the same files.
 
-**T007** — Every FR-013 command has a test through the CLI runner; round 2: with no config the first `add` creates `~/easy-notes` (temp HOME in tests) and prints the path once; `n retry #flaky it's!` saves the exact words (args joined); `n` with no args reads one line; `-e` opens `$EDITOR`; every capture prints the FR-021 line; the CLI import graph has no `mcp` module (test); `edit` re-runs the guard and refuses to save a secret (file left as before); exit codes 0/1/2 documented.
+**T007** — Every FR-013 command has a test through the CLI runner; round 2: with no config the first `add` creates `~/easy-notes` (temp HOME in tests) and prints the path once; `n retry #flaky it's!` saves the exact words (args joined); `n` with no args reads one line; `-e` opens `$EDITOR`; every capture prints the FR-021 line; the CLI import graph has no `mcp` module (test); `edit` re-runs the guard and masks each secret before the save (FR-014, D21), naming the count; exit codes 0/1/2 documented.
 
 **T008** — 5 tools registered and no others (test lists the names); each of the 4 read tools leaves the notes dir byte-identical (hash before/after); `note_add` adds exactly one file; responses respect FR-016 bounds; tool descriptions contain "only when the person asks"; HTTP mode refuses to bind anything but `127.0.0.1`; smoke run over stdio with the MCP SDK client.
 
@@ -51,7 +51,7 @@ Status: all **Todo**. No GitHub repo or Linear issue was created (owner did not 
 
 **T013** — Tests: `inbox/20261114-183002.txt` → id `inbox/20261114-183002`, created from the name; a file with no time prefix → mtime; `#tags` parsed; file with front matter → its keys win; list/search/stats/read include inbox notes; the inbox dir is byte-identical after every read command; `rm inbox/…` → trash; subfolders and other extensions ignored.
 
-**T014** — Tests: hook notes carry `session`, repo notes carry `commit`; `note_pending_enrich` lists un-enriched and stale notes only; `note_enrich` writes one AI file with caps enforced (over-long fields refused), secrets masked, `based_on`/`at` set by the server, unknown id refused; every note file byte-identical after an enrich run (hash before/after); reads show the "AI detail (not your words)" label; search hit in AI text marked `matched_in: ai`; stats unchanged except `enriched`; `edit` makes detail stale; `rm`/`restore` move the AI file; `tag --accept-ai` and `ai rm` work; `note_add(detail=…)` stores `model: capture`. Manual run of `/mcp__easy-note__enrich_notes` on 20 real notes: tokens per note recorded.
+**T014** — Tests: hook notes carry `session`, repo notes carry `commit`; `note_pending_enrich` lists un-enriched and stale notes only; `note_enrich` writes one AI file with caps enforced (over-long fields refused), secrets masked, `based_on`/`at` set by the server, unknown id refused; every note file byte-identical after an enrich run (hash before/after); reads show the "AI detail (not your words)" label; search hit in AI text marked `matched_in: ai`; stats unchanged except `enriched`; `edit` makes detail stale; `rm`/`restore` move the AI file; `tag --accept-ai` and `ai rm` work; `note_add(detail=…)` stores `model: capture`; the T008 tool-list test now expects exactly 7 tools + 1 prompt (D37). Manual run of `/mcp__easy-note__enrich_notes` on 20 real notes: tokens per note recorded.
 
 **T015** — (round 3c, v1) `easy-note tray` with pystray: icon appears on GNOME with AppIndicator (Ubuntu) and KDE; menu New note opens `quick` with last context; Recent 5 opens files; Open folder; Quit. Without a tray host: exits 1 with the hotkey hint, `doctor` reports it. `install tray` writes exactly one autostart `.desktop`, `uninstall tray` removes it; no autostart by default. Idle RAM measured and pasted. CLI/MCP never import pystray (test).
 
