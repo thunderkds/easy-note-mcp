@@ -31,6 +31,7 @@
 - [x] **HUN-253** — Note format and store: parse/render, ID, atomic write, clash suffix, trash/restore, skipped files | Backend-Implementer | C2 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-253.md`
 - [x] **HUN-254** — Context capture: cwd order, main-worktree repo name, remote sanitizing, task patterns | Backend-Implementer | C1 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-254.md`
 - [x] **HUN-256** — Query engine: list, search, stats, bounded results | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-256.md`
+- [x] **HUN-267** — Align context task pattern with PRD FR-005 | ? | ? | Risk: ? | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-267.md`
 
 ### Closed (will not do)
 
