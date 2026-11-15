@@ -135,15 +135,15 @@ flowchart LR
 
 | Area | Risk Level | Reason | Files |
 |------|-----------|--------|-------|
-| Secret leakage | High | Notes are free text, may be git-synced | `core/guard.py`, all surfaces |
-| Context capture | Med | Clients differ in cwd/roots; a wrong repo tag is silent | `core/context.py` |
-| File writes | Med | Must never overwrite or corrupt a person's file; sync tools may race | `core/store.py` |
-| Format parsing | Med | Hand-edited files; Obsidian adds its own keys | `core/format.py` |
-| Prompt hook | Med | Runs on every Claude Code prompt; a bug or slow path hurts every session | `surfaces/hook.py` |
-| Tray process | Low | Resident process; GNOME needs AppIndicator | `surfaces/tray.py` |
-| Settings install | Med | Writes the person's Claude Code settings | `surfaces/install.py` |
-| AI detail | Med | Model text in the notes dir; may be wrong or quote a transcript | `core/ai.py`, `surfaces/prompts.py` |
-| Search speed | Low | Scan of all files per query | `core/query.py` |
+| Secret leakage | High | Notes are free text, may be git-synced | `core/guard.rs`, all surfaces |
+| Context capture | Med | Clients differ in cwd/roots; a wrong repo tag is silent | `core/context.rs` |
+| File writes | Med | Must never overwrite or corrupt a person's file; sync tools may race | `core/store.rs` |
+| Format parsing | Med | Hand-edited files; Obsidian adds its own keys | `core/format.rs` |
+| Prompt hook | Med | Runs on every Claude Code prompt; a bug or slow path hurts every session | `surfaces/hook.rs` |
+| Tray process | Low | Resident process; GNOME needs AppIndicator | `surfaces/tray.rs` |
+| Settings install | Med | Writes the person's Claude Code settings | `surfaces/install.rs` |
+| AI detail | Med | Model text in the notes dir; may be wrong or quote a transcript | `core/ai.rs`, `surfaces/prompts.rs` |
+| Search speed | Low | Scan of all files per query | `core/query.rs` |
 
 ---
 
