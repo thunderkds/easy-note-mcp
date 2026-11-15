@@ -48,9 +48,9 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/test_context.py` (47 tests, real temp git repos; AC 1-9: see the AC map in the final report). `.venv/bin/pytest tests/test_context.py -q` at HEAD 1c95104, 2026-11-15T08:41:01Z: `47 passed in 5.57s` |
+| Verification command run | ☑ pass | 2026-11-15T08:40:21Z, HEAD cf4c91c (later commit 1c95104 only added `check=False`, rerun 47 passed): `$ .venv/bin/pytest tests/test_context.py -q` → `47 passed in 5.53s`; full suite `.venv/bin/pytest -q tests` → `146 passed in 16.29s` (99 before + 47 new) |
+| Negative cases hold | ☑ pass | Mutation of `src/easy_note/core/context.py` (restored after each; `diff` non-empty), each turned a test red: A repo name from `basename(folder)` instead of main worktree → `test_subfolder_of_repo_gives_the_repo_name` FAILED; B task lookbehind weakened → `test_task_from_branch[fix/art1234-None]` FAILED; C `GIT_TIMEOUT = 10` → `test_slow_git_drops_the_fields_and_add_still_writes` FAILED; D `remote_slug` returns raw url (token leak) → `test_main_repo_uses_folder_name` FAILED; E roots tried before explicit cwd → `test_cwd_order` FAILED; F explicit task dropped in favour of branch → `test_explicit_task_wins` FAILED. Restored file: `47 passed` |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
 | Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
@@ -80,9 +80,15 @@ $ .venv/bin/python -c "import easy_note.core.context"
 ModuleNotFoundError: No module named 'easy_note.core.context'
 ```
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+**AFTER**: 2026-11-15T08:41:01Z, HEAD 1c95104, same command:
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+```
+$ .venv/bin/pytest tests/test_context.py -q
+...............................................                          [100%]
+47 passed in 5.57s
+```
+
+**DELTA**: `easy_note.core.context.capture(task=, cwd=, roots=)` now returns the repo, remote, branch and task of the folder a note is written from, ready for `store.add(fields=...)`, with no path, no token and no wait over 2 s.
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/HUN-254.jsonl`, never the
 implementing agent alone]
