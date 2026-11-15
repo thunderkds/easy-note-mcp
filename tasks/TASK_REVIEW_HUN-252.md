@@ -44,6 +44,19 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 -->
 
+## Auto decisions
+
+Mode: auto
+1. Ran easy-verifier on the branch at the user's request; first run 79 was written as fail — RULE: `skills/score/SKILL.md:16` "The row is `pass` only when `overall ≥ 80` and no `change_risk` rule failed"
+2. Spawned common-infrastructure to pin CI actions to commit SHAs and install with `uv sync --locked` (28b6f79), then rescored once: 83, pass — RULE: `skills/score/SKILL.md:70` "Rescore only after the code changed"
+3. Left the solution-fit gate abstained; the offered refs are PRD user stories, not skeleton evidence — RULE: `skills/score/SKILL.md:52` "A gate you cannot answer from held evidence stays abstained"
+4. Did not add SBOM/signing, formatter or mypy config, though easy-verifier lists them — RULE: `AGENTS.md` § Karpathy Engineering Principles "Scope locking: Touch only code required by the task" (AC 6 of `tasks/TASK_GUIDE_HUN-252.md` names CI only)
+Paused: move to Ready for Review — the Linear team HUN has no review status ("In Review"), and only the owner can add one; stop that stays `docs/claude-md/tracks.md:531` "a login or secret the Supervisor does not have"
+Checks: tests `uv run --locked pytest -q` — 7 passed; reviews code-review — P0 0 / P1 0 / P2 0 / P3 0 on 28b6f79, easy-verifier — pass 83; real run `uv sync --locked` — exit 0, and `uv lock --check` after a stale-lock edit — exit 2 (auto-checked, not /verify)
+Memory: memory/learnings.md — easy-verifier change_risk abstains when uv.lock pushes the diff past 200000 characters
+Not done: merge (admin: after the auto verify pass); auto verify: not started (row cannot reach Ready for Review)
+
+
 ## Evidence
 
 | Check | Result | Notes / output snippet |
@@ -54,7 +67,7 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Stage 4 code-review (Supervisor, 2026-11-14), scope = `git diff cfa3c55..49f199f`: pyproject.toml, src/easy_note/**, tests/test_skeleton.py, .github/workflows/ci.yml, RUNBOOK.md, .gitignore, uv.lock (not read line by line). Findings: P0 0, P1 0, P2 1 (`mcp>=1.2,<2` pin keeps FastMCP v1 API; recorded as a decision, HUN-258 builds on it), P3 1 (comments name plan IDs T008/T009 instead of board IDs HUN-258/HUN-264; mapping is in PROJECT_SPEC.md). lane_check: `C1, 11 files, 245 lines, EXCEEDS (files 11 > 6)` — boilerplate (empty `__init__`, `uv.lock`, `.gitkeep`), label kept at C1. Entry point `easy-note --version` reachable. Startup reads: all 3 required present. |
 | Full smoke suite still green (no regression) | ☑ pass | Supervisor re-run in the worktree: `uv run pytest -q` -> `7 passed in 0.98s` (first suite; nothing to regress) |
-| **Companion score (easy-verifier)** | ☑ fail | overall 79 (floor missed, < 80; supply-chain 35, test-strategy 75, code-quality 87, architecture 100, security 100), change_risk abstained (feature, confirmed): below_coverage_floor, `uv.lock` pushed the diff past the 200000-character ceiling, scope changes, ref `cfa3c55...HEAD`, abstentions: solution-fit (no_static_rule), requirement-fidelity, blast-radius, reliability (insufficient_measured_weight), api, data, operations, infrastructure (below_coverage_floor), gates: solution-fit left abstained, no findings sent, report: `/home/hungnguyenhuu/.easy-verifier-reports/agent-ab0b7d0d32de600ac/evidence-report-changes-20261115T024428-871350Z.html` |
+| **Companion score (easy-verifier)** | ☑ pass | overall 83 (floor met, >= 80; architecture 100, security 100, code-quality 87, test-strategy 75, supply-chain 55), change_risk abstained (feature, confirmed): below_coverage_floor, `uv.lock` pushes the diff past the 200000-character ceiling — no failed rule, scope changes, ref `cfa3c55...HEAD` at 28b6f79, abstentions: solution-fit (no_static_rule), requirement-fidelity, blast-radius, reliability (insufficient_measured_weight), api, data, operations, infrastructure (below_coverage_floor), gates: solution-fit left abstained, no findings sent. Rescored after code change 28b6f79; prior run 79 (fail) at 4957a91: `/home/hungnguyenhuu/.easy-verifier-reports/agent-ab0b7d0d32de600ac/evidence-report-changes-20261115T024428-871350Z.html`. report: `/home/hungnguyenhuu/.easy-verifier-reports/agent-ab0b7d0d32de600ac/evidence-report-changes-20261115T024758-432403Z.html` |
 | **UI: Visual regression (diff or verdict pasted)** | ☐ N/A | Pure-backend task; no UI component (guide's UI section is N/A) |
 | **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ N/A | Pure-backend task; no UI component (guide's UI section is N/A) |
 | **UI: Responsiveness at target viewports** | ☐ N/A | Pure-backend task; no UI component (guide's UI section is N/A) |
