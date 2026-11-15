@@ -28,3 +28,9 @@
 ### 2026-11-15 — easy-verifier counts `.claude/harness-lock.json` hashes as secrets (HUN-251, HUN-253)
 - **Files**: `.claude/harness-lock.json`
 - easy-verifier's lockfile role matches `**/*-lock.*` (`easy-verifier-mcp/src/easy_verifier/core/roles.py:208`), so the kit's `harness-lock.json` is read as repo context; its ~147 sha256 hashes trip `high_entropy_hex`, and rule `redaction_hits_observed` (weight 35, `judge.py:745`) drops security to ~30 on every branch once the kit is on `main`. No repo-side exclude exists. The fix belongs in easy-verifier; until then every Companion score row fails and needs an owner override to merge.
+
+### 2026-11-15 — TASK_REVIEW template text trips the verifier; [admin] needs a named task and a traced test run
+- **Pattern**: The Companion score row's template placeholder (it quotes an example report filename) is read by easy-verifier as `key_material_segment`, costing security 70 points (overall about 10). Replace that placeholder with plain "Pending" text before the first score call; HUN-256 went 72 → 81 from that alone.
+- **Pattern**: `[admin] for all` is refused by the merge gate: each `[admin]` request must name its task. The gate also needs a direct pytest call recorded in `memory/event-trace/<ID>.jsonl` (write the session state file first); a run made before the state file named the task does not count.
+- **Pattern**: The headless verify run may leave an untracked `skills/verify/SKILL.md` in the task worktree; move it out before merge.
+**Files**: tasks/TASK_REVIEW_HUN-256.md, templates/TASK_REVIEW_template.md
