@@ -12,11 +12,12 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, FixedOffset, Local, Offset, SecondsFormat, TimeZone, Utc};
+use saphyr::{LoadableYamlNode, ScalarOwned, YamlOwned};
 use sha2::{Digest, Sha256};
 
 use crate::core::config::{self, ConfigError};
 use crate::core::format::{
-    check_text, parse, render, FormatError, Note, TextTooLong, Value, SOURCES, VERSION,
+    check_text, parse, quote, render, FormatError, Note, TextTooLong, Value, SOURCES, VERSION,
 };
 use crate::core::fsutil::{create_temp, unlink_quiet, write_all_sync};
 use crate::core::guard;
@@ -508,9 +509,71 @@ fn mask_note(note: &mut Note) -> Vec<&'static str> {
         }
     }
     for chunk in &mut note.extra {
-        *chunk = mask(chunk);
+        // Pass 1: the raw YAML source. Pass 2: the decoded text, because an escape such as `\n`
+        // or `\x41` in a double-quoted value hides a token from the raw patterns.
+        let (raw, found) = guard::mask(chunk);
+        kinds.extend(found);
+        *chunk = raw;
+        if let Some((text, found)) = mask_decoded(chunk) {
+            kinds.extend(found);
+            *chunk = text;
+        }
     }
     kinds
+}
+
+/// The decoded strings of one unknown key (`chunk` is one YAML key), masked. `None` when they
+/// hold no secret, or when the chunk is not one key (the raw pass has masked it already). When a
+/// secret is found the key is written again with the masked text, so no secret text is left
+/// behind: a string value keeps its masked text; any other value becomes `"[masked:<kind>]"`.
+fn mask_decoded(chunk: &str) -> Option<(String, Vec<&'static str>)> {
+    let docs = YamlOwned::load_from_str(chunk).ok()?;
+    let Some(YamlOwned::Mapping(map)) = docs.first() else {
+        return None;
+    };
+    let mut pairs = map.iter();
+    let (key, value) = pairs.next()?;
+    if pairs.next().is_some() {
+        return None;
+    }
+    let mut kinds = vec![];
+    let key_text = mask_strings(key, &mut kinds);
+    let value_text = mask_strings(value, &mut kinds);
+    let marker = quote(&format!("[masked:{}]", kinds.first()?));
+    Some((
+        format!(
+            "{}: {}\n",
+            key_text.map_or(marker.clone(), |t| quote(&t)),
+            value_text.map_or(marker, |t| quote(&t)),
+        ),
+        kinds,
+    ))
+}
+
+/// Mask a string node and return its text; for a list or map, mask every string inside it
+/// (only to find the kinds) and return `None`.
+fn mask_strings(node: &YamlOwned, kinds: &mut Vec<&'static str>) -> Option<String> {
+    match node {
+        YamlOwned::Value(ScalarOwned::String(s)) => {
+            let (text, found) = guard::mask(s);
+            kinds.extend(found);
+            Some(text)
+        }
+        YamlOwned::Sequence(items) => {
+            for item in items {
+                mask_strings(item, kinds);
+            }
+            None
+        }
+        YamlOwned::Mapping(map) => {
+            for (k, v) in map.iter() {
+                mask_strings(k, kinds);
+                mask_strings(v, kinds);
+            }
+            None
+        }
+        _ => None,
+    }
 }
 
 fn with_newline(text: &str) -> String {

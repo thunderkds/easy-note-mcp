@@ -109,6 +109,8 @@ Failing: `escape_before_an_anchored_token_in_an_unknown_key_never_leaks`, `a_hex
 
 **AFTER** (part 2, 2026-11-15 15:53 UTC, `cargo test`): `tests/leak.rs` `test result: ok. 40 passed; 0 failed`, `tests/store.rs` `test result: ok. 30 passed; 0 failed`, `tests/guard.rs` `test result: ok. 37 passed; 0 failed`. BEFORE for part 2: those targets did not compile (missing `Added.masked`, `Updated`).
 
+**AFTER (part 3)** (2026-11-15 17:14:28 UTC, `date -u; cargo test --test leak 2>&1 | tail -5`): `test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s`. Full `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`: guard 37, leak 46, store 30, format 13, cli 5, unit 6 passed, 0 failed.
+
 **DELTA**: A secret typed into a note body, tag, context field or unknown front-matter text is now written, read, listed and reported only as `[masked:<kind>]`, and `add` and `update` report the kinds masked; the note is still kept.
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/Txxx.jsonl`, never the
@@ -134,3 +136,12 @@ implementing agent alone]
 - Deviation from the Python oracle: none found. Python checks the size of the masked text; so does this code. Error order in `add`: guard and size check run before the source check, as in Python.
 - `store.rs` holds no printing or logging macro; `store_source_has_no_logging_or_printing` passes.
 - No token literal in the diff: `git diff | grep -E "xox[abprs]-|ghp_|AKIA|sk-"` printed nothing.
+
+## Part 3 implementation notes (backend-developer)
+
+- Fix for the security-review finding (escape bypass). `src/core/store.rs` `mask_note` keeps the raw-text pass on each unknown key, then a second pass (`mask_decoded`) parses the chunk with saphyr and masks every decoded string, in nested lists and maps. When a decoded string holds a secret, the key is written again as `"<key>": "<masked text>"` (`quote()`), or `"<key>": "[masked:<kind>]"` when the value is a list, a map or not a string. Kinds: raw pass first, then decoded pass (`masked` keeps repeats, one per secret).
+- `src/core/format.rs`: `quote` is now `pub(crate)` (one word), no other change.
+- Read paths still do not rewrite the file; `update` still parses back before writing.
+- New crates: none. Not changed: the `[masked:` skip in `password_assign`/`secret_assign`, any surface.
+- Cut list: no re-emission that keeps clean siblings inside a list or map value (the whole value becomes the marker); a chunk with more than one top-level key is not decoded (a chunk is one key by construction in `raw_unknown`).
+- Tests added to `tests/leak.rs` (6): `\n`, `\t`, `\r` before each anchored kind (aws, github x2, slack, openai x2, anthropic, jwt, bearer), `\x41` and `\u0041` escapes, folded/next-line values, list and map values, raw plus escaped token in one value (kind order), and an escape-bearing clean key kept byte for byte. The folded/next-line and clean-key tests were green before the fix (the raw text has a word boundary there); the other four were red.
