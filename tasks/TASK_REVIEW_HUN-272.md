@@ -44,6 +44,15 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 -->
 
+## Auto decisions
+
+Mode: auto
+1. Crates: caseless 0.2.2 (Unicode default case folding, the same as Python `str.casefold`; Rust `to_lowercase` does not fold `ß` to `ss`) and serde 1.0.229 with derive (result types serialize for the CLI and MCP) — RULE: `tasks/TASK_GUIDE_HUN-272.md § Rust port rules` ("prefer a maintained crate over hand-written code")
+2. Python type-error tests that cannot compile in Rust were replaced by the nearest Rust check (`limit = 0` → BadLimit, empty query → EmptyQuery, a date-time string → BadDate); dates must be exactly `YYYY-MM-DD`; `limit` is a required argument and Python's default 20 is exported as `DEFAULT_LIMIT` — RULE: `tasks/TASK_GUIDE_HUN-272.md § Rust port rules` ("Where a Python test checks something Rust makes impossible ... replace it with the nearest Rust check and list it in the review file")
+Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — unit 6, cli 5, format 13, query 45, store 29 passed (9d77974); reviews code-review (Skill) — 0 P0/P1; P2 lane_check `EXCEEDS (lines 1639 > 250)` for C1 — 1,103 of the lines are the ported oracle tests (44 Python test functions → 45 Rust tests), label kept; P3 `src/core/query.rs:348-351` `first_hit` folds the body once per char to map positions (fine at 20,000 chars per note; revisit in HUN-265 perf check); Supervisor mutations: cap `limit.min(MAX_LIMIT)` → `limit` fails 1 test (limit_is_capped_at_fifty), AND → OR of words fails 2 tests (search_needs_every_word_in_any_case, search_words_may_sit_in_different_places), both reverted; security-review not required (Risk Low); startup reads: PROJECT_SPEC.md, the guide, agents/backend.md (system prompt), the DDR — none missing
+Memory: nothing new yet (pass runs at merge)
+Not done: merge (owner, by hand if the score fails); auto verify: pending
+
 ## Evidence
 
 | Check | Result | Notes / output snippet |
@@ -55,9 +64,9 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | New files `src/core/query.rs`, `tests/query.rs`; one line in `src/core/mod.rs`; `Cargo.toml`/`Cargo.lock` (2 crates). `src/core/store.rs` and `src/surfaces` untouched. |
 | Full smoke suite still green (no regression) | ☑ pass | whole `cargo test`: 6 + 0 + 5 + 13 + 45 + 29 passed, 0 failed |
 | **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| **UI: Visual regression (diff or verdict pasted)** | ☑ N/A | No UI: core library task |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ N/A | No UI: core library task |
+| **UI: Responsiveness at target viewports** | ☑ N/A | No UI: core library task |
 
 ---
 
