@@ -27,23 +27,22 @@ the secret guard and queries. **Surfaces** — CLI and MCP — call only the cor
 There is no database: the notes folder is the single source of truth.
 
 ```
-src/easy_note/
-  core/format.py     parse / render a note (front matter + body), version check (easy-note: 1)
-  core/store.py      resolve dir, new ID, atomic write, list files, trash/restore
-  core/context.py    cwd resolution (arg → roots → process cwd), git repo/remote/branch, task patterns
-  core/guard.py      declared secret patterns: mask on write and on read (never refuse, D21)
-  core/query.py      list / search / stats over parsed notes; bounded results
-  surfaces/cli.py    `easy-note` commands (FR-013)
-  surfaces/mcp.py    7 tools + 1 prompt (FR-012, D37), stdio + streamable-http
-  surfaces/hook.py   Claude Code UserPromptSubmit capture (FR-018); stdlib-only pass path
-  surfaces/quick.py  one-line native input box (FR-022)
-  surfaces/install.py `install|uninstall claude|launcher|tray` (FR-019, FR-026, FR-033, DDR 0003)
-  core/ai.py         AI detail files: write with caps + mask, hash staleness, pending list (FR-029–FR-032, DDR 0004)
-  surfaces/tray.py   optional system tray (FR-033), extra `[tray]`
-  surfaces/prompts.py fixed `enrich_notes` prompt text (FR-031)
-  console scripts:   `easy-note`, `n` (= `easy-note add`)
-tests/fixtures/      synthetic notes dirs incl. planted secrets, bad front matter, two-machine clash
-docs/NOTE_FORMAT.md  the public file contract (DDR 0002)
+src/  (one Rust crate, one binary `easy-note`; `n` is the same binary — DDR 0005)
+  main.rs              entry: `n` → `easy-note add`
+  core/format.rs       parse / render a note (front matter + body), version check (easy-note: 1)
+  core/store.rs        resolve dir, new ID, atomic write, list files, trash/restore
+  core/context.rs      cwd resolution (arg → roots → process cwd), git repo/remote/branch, task patterns
+  core/guard.rs        declared secret patterns: mask on write and on read (never refuse, D21)
+  core/query.rs        list / search / stats over parsed notes; bounded results
+  surfaces/cli.rs      `easy-note` commands (FR-013)
+  surfaces/mcp.rs      7 tools + 1 prompt (FR-012, D37), stdio + streamable-http (`rmcp`)
+  surfaces/hook.rs     Claude Code UserPromptSubmit capture (FR-018); no async runtime on the pass path
+  surfaces/quick.rs    one-line native input box (FR-022)
+  surfaces/install.rs  `install|uninstall claude|launcher|tray` (FR-019, FR-026, FR-033, DDR 0003)
+  core/ai.rs           AI detail files: write with caps + mask, hash staleness, pending list (FR-029–FR-032, DDR 0004)
+  surfaces/tray.rs     optional system tray (FR-033), behind a cargo feature
+tests/fixtures/       synthetic notes dirs incl. planted secrets, bad front matter, two-machine clash
+docs/NOTE_FORMAT.md   the public file contract (DDR 0002)
 ```
 
 Flow of `note_add("retry bug only on Firefox #flaky")` from Claude Code in `~/ws/easy-ui-mcp` on branch `fix/t120-firefox`:
@@ -136,15 +135,15 @@ flowchart LR
 
 | Area | Risk Level | Reason | Files |
 |------|-----------|--------|-------|
-| Secret leakage | High | Notes are free text, may be git-synced | `core/guard.py`, all surfaces |
-| Context capture | Med | Clients differ in cwd/roots; a wrong repo tag is silent | `core/context.py` |
-| File writes | Med | Must never overwrite or corrupt a person's file; sync tools may race | `core/store.py` |
-| Format parsing | Med | Hand-edited files; Obsidian adds its own keys | `core/format.py` |
-| Prompt hook | Med | Runs on every Claude Code prompt; a bug or slow path hurts every session | `surfaces/hook.py` |
-| Tray process | Low | Resident process; GNOME needs AppIndicator | `surfaces/tray.py` |
-| Settings install | Med | Writes the person's Claude Code settings | `surfaces/install.py` |
-| AI detail | Med | Model text in the notes dir; may be wrong or quote a transcript | `core/ai.py`, `surfaces/prompts.py` |
-| Search speed | Low | Scan of all files per query | `core/query.py` |
+| Secret leakage | High | Notes are free text, may be git-synced | `core/guard.rs`, all surfaces |
+| Context capture | Med | Clients differ in cwd/roots; a wrong repo tag is silent | `core/context.rs` |
+| File writes | Med | Must never overwrite or corrupt a person's file; sync tools may race | `core/store.rs` |
+| Format parsing | Med | Hand-edited files; Obsidian adds its own keys | `core/format.rs` |
+| Prompt hook | Med | Runs on every Claude Code prompt; a bug or slow path hurts every session | `surfaces/hook.rs` |
+| Tray process | Low | Resident process; GNOME needs AppIndicator | `surfaces/tray.rs` |
+| Settings install | Med | Writes the person's Claude Code settings | `surfaces/install.rs` |
+| AI detail | Med | Model text in the notes dir; may be wrong or quote a transcript | `core/ai.rs`, `surfaces/prompts.rs` |
+| Search speed | Low | Scan of all files per query | `core/query.rs` |
 
 ---
 
