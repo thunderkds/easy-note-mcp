@@ -23,3 +23,4 @@
      The enforced gate is the 42,000-character whole-file budget above. -->
 - [v1 scope kept at all 15 tasks](decisions.md#2026-11-14--v1-scope-kept-at-all-15-tasks-t001t015) — owner keeps T001–T015 + HTTP mode in v1; no v1.1 split
 - [MCP SDK pinned <2](decisions.md#2026-11-14--mcp-sdk-pinned-to-mcp12-2-fastmcp-v1-api) — FastMCP v1 API; v2 removed mcp.server.fastmcp (HUN-252)
+- [easy-verifier scores of early branches](learnings.md#2026-11-15--easy-verifier-scores-of-early-branches-hun-251-hun-252) — merge skeleton first; uv.lock makes change_risk abstain; pin CI SHAs + uv sync --locked
