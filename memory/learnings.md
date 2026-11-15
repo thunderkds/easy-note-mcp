@@ -24,3 +24,7 @@
 - Commit the hook-written verify row on the task branch (a review-only commit) before the admin merge; the gate reads it from the branch.
 - A task branch cut from `main` before the kit exists has no guide, so the auto close-out reports `Gate 5: no ## Evidence section`.
 - Merge in a separate worktree for `main` (`.claude/worktrees/main-integration`): `memory/event-trace/*.jsonl` are tracked, and switching the main checkout's branch would swap the gate's evidence.
+
+### 2026-11-15 — easy-verifier counts `.claude/harness-lock.json` hashes as secrets (HUN-251, HUN-253)
+- **Files**: `.claude/harness-lock.json`
+- easy-verifier's lockfile role matches `**/*-lock.*` (`easy-verifier-mcp/src/easy_verifier/core/roles.py:208`), so the kit's `harness-lock.json` is read as repo context; its ~147 sha256 hashes trip `high_entropy_hex`, and rule `redaction_hits_observed` (weight 35, `judge.py:745`) drops security to ~30 on every branch once the kit is on `main`. No repo-side exclude exists. The fix belongs in easy-verifier; until then every Companion score row fails and needs an owner override to merge.
