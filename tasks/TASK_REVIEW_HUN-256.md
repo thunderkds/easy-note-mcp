@@ -48,9 +48,9 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/test_query.py` (56 tests, AC 1–7), fixture `tests/fixtures/notes_basic/` (30 notes, 3 repos, offsets +07:00 and -05:00, 1 unreadable file). Run 2026-11-15T08:54:44Z at HEAD d40b7f8: `56 passed in 9.16s` |
+| Verification command run | ☑ pass | 2026-11-15T08:54:44Z, HEAD d40b7f8: `.venv/bin/pytest -q tests/test_query.py` -> `56 passed in 9.16s`; full suite `.venv/bin/pytest -q tests` -> `202 passed in 17.33s`; `ruff check` on the two new files: `All checks passed!` |
+| Negative cases hold | ☑ pass | 12 one-line mutations of `src/easy_note/core/query.py`, each `git diff --stat` = `1 file changed` (non-empty), each reverted by `git checkout`; every one turned the suite red: AND to OR (2 failed); local day to UTC day (7 failed); tie order reversed (1 failed); no limit cap (1 failed); `truncated` always false (3 failed); snippet 260 (3 failed); `lower()` for `casefold()` (1 failed); stats no month (1 failed); stats no skipped (2 failed); tag substring match (1 failed); `until` exclusive (2 failed); empty query allowed (1 failed) |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
 | Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
@@ -78,9 +78,17 @@ $ .venv/bin/python -c "import easy_note.core.query"
 ModuleNotFoundError: No module named 'easy_note.core.query'
 ```
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+**AFTER**: captured 2026-11-15T08:54:44Z at HEAD d40b7f8:
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+```
+$ .venv/bin/pytest -q tests/test_query.py
+........................................................                 [100%]
+56 passed in 9.16s
+$ python: query.search("retry firefox", limit=2)  # EASY_NOTE_DIR=tests/fixtures/notes_basic
+{"total": 6, "truncated": true, "first": {"id": "20261110-210000-0019", "title": "Retry bug on Firefox #25", "created": "2026-11-10T21:00:00-05:00", "repo": "beta", "task": "T102", "tags": ["flaky", "firefox"], "snippet": "Retry bug on Firefox #25 The retry loop fails only on Firefox after the second navigation."}}
+```
+
+**DELTA**: `easy_note.core.query` now lists, searches and counts notes with filters, newest first, at most 50 items with `total` and `truncated`; before, the module did not exist.
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/HUN-256.jsonl`, never the
 implementing agent alone]
