@@ -202,10 +202,11 @@ fn two_writes_same_second_same_text_get_clash_suffix() {
         s.add("x", "cli", &[], &[]).unwrap().id,
         format!("{}-3", first.id)
     );
-    let stems: Vec<String> = md_files(&sb.notes())
+    let mut stems: Vec<String> = md_files(&sb.notes())
         .iter()
         .map(|p| p.file_stem().unwrap().to_string_lossy().into_owned())
         .collect();
+    stems.sort();
     assert_eq!(
         stems,
         [
@@ -568,7 +569,7 @@ struct EnvGuard {
 impl EnvGuard {
     fn new(home: &Path, notes_dir: Option<&Path>) -> EnvGuard {
         let lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let saved = ["HOME", "EASY_NOTE_DIR"]
+        let saved = ["HOME", "EASY_NOTE_DIR", "TZ"]
             .into_iter()
             .map(|k| (k, std::env::var_os(k)))
             .collect();
@@ -628,6 +629,17 @@ fn env_dir_beats_config_and_config_beats_default() {
         .unwrap()
         .path
         .starts_with(&from_config));
+}
+
+#[test]
+fn system_offset_follows_the_local_zone() {
+    let sb = Sandbox::new("tz");
+    let _env = EnvGuard::new(&sb.0, None);
+    let offset = Store::system(sb.notes()).utc_offset;
+    let secs = i64::try_from(FROZEN_NS / 1_000_000_000).unwrap();
+    // One zone only: chrono caches the zone and re-reads TZ at most once a second.
+    std::env::set_var("TZ", "Asia/Tokyo");
+    assert_eq!(offset(secs), 9 * 3600);
 }
 
 #[test]
@@ -714,7 +726,7 @@ fn unreadable_file_is_skipped_not_fatal() {
     let sb = Sandbox::new("unreadable");
     let s = store_at(&sb.notes());
     let added = s.add("x", "cli", &[], &[]).unwrap();
-    std::fs::set_permissions(&added.path, std::fs::Permissions::from_mode(0)).unwrap();
+    std::fs::set_permissions(&added.path, std::fs::Permissions::from_mode(0o000)).unwrap();
     let found: Vec<Item> = s.iter_notes().collect();
     std::fs::set_permissions(&added.path, std::fs::Permissions::from_mode(0o600)).unwrap();
     assert_eq!(
