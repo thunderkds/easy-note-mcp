@@ -44,20 +44,30 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 -->
 
+## Auto decisions
+
+Mode: auto
+1. Crates: regex 1 (task pattern, no look-around needed), url 2 + percent-encoding 2 (remote and `file://` root parsing), wait-timeout 0.2 (2 s git timeout), tempfile 3 (dev) — RULE: `tasks/TASK_GUIDE_HUN-271.md § Rust port rules` ("spawn + `wait_timeout` crate"; "the `regex` crate is fine here"; "prefer a maintained crate over hand-written code")
+2. The task pattern stays case-sensitive (`[A-Z][A-Z0-9]+-\d+`, plus `[Tt]\d{3,4}` upper-cased), not "after upper-casing" as the guide's port rule says — RULE: `tasks/TASK_GUIDE_HUN-271.md § Rust port rules` ("as in `git show 2d497fc:src/easy_note/core/context.py`"): the oracle code and its tests are case-sensitive, and the guide wording was a Supervisor error
+3. The store link is a 9-line `Context::fields()` that returns the `(key, Option<&str>)` list `Store::add` takes; no store or surface change — RULE: `tasks/TASK_GUIDE_HUN-271.md § Dependencies & Reachability` ("The store link (passing context fields to `store::add`) is wired when HUN-269 is on main")
+Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — unit 6, cli 5, context 29, format 13, store 29 passed (d32f123, rebased on main 98fe207); reviews code-review (Skill) — 0 P0/P1; P2 lane_check `EXCEEDS (lines 1106 > 250)` for C1 — 668 of the lines are the ported oracle tests, label kept; P3 `src/core/context.rs:257-263` stdout is read after `wait_timeout`, so output over the pipe buffer (64 KiB) would stall to the timeout (git outputs here are one line each); P3 `Cargo.toml` new crates use major-only versions (`regex = "1"`) while the rest pin a minor (Cargo.lock pins all); startup-reads check: the part-2 implementer listed PROJECT_SPEC.md, the guide, agents/backend.md (delivered as its system prompt) and the DDR, and said it read PROJECT_SPEC.md and the DDR only in part — no Permanent-Rule read missing; security-review — see Evidence
+Memory: nothing new yet (pass runs at merge)
+Not done: merge (needs a named `[admin]`); auto verify: pending
+
 ## Evidence
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
 | **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/context.rs` (29 tests). AC 7 and AC 9 store parts added: `slow_git_drops_the_fields_and_add_still_writes`, `no_absolute_path_in_any_written_file`; also `missing_folder_gives_no_fields_and_add_succeeds`, `token_in_remote_is_in_no_written_file` (ported from tests/test_context.py at 2d497fc). They write through `store::add` with `Context::fields()` into a temp `EASY_NOTE_DIR`. Red run against a stub `Context::fields` (returns no fields): `no_absolute_path_in_any_written_file` and `token_in_remote_is_in_no_written_file` FAILED, 27 passed; green: `cargo test` cli 5, format 13, store 29, context 29, lib 6, all ok; `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` clean |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| Verification command run | ☑ pass | `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` exit 0: unit 6, cli 5, context 29, format 13, store 29 passed (d32f123) |
+| Negative cases hold | ☑ pass | Mutation 1, drop `command.env_remove(key)` (`src/core/context.rs \| 2 +-`): `FAILED. 28 passed; 1 failed` (git_dir_from_the_environment_does_not_redirect_git). Mutation 2, `GIT_TIMEOUT` 2 s → 10 s (`src/core/context.rs \| 2 +-`): `FAILED. 27 passed; 2 failed` (slow_git_drops_the_fields, only_read_only_git_subcommands_run). Red run of AC 7/AC 9 against the stub `Context::fields`: `FAILED. 27 passed; 2 failed` (b258018). Both mutations reverted |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Reviewed `src/core/context.rs` in full, `src/core/mod.rs`, `Cargo.toml`, `tests/context.rs` (test list against the 25 Python test functions); no caller in `src/surfaces` yet |
+| Full smoke suite still green (no regression) | ☑ pass | cli 5, unit 6, format 13, store 29 pass on the rebased branch |
 | **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| **UI: Visual regression (diff or verdict pasted)** | ☑ N/A | No UI: core library task |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ N/A | No UI: core library task |
+| **UI: Responsiveness at target viewports** | ☑ N/A | No UI: core library task |
 
 ---
 
