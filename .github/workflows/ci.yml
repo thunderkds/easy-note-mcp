@@ -14,10 +14,12 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         python-version: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - name: Install from lockfile
+        run: uv sync --locked --python ${{ matrix.python-version }}
       - name: Tests
-        run: uv run --python ${{ matrix.python-version }} pytest -q
+        run: uv run --locked --python ${{ matrix.python-version }} pytest -q
       - name: Install check
         run: |
           uv tool install --force --python ${{ matrix.python-version }} .
