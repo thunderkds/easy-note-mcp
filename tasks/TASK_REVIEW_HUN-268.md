@@ -1,6 +1,6 @@
-# TASK_REVIEW — T[NNN]: [Short Title]
+# TASK_REVIEW — HUN-268: Rust skeleton (R1)
 
-> Sibling of `tasks/TASK_GUIDE_T[NNN].md`. Everything here is **filled by the reviewer at Stage
+> Sibling of `tasks/TASK_GUIDE_HUN-268.md`. Everything here is **filled by the reviewer at Stage
 > 4/5** — it is deliberately NOT in the guide, because the implementing agent re-reads the guide on
 > every turn and never fills these two sections.
 >
@@ -68,8 +68,38 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE**: command `date -u; git ls-files '*.py' 'pyproject.toml' 'uv.lock' | grep -v '^\.claude/\|^skills/\|^packs/' ; ls Cargo.toml`, run at branch head 7eb26f7, before any implementation commit:
+
+```
+Sun Nov 15 10:24:10 AM UTC 2026
+pyproject.toml
+scripts/board_sync.py
+scripts/gen_sandbox_profile.py
+scripts/lane_check.py
+scripts/probe_hook.py
+scripts/probe_server.py
+scripts/pull_moment.py
+scripts/verify_trace.py
+src/easy_note/__init__.py
+src/easy_note/core/__init__.py
+src/easy_note/core/config.py
+src/easy_note/core/context.py
+src/easy_note/core/format.py
+src/easy_note/core/query.py
+src/easy_note/core/store.py
+src/easy_note/surfaces/__init__.py
+src/easy_note/surfaces/cli.py
+src/easy_note/surfaces/mcp.py
+tests/test_T001_fixtures.py
+tests/test_T001_probes.py
+tests/test_context.py
+tests/test_format.py
+tests/test_query.py
+tests/test_skeleton.py
+tests/test_store.py
+uv.lock
+ls: cannot access 'Cargo.toml': No such file or directory
+```
 
 **AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
 
