@@ -68,8 +68,17 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE**: captured 2026-11-15T08:37:28Z at HEAD 1cc996a (no implementation commit yet), in the worktree:
+
+```
+$ .venv/bin/pytest tests/test_context.py -q
+ERROR: file or directory not found: tests/test_context.py
+
+no tests ran in 0.00s
+$ .venv/bin/python -c "import easy_note.core.context"
+    import easy_note.core.context
+ModuleNotFoundError: No module named 'easy_note.core.context'
+```
 
 **AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
 
