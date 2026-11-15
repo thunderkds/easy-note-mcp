@@ -44,6 +44,17 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 -->
 
+## Auto decisions
+
+Mode: auto
+1. Ran as the minimal track — RULE: `docs/claude-md/tracks.md` `## Tracks` (C0, Risk Low, one file, no user data or format change)
+2. Used the PRD FR-005 pattern verbatim, `[A-Z][A-Z0-9]+-\d+` — FACT: PRD.md:66 "`T\d{3,4}`, `[A-Z][A-Z0-9]+-\d+`, case-insensitive for `T`"
+3. Kept tracker keys case-sensitive — FACT: PRD.md:66 "case-insensitive for `T`"
+4. Left DDR 0002's "draft" wording unchanged — SAFER OPTION: DDRs are owner-approved and its Status is "Proposed (owner to accept)" ⚠ decided for you — please review
+Checks: tests `.venv/bin/pytest -q tests` — 205 passed; reviews none (minimal track); real run `context.capture` on a temp repo on `feat/AB2-12-demo` — printed `{'repo': 'rr', 'branch': 'feat/AB2-12-demo', 'task': 'AB2-12'}` (auto-checked, not /verify)
+Memory: nothing new (the HUN-254 override entry in memory/decisions.md already records this follow-up)
+Not done: merge (admin: after the auto verify pass); auto verify: running (T182)
+
 ## Evidence
 
 | Check | Result | Notes / output snippet |
