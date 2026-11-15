@@ -1,6 +1,6 @@
 # 0005. Rewrite easy-note in Rust as one Linux binary; remove all Python
 
-**Status**: Proposed (Supervisor; owner to accept)
+**Status**: Accepted (owner, 2026-11-15: "yes, go ahead with R1")
 **Date**: 2026-11-15
 **Deciders**: thunderkds
 **Related**: PRD NFR-004, NFR-006, NFR-009 · amends DDR 0001 (install method) · DDR 0002 (file format, unchanged) · DDR 0003 (hook, unchanged in behaviour)
