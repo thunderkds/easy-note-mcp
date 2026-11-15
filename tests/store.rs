@@ -405,6 +405,36 @@ fn restore_never_replaces_a_note_at_the_target() {
     assert!(trashed.exists());
 }
 
+/// Stage 4 finding (HUN-270): a read-only note (an Obsidian or sync tool may set mode 0444) must
+/// still go to the trash, and its mtime must be stamped. Python used `os.utime`, which needs no
+/// write permission; opening the file for write fails with EACCES after the move.
+#[test]
+fn rm_moves_a_read_only_note_and_stamps_its_mtime() {
+    use std::os::unix::fs::PermissionsExt;
+    let sb = Sandbox::new("rm-readonly");
+    let s = store_at(&sb.notes());
+    let added = s.add("read only", "cli", &[], &[]).unwrap();
+    let original = std::fs::read(&added.path).unwrap();
+    set_mtime(&added.path, days_ago(40));
+    std::fs::set_permissions(&added.path, std::fs::Permissions::from_mode(0o444)).unwrap();
+    let trashed = s.rm(&added.id).expect("rm of a 0444 note succeeds");
+    assert_eq!(
+        trashed,
+        sb.notes()
+            .join(".easy-note/trash")
+            .join(format!("{}.md", added.id))
+    );
+    assert!(!added.path.exists());
+    assert_eq!(std::fs::read(&trashed).unwrap(), original);
+    let age = SystemTime::now()
+        .duration_since(std::fs::metadata(&trashed).unwrap().modified().unwrap())
+        .unwrap_or_default();
+    assert!(
+        age < Duration::from_secs(60),
+        "mtime is the trash time, not {age:?} ago"
+    );
+}
+
 #[test]
 fn empty_trash_deletes_only_files_older_than_cutoff() {
     let sb = Sandbox::new("empty-trash");
@@ -517,7 +547,8 @@ fn update_keeps_unknown_keys_and_sets_updated() {
             None,
             Some(&t(&["flaky", "obsidian"])),
         )
-        .unwrap();
+        .unwrap()
+        .note;
     let out = std::fs::read_to_string(note.path.unwrap()).unwrap();
     assert!(out.contains("aliases:\n  - firefox retry\n"));
     assert!(out.contains("date: 2024-01-01 # Obsidian date property\n"));
@@ -533,7 +564,7 @@ fn update_text_replaces_body_and_checks_size() {
     let s = store_at(&sb.notes());
     let added = s.add("first", "cli", &[], &[]).unwrap();
     assert_eq!(
-        s.update(&added.id, Some("second"), None).unwrap().body,
+        s.update(&added.id, Some("second"), None).unwrap().note.body,
         "second\n"
     );
     assert_eq!(s.read(&added.id).unwrap().body, "second\n");
