@@ -54,7 +54,7 @@ Mode: auto
 Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — 6 + 5 + 13 + 29 passed (14:32 UTC, c4a6859, rebased on main a2491f8); reviews code-review (Skill) — 0 P0/P1; P2 `src/core/store.rs:269-272` `rm` opens the trashed file for write to set its mtime, so a read-only (0444) note is moved to trash and then `rm` returns EACCES (Python used `os.utime`, which succeeds; checked) — fix: `fs::File::open(&dst)?.set_modified(..)`, carried to HUN-270 part 2 (same file); P2 lane_check `EXCEEDS (lines 2270 > 500)` — 1,015 of the lines are ported oracle tests, C2 label kept; P2 fixed: stale `.py` paths in PROJECT_SPEC risk table (c4a6859); P3 `Store` exposes its test seams (`now_ns`, `link`, `rename`) as `pub` fields; startup-reads check: the implementer's report line is not in this session's context after compaction (not checked)
 Memory: nothing new yet (pass runs at merge)
 Not done: merge (needs a named `[admin]`); auto verify: pending
-Paused: auto-mode check failed — Risk Medium: decision 2 (`SAFER OPTION`) is a choice — it is flagged ⚠ — so it must be `DEBATED` with exactly 2 Advocates named [report b3ffc1f37b95]
+Paused: merge waits for the owner — the Companion score row is ☑ fail (67 < 80), and the merge gate blocks on it; the owner merges by hand or sends `[admin] merge HUN-269` with an explicit override
 
 ## Evidence
 
