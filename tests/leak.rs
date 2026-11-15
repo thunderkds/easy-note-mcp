@@ -1291,3 +1291,173 @@ fn size_check_rejects_text_that_is_over_the_limit_only_after_masking() {
     assert!(matches!(err, StoreError::TextTooLong(_)), "{err:?}");
     assert_eq!(snapshot(&env.root), before);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Part 3 (security-review finding): a YAML escape directly before a token, in an unknown
+// front-matter key, hides the token from the anchored patterns in the raw source text
+// ---------------------------------------------------------------------------------------------
+
+/// The anchored kinds: their patterns start with a word boundary, so `\n` (two characters in a
+/// double-quoted scalar) before the token leaves no boundary in the raw text.
+const ANCHORED: [&str; 7] = [
+    "aws_key",
+    "github_token",
+    "slack_token",
+    "openai_key",
+    "anthropic_key",
+    "jwt",
+    "bearer",
+];
+
+/// The text that must start right after the escape, and the pieces that must not survive.
+fn escape_token(case: &Planted) -> (String, Vec<String>) {
+    match case.kind.as_str() {
+        "jwt" => {
+            let start = case.text.find("eyJ").expect("planted jwt");
+            let token: String = case.text[start..]
+                .chars()
+                .take_while(|c| !c.is_whitespace())
+                .collect();
+            (token.clone(), vec![token, case.secret.clone()])
+        }
+        "bearer" => (format!("Bearer {}", case.secret), vec![case.secret.clone()]),
+        _ => (case.secret.clone(), vec![case.secret.clone()]),
+    }
+}
+
+/// A valid file with one hand-typed unknown key (`chunk`, YAML source) and a clean body.
+fn hand_write_chunk(notes: &Path, chunk: &str) -> (PathBuf, Vec<u8>) {
+    let (path, _) = hand_write(notes, CLEAN_BODY);
+    let mut note = read_parsed(&path);
+    note.extra = vec![format!("{chunk}\n")];
+    let data = fmt::render(&note).into_bytes();
+    std::fs::write(&path, &data).unwrap();
+    (path, data)
+}
+
+/// Read, list and update a hand-typed unknown key. Nothing may hold `leaks`; update reports
+/// `kinds`; the key text is gone from every file under the temp root.
+fn assert_chunk_masked(label: &str, chunk: &str, leaks: &[String], kinds: &[&str]) {
+    let env = Env::new("chunk");
+    let (path, before) = hand_write_chunk(&env.notes, chunk);
+    let read_note = store::read(NOTE_ID).unwrap();
+    let listed = listed();
+    assert_eq!(listed.len(), 1, "{label}");
+    for note in [&read_note, &listed[0]] {
+        for leak in leaks {
+            assert!(
+                !dbg(note).contains(leak.as_str()),
+                "{label}: value in a returned Note: {:?}",
+                note.extra
+            );
+        }
+    }
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        before,
+        "{label}: a read never rewrites the file"
+    );
+
+    let result = store::update(NOTE_ID, Some("new"), None).unwrap();
+    assert_eq!(strs(&result.masked), kinds, "{label}: update reports kinds");
+    for leak in leaks {
+        assert!(
+            !dbg(&result).contains(leak.as_str()),
+            "{label}: value in Updated"
+        );
+        for file in all_files(&env.root) {
+            assert!(
+                !contains(&std::fs::read(&file).unwrap(), leak),
+                "{label}: value on disk in {}",
+                file.display()
+            );
+        }
+    }
+    read_parsed(&path); // the rewritten file still parses
+}
+
+#[test]
+fn escape_before_an_anchored_token_in_an_unknown_key_never_leaks() {
+    for case in planted()
+        .into_iter()
+        .filter(|c| ANCHORED.contains(&c.kind.as_str()))
+    {
+        let (token, leaks) = escape_token(&case);
+        for esc in ["\\n", "\\t", "\\r"] {
+            let chunk = format!("desc: \"creds:{esc}{token}\"");
+            let label = format!("{} after {esc}", case_id(&case));
+            assert_chunk_masked(&label, &chunk, &leaks, &[case.kind.as_str()]);
+        }
+    }
+}
+
+#[test]
+fn a_hex_or_unicode_escape_that_spells_the_token_never_leaks() {
+    // `\x41` is `A` once decoded: the raw text never holds the token.
+    let hex = AWS.replacen('A', "\\x41", 1);
+    let uni = AWS.replacen('A', "\\u0041", 1);
+    for chunk in [
+        format!("desc: \"key {hex}\""),
+        format!("desc: \"key {uni}\""),
+    ] {
+        assert!(!chunk.contains(AWS));
+        assert_chunk_masked(&chunk, &chunk, &[AWS.to_string()], &["aws_key"]);
+    }
+}
+
+#[test]
+fn a_folded_or_next_line_value_in_an_unknown_key_never_leaks() {
+    for chunk in [
+        format!("k: >-\n  {AWS}"),
+        format!("k: |\n  see\n  {GITHUB}"),
+        format!("k:\n  \"{SLACK}\""),
+    ] {
+        let leak = [AWS, GITHUB, SLACK]
+            .into_iter()
+            .find(|s| chunk.contains(s))
+            .unwrap();
+        let kind = match leak {
+            AWS => "aws_key",
+            GITHUB => "github_token",
+            _ => "slack_token",
+        };
+        assert_chunk_masked(&chunk, &chunk, &[leak.to_string()], &[kind]);
+    }
+}
+
+#[test]
+fn escaped_token_inside_a_list_or_map_value_never_leaks() {
+    for chunk in [
+        format!("k: [\"a\", \"b:\\n{AWS}\"]"),
+        format!("k:\n  - \"x\"\n  - \"y:\\t{AWS}\""),
+        format!("k:\n  inner: \"z:\\r{AWS}\""),
+    ] {
+        assert_chunk_masked(&chunk, &chunk, &[AWS.to_string()], &["aws_key"]);
+    }
+}
+
+#[test]
+fn escaped_token_after_a_raw_masked_one_reports_both_kinds_in_order() {
+    // A plain token (the raw pass catches it) and an escaped one (only the decoded pass can).
+    let chunk = format!("k: \"{GITHUB} then:\\n{AWS}\"");
+    assert_chunk_masked(
+        &chunk,
+        &chunk,
+        &[AWS.to_string(), GITHUB.to_string()],
+        &["github_token", "aws_key"],
+    );
+}
+
+#[test]
+fn an_unknown_key_with_escapes_and_no_secret_is_kept_as_typed() {
+    let env = Env::new("chunk-clean");
+    let chunk = "desc: \"line one\\nline two\\ttabbed\"";
+    let (path, before) = hand_write_chunk(&env.notes, chunk);
+    let read_note = store::read(NOTE_ID).unwrap();
+    assert_eq!(read_note.extra, [format!("{chunk}\n")]);
+    assert_eq!(listed()[0].extra, [format!("{chunk}\n")]);
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    let result = store::update(NOTE_ID, Some("new"), None).unwrap();
+    assert!(result.masked.is_empty());
+    assert!(std::fs::read_to_string(&path).unwrap().contains(chunk));
+}

@@ -92,6 +92,19 @@ error: could not compile `easy-note-mcp` (test "guard") due to 1 previous error
 warning: build failed, waiting for other jobs to finish...
 ```
 
+**BEFORE (part 3)** (command `date -u; cargo test --test leak 2>&1 | tail -5`, run in the worktree before the fix commit, with the six new part 3 tests added; the folded/next-line and the clean-escape tests were already green because the raw text holds a word boundary there):
+
+```
+Sun Nov 15 05:13:47 PM UTC 2026
+    escaped_token_inside_a_list_or_map_value_never_leaks
+
+test result: FAILED. 42 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+
+error: test failed, to rerun pass `--test leak`
+```
+
+Failing: `escape_before_an_anchored_token_in_an_unknown_key_never_leaks`, `a_hex_or_unicode_escape_that_spells_the_token_never_leaks`, `escaped_token_after_a_raw_masked_one_reports_both_kinds_in_order`, `escaped_token_inside_a_list_or_map_value_never_leaks`.
+
 **AFTER** (part 1, same test target): `cargo test --test guard` printed `test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s`.
 
 **AFTER** (part 2, 2026-11-15 15:53 UTC, `cargo test`): `tests/leak.rs` `test result: ok. 40 passed; 0 failed`, `tests/store.rs` `test result: ok. 30 passed; 0 failed`, `tests/guard.rs` `test result: ok. 37 passed; 0 failed`. BEFORE for part 2: those targets did not compile (missing `Added.masked`, `Updated`).
