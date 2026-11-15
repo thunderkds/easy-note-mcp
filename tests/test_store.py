@@ -319,3 +319,20 @@ def test_oversize_text_is_refused_before_any_write(env):
 def test_add_rejects_bad_arguments(env, kwargs, message):
     with pytest.raises((TypeError, ValueError), match=message):
         store.add("x", **kwargs)
+
+
+def test_tags_may_be_any_iterable_and_update_checks_them(env):
+    added = store.add("x", source="cli", tags=(t for t in ["a", "b"]))
+    assert store.read(added.id).fields["tags"] == ["a", "b"]
+    with pytest.raises(TypeError, match="tags"):
+        store.update(added.id, tags=[1])
+
+
+def test_unreadable_file_is_skipped_not_fatal(env):
+    added = store.add("x", source="cli")
+    added.path.chmod(0)
+    try:
+        found = list(store.iter_notes())
+    finally:
+        added.path.chmod(0o600)
+    assert found == [store.Skipped(added.path, "cannot read file")]

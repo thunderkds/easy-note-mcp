@@ -14,7 +14,7 @@ import re
 import socket
 import tempfile
 import time
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -60,14 +60,13 @@ def _hostname() -> str:
     return socket.gethostname()
 
 
-def add(text: str, *, source: str, tags: Sequence[str] = (),
+def add(text: str, *, source: str, tags: Iterable[str] = (),
         fields: Mapping[str, str | None] | None = None) -> Added:
     """Write one new note. `fields` holds context keys (CONTEXT_KEYS); None values are left out."""
     check_text(text)
     if source not in SOURCES or source == "inbox":
         raise ValueError(f"unknown source {source!r}")
-    if isinstance(tags, str) or not all(isinstance(t, str) for t in tags):
-        raise TypeError("tags must be a sequence of strings")
+    tags = _tag_list(tags)
     context = {}
     for key, value in (fields or {}).items():
         if key not in CONTEXT_KEYS:
@@ -92,7 +91,7 @@ def add(text: str, *, source: str, tags: Sequence[str] = (),
 
     def content(note_id: str) -> bytes:
         meta = {"easy-note": VERSION, "id": note_id, "created": created.isoformat(timespec="seconds"),
-                **context, "tags": list(tags), "source": source}
+                **context, "tags": tags, "source": source}
         return render(Note(fields=meta, body=body)).encode("utf-8")
 
     month = root / f"{created:%Y}" / f"{created:%m}"
@@ -113,15 +112,17 @@ def read(note_id: str) -> Note:
     return note
 
 
-def update(note_id: str, *, text: str | None = None, tags: Sequence[str] | None = None) -> Note:
+def update(note_id: str, *, text: str | None = None, tags: Iterable[str] | None = None) -> Note:
     """Rewrite one note (`edit` / `tag`, FR-008): unknown keys kept, `updated` set, temp + os.replace."""
     if text is not None:
         check_text(text)
+    if tags is not None:
+        tags = _tag_list(tags)
     note = read(note_id)
     if text is not None:
         note.body = text if text.endswith("\n") else text + "\n"
     if tags is not None:
-        note.fields["tags"] = list(tags)
+        note.fields["tags"] = tags
     updated = datetime.fromtimestamp(_now_ns() // 1_000_000_000).astimezone()
     note.fields["updated"] = updated.isoformat(timespec="seconds")
     fd, tmp = tempfile.mkstemp(prefix=".", suffix=".tmp", dir=note.path.parent)
@@ -172,8 +173,14 @@ def iter_notes() -> Iterator[Note | Skipped]:
     """Every `<dir>/YYYY/MM/*.md`, in path order: a Note, or Skipped with its path and reason (FR-017)."""
     root = config.notes_dir()
     for path in sorted(root.glob("[0-9][0-9][0-9][0-9]/[0-9][0-9]/*.md")):
-        if path.is_file():
-            yield _parse_file(path.absolute(), path.read_bytes())
+        if not path.is_file():
+            continue
+        try:
+            raw = path.read_bytes()
+        except OSError:
+            yield Skipped(path.absolute(), "cannot read file")
+            continue
+        yield _parse_file(path.absolute(), raw)
 
 
 def _parse_file(path: Path, raw: bytes) -> Note | Skipped:
@@ -187,6 +194,13 @@ def _parse_file(path: Path, raw: bytes) -> Note | Skipped:
         return Skipped(path, "id does not match file name")
     note.path = path
     return note
+
+
+def _tag_list(tags: Iterable[str]) -> list[str]:
+    out = None if isinstance(tags, str) else list(tags)
+    if out is None or not all(isinstance(t, str) for t in out):
+        raise TypeError("tags must be an iterable of strings, not one string")
+    return out
 
 
 def _note_path(note_id: str) -> Path:
