@@ -65,6 +65,43 @@ Detail later (round 3): person runs `/mcp__easy-note__enrich_notes` → their Cl
 
 ---
 
+Main flow (capture → store → read → later detail):
+
+```mermaid
+flowchart LR
+  subgraph Capture
+    H["Claude Code /note (hook-prompt)"]
+    M["Codex / Cursor note: (MCP note_add)"]
+    C["Terminal n ... (CLI add)"]
+    Q["Hotkey / launcher / tray (quick)"]
+    I["Phone file in inbox/ (read-only)"]
+  end
+  H & M & C & Q --> G["core/guard: mask secrets"]
+  G --> X["core/context: repo, remote, branch, task"]
+  X --> S["core/store: atomic write"]
+  S --> D[("Notes dir: YYYY/MM/id.md")]
+  I --> D
+  D --> R["core/query: list, search, stats"]
+  R --> CLI["CLI ls / search / show"]
+  R --> MCP["MCP note_search / note_list / note_read / note_stats"]
+  MCP --> E["Person's Claude: enrich_notes prompt"]
+  E -->|note_enrich| A[(".easy-note/ai/id.json")]
+  A --> R
+```
+
+---
+
+## Readiness
+
+- **Requirements**: PRD.md
+- **Direction**: BRAINSTORMING_LOG.md (Option B; rounds 2–3: BRAINSTORMING_LOG_capture.md, BRAINSTORMING_LOG_oneclick-enrich.md)
+- **Codebase map**: none — blank scaffold (code starts with HUN-252)
+- **Tech stack**: Python ≥ 3.11, official MCP Python SDK (FastMCP), PyYAML, uv; storage = plain Markdown files; hosting = the owner's machine, native install, no Docker
+- **Main flow**: PROJECT_SPEC.md (Mermaid flowchart in Architecture Summary)
+- **Approved by**: 
+
+---
+
 ## Glossary
 
 - **Note** — one Markdown file written in the format `easy-note: 1`: front matter + body. Never an easy-memory note (that is a saved agent turn).
@@ -78,7 +115,7 @@ Detail later (round 3): person runs `/mcp__easy-note__enrich_notes` → their Cl
 
 ## Critical Constraints
 
-- Writes only inside the notes dir and `~/.config/easy-note/config.toml` (DDR 0001), plus exactly one hook entry in user-level `~/.claude/settings.json` and `~/.claude/commands/note.md`, only via person-run `install claude` with diff + backup (DDR 0003); `~/.local/share/applications/easy-note.desktop` only via `install launcher`; `~/.config/autostart/easy-note-tray.desktop` only via `install tray`. Never in any code repo, never project-scope config, never Codex/Cursor config, never in another plug-in's folder.
+- Writes only inside the notes dir and `~/.config/easy-note/config.toml` (DDR 0001), plus exactly one hook entry in user-level `settings.json` and `commands/note.md` in the Claude Code config dir (`$CLAUDE_CONFIG_DIR` when set, else `~/.claude`), only via person-run `install claude` with diff + backup (DDR 0003); `~/.local/share/applications/easy-note.desktop` only via `install launcher`; `~/.config/autostart/easy-note-tray.desktop` only via `install tray`. Never in any code repo, never project-scope config, never Codex/Cursor config, never in another plug-in's folder.
 - No capture path may drop typed text: no setup refusal, no secret refusal (mask instead).
 - Inbox files are never written, renamed or normalized.
 - The hook pass path imports only the stdlib and never fails a prompt.

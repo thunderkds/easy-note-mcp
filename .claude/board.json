@@ -4,7 +4,9 @@
   "team": "e2b97197-4539-452b-b6fa-1ad73b8ffabd",
   "project": "335dbbb1-479d-46f8-b0b4-864ea5322c37",
   "me": "hungnh1110",
-  "status_map": {},
+  "status_map": {
+    "Todo": "Ready for Review"
+  },
   "id_pattern": "HUN-\\d+",
   "git_auto_status": false
 }

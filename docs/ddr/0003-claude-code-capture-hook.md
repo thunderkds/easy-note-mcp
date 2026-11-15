@@ -27,10 +27,11 @@ DDR gate: hard to reverse (the hook runs on every prompt in every session) ✅, 
 
 1. `easy-note hook-prompt` is a `UserPromptSubmit` hook. Prompt starts with the prefix (default `/note `) → save with `source: hook`, context from the event's `cwd`, return `{"decision":"block","reason":"✓ noted <id> · <repo> · <task>"}`. Otherwise no output, exit 0.
 2. The pass path imports only the stdlib and must never block or fail a prompt; any error lets the prompt through.
-3. `easy-note install claude` adds exactly one hook entry (command `easy-note hook-prompt`, timeout 5 s) and `~/.claude/commands/note.md` (fallback that asks the model to call `note_add`, used only if the hook cannot see `/note`). It shows the diff, keeps a timestamped backup, writes atomically, keeps a symlinked settings file a symlink, and never changes another key or hook (easy-memory's entries stay).
+3. `easy-note install claude` adds exactly one hook entry (command `easy-note hook-prompt`, timeout 5 s) to `settings.json` and writes `commands/note.md`, both in the Claude Code config dir (`$CLAUDE_CONFIG_DIR` when set, else `~/.claude`) (fallback that asks the model to call `note_add`, used only if the hook cannot see `/note`). It shows the diff, keeps a timestamped backup, writes atomically, keeps a symlinked settings file a symlink, and never changes another key or hook (easy-memory's entries stay).
 4. `easy-note uninstall claude` removes exactly those two things.
 5. Only the person runs `install`/`uninstall`. No MCP tool and no other command touches Claude Code settings. Project-scope settings are never written (the kernel's `setup.sh` owns them).
-6. If T001 shows the hook does not receive `/note …` raw, the default prefix becomes `;n ` and `note.md` is not written.
+6. If T001 shows the hook does not receive `/note …` raw, the default prefix becomes `;n ` and `note.md` is not written. *(T001/HUN-251, 2026-11-14: the hook receives `/note …` raw and can block it; the default stays `/note `.)*
+7. *(Amended 2026-11-15, owner-approved)* Claude Code reads its config from `$CLAUDE_CONFIG_DIR` when that is set (the owner's machine uses `~/.claude-personal`). `install`/`uninstall claude` resolve the target dir the same way and print it in the diff header; with neither set nor present they create `~/.claude`.
 
 ---
 
