@@ -134,3 +134,24 @@ def test_check_text_refuses_over_20000_chars_with_clear_error():
     fmt.check_text("x" * 20_000)
     with pytest.raises(fmt.TextTooLong, match="20,001 chars; the limit is 20,000"):
         fmt.check_text("x" * 20_001)
+
+
+# AC10 — docs/NOTE_FORMAT.md is Final for v1 and matches the code
+
+DOC = Path(__file__).parent.parent / "docs" / "NOTE_FORMAT.md"
+
+
+def test_note_format_doc_is_final_and_its_example_round_trips():
+    doc = DOC.read_text(encoding="utf-8")
+    assert "**Status**: Final for `easy-note: 1`" in doc
+    assert "Draft" not in doc and "draft" not in doc
+    example = doc.split("```markdown\n", 1)[1].split("```", 1)[0]
+    assert example == (FIXTURES / "20261114-164713-a1b2.md").read_text(encoding="utf-8")
+    assert fmt.render(fmt.parse(example)) == example
+
+
+def test_note_format_doc_lists_every_key_the_code_knows():
+    doc = DOC.read_text(encoding="utf-8")
+    table_keys = [line.split("`")[1] for line in doc.splitlines() if line.startswith("| `")]
+    assert table_keys == list(fmt.KEY_ORDER)
+    assert all(f"`{source}`" in doc for source in fmt.SOURCES)
