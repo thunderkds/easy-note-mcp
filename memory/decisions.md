@@ -25,3 +25,8 @@
 **Decision**: The owner merged HUN-251 (client launch spike) into `main` (093f5cc) by hand, overriding the ☑ fail Companion score row (easy-verifier overall 67 < 80). Verify passed at 5116549; 27 tests pass on main.
 **Why**: Security 30 came from 152 hex hashes read as secrets (147 in `.claude/harness-lock.json`, 5 sha256 checksums used as AC 6 evidence); the rest of the gap is repo-wide (supply-chain 55: no SBOM/provenance; test-strategy 65). An SBOM CI step is the follow-up that would lift every branch.
 **Files**: tasks/TASK_REVIEW_HUN-251.md, .claude/harness-lock.json, .github/workflows/ci.yml
+
+### 2026-11-15 — HUN-253 merged by the owner over a failing Companion score
+**Decision**: The owner merged HUN-253 (note format and store) into `main` (225ea7c) by hand and pushed, overriding the ☑ fail Companion score row (easy-verifier 0.2.0 overall 68 < 80). Verify passed at 703cdcb (hook accepted it for review-only tip 64d1a09); code-review P0/P1 0; security-review pass; 99 tests pass on merged main.
+**Why**: Rescored on an image built from easy-verifier-mcp `develop` (fix b958920 exempts harness-lock.json hashes). Security 30 now comes from one `high_entropy_string` hit: the verify-run log name `HUN-253-703cdcbbc189.log` in the review file's verify row (commit-hash prefix, not covered by b958920). Real gaps left as follow-ups: CCN 16 in `format._validate`, 9% requirement tracing, no SBOM CI step, no formatter config, 18% tests without a direct assert. Local easy-verifier `main` (de74623) lacks the fix; build from `develop`.
+**Files**: tasks/TASK_REVIEW_HUN-253.md, src/easy_note/core/format.py, .github/workflows/ci.yml
