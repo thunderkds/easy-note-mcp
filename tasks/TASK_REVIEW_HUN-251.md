@@ -44,6 +44,19 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 -->
 
+## Auto decisions
+
+Mode: auto
+1. Ran easy-verifier on the branch at the user's request and wrote the Companion score row as fail (69, then 64) — RULE: `skills/score/SKILL.md:16` "The row is `pass` only when `overall ≥ 80` and no `change_risk` rule failed"
+2. Spawned qa-expert to add `tests/test_T001_probes.py` for the two probe scripts, then rescored once at 1d3d666 — RULE: `skills/score/SKILL.md:70` "Rescore only after the code changed"
+3. Left the solution-fit gate abstained; the offered refs are PRD user stories that do not describe a spike — RULE: `skills/score/SKILL.md:52` "A gate you cannot answer from held evidence stays abstained"
+4. Ran the missing Risk-Medium `security-review` on the spike diff: pass, P0 0, P1 0 (env-hint logging in `scripts/probe_server.py` is local and throwaway; hardening suggestion only) — RULE: `AGENTS.md` § Permanent Rules "Stage 4 security-review is mandatory for Medium/High risk tasks"
+Paused: move to Ready for Review — the Linear team HUN has no review status ("In Review"), and only the owner can add one; stop that stays `docs/claude-md/tracks.md:531` "a login or secret the Supervisor does not have"
+Checks: tests `uv run --with pytest pytest tests -q` — 20 passed; reviews code-review — P0 0 / P1 0 / P2 0 / P3 1, security-review — pass, easy-verifier — fail 64 (test-strategy 45: no test config or CI on a branch cut from main); real run `probe_server.py` over stdio in `tests/test_T001_probes.py` — logged start/initialize/roots (auto-checked, not /verify)
+Memory: memory/learnings.md — easy-verifier on a branch cut from main scores test-strategy low until the skeleton (HUN-252) merges
+Not done: merge (admin: after the auto verify pass); auto verify: not started (row cannot reach Ready for Review); merge HUN-252 first, then merge main into this branch and rescore
+
+
 ## Evidence
 
 | Check | Result | Notes / output snippet |
@@ -54,7 +67,7 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | New files only: `scripts/probe_server.py`, `scripts/probe_hook.py`, `docs/experiments/T001-client-launch.md`, `tests/fixtures/claude_hook/*.json`, `tests/test_T001_fixtures.py`, this file. No `src/`, no existing file edited. Stage 4 code-review (Supervisor, 2026-11-15) over `git diff d33b2a2..d268d82`: P0 0, P1 0, P2 0, P3 1 (scrub test greps only `/home/`; macOS `/Users/` paths would pass — acceptable, fixtures are Linux-recorded). Entry point Standalone — N/A. Startup reads: all 3 present (guide and role guide read from the main checkout). AC 1 accepted as partial by the owner 2026-11-15: Cursor row tracked in HUN-266. Spec follow-up applied: installer honors `CLAUDE_CONFIG_DIR` (FR-019, DDR 0003 item 7, HUN-259 AC 6b). |
 | Full smoke suite still green (no regression) | ☑ pass | No other tests exist in the repo (`tests/` did not exist before). The one new test file passes. |
-| **Companion score (easy-verifier)** | ☑ fail | overall 69 (floor missed, < 80), change_risk 0 fail (feature, confirmed): `new_code_without_test_share` failed on `scripts/probe_hook.py`, `scripts/probe_server.py`, scope changes, ref `main...HEAD`, abstentions: solution-fit (no_static_rule), requirement-fidelity, blast-radius, reliability (insufficient_measured_weight), code-quality, security, supply-chain, api, data, operations, infrastructure (below_coverage_floor), gates: solution-fit left abstained (cited PRD stories do not describe a spike), no findings sent, report: `/home/hungnguyenhuu/.easy-verifier-reports/agent-a2a993b47b37d30d3/evidence-report-changes-20261115T024426-776069Z.html` |
+| **Companion score (easy-verifier)** | ☑ fail | overall 64 (floor missed, < 80; architecture 83, test-strategy 45: `test_config_and_ci_missing`, `source_files_without_covering_test_share`), change_risk 100 pass (feature, confirmed; test pairs confirmed: `scripts/probe_server.py` and `scripts/probe_hook.py` -> `tests/test_T001_probes.py`), scope changes, ref `main...HEAD` at 1d3d666, abstentions: solution-fit (no_static_rule), requirement-fidelity, blast-radius, reliability (insufficient_measured_weight), code-quality, security, supply-chain, api, data, operations, infrastructure (below_coverage_floor), gates: solution-fit left abstained (cited PRD stories do not describe a spike), no findings sent. Rescored after code change 1d3d666; prior run 69 (fail) at a454ece: `/home/hungnguyenhuu/.easy-verifier-reports/agent-a2a993b47b37d30d3/evidence-report-changes-20261115T024426-776069Z.html`. Branch was cut from `main`, which has no pyproject or CI; HUN-252 adds both. report: `/home/hungnguyenhuu/.easy-verifier-reports/agent-a2a993b47b37d30d3/evidence-report-changes-20261115T024925-388580Z.html` |
 | **UI: Visual regression (diff or verdict pasted)** | ☑ N/A | Pure backend/doc task, no UI component. |
 | **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ N/A | No UI component. |
 | **UI: Responsiveness at target viewports** | ☑ N/A | No UI component. |
