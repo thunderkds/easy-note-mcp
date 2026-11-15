@@ -5,7 +5,7 @@
 ## Location
 
 `<notes dir>/YYYY/MM/<id>.md`, where `YYYY/MM` is the local date of `created`.
-Files under `<notes dir>/.easy-note/` (trash, lock files) are not notes. Other files in the dir are ignored.
+Files under `<notes dir>/.easy-note/` (trash, AI detail, lock files) are not notes. Other files in the dir are ignored.
 
 ## ID
 

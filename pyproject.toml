@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "easy-note-mcp"
+dynamic = ["version"]
+description = "Plain-Markdown notes for a person, captured from the terminal, Claude Code and MCP clients."
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.2,<2",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+tray = [
+    "pystray",
+    "pillow",
+]
+
+[project.scripts]
+easy-note = "easy_note.surfaces.cli:main"
+n = "easy_note.surfaces.cli:main_n"
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[tool.hatch.version]
+path = "src/easy_note/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/easy_note"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

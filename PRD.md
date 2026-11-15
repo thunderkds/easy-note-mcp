@@ -42,7 +42,7 @@ search and read notes; only the person edits or deletes them. Everything stays o
 | US-004 | As P1, I want notes as plain Markdown files in a folder I pick (git repo, Dropbox, Obsidian vault), so I own them and can edit them anywhere. | P1 | v1 |
 | US-005 | As P1, I want to list and search notes by words, repo, task, tag and date, so I find a note fast. | P1 | v1 |
 | US-006 | As P1, I want to delete a note and undo it, so cleanup is safe. | P1 | v1 |
-| US-007 | As P1, I want notes that look like secrets refused, so a synced notes folder never leaks a key. | P1 | v1 |
+| US-007 | As P1, I want text that looks like a secret masked before it is saved, so a synced notes folder never leaks a key and my note is still kept. | P1 | v1 |
 | US-008 | As P2, I want to search and read the person's notes, so I answer "what did I note about X" with facts. | P2 | v1 |
 | US-009 | As P3, I want note counts per repo and task from a documented format, so I show them without storing note text. | P3 | v1 (format) / easy-personal board (reader) |
 | US-010 | As P1, I want my notes in Notion or another tool. | P1 | Later (separate brainstorm) |
@@ -71,7 +71,7 @@ search and read notes; only the person edits or deletes them. Everything stays o
 | FR-010 | `list` must filter by `repo`, `task`, `tag`, `source`, `since`, `until`, `day`, newest first, using local dates. | US-005 |
 | FR-011 | `search` must match all query words (case-insensitive) in title, body or tags, with the same filters as FR-010. | US-005, US-008 |
 | FR-012 | MCP tools (v1, frozen after approval): `note_add`, `note_search`, `note_list`, `note_read`, `note_stats`, and from round 3 `note_pending_enrich`, `note_enrich` (writes AI files only); prompt `enrich_notes`. No MCP tool may edit, delete, restore or move a note, or change config. | US-001, US-008 |
-| FR-013 | CLI commands: `init`, `add`, `ls`, `search`, `show`, `edit` (opens `$EDITOR`, then re-validates), `tag`, `rm`, `restore`, `trash`, `stats`, `doctor` (scan for skipped files and secrets, read-only), `path`, `serve` (MCP), and from round 2 `quick`, `hook-prompt`, `install claude`, `uninstall claude`. CLI and MCP must share one core. | US-003, US-005, US-006 |
+| FR-013 | CLI commands: `init`, `add`, `ls`, `search`, `show`, `edit` (opens `$EDITOR`, then re-validates), `tag`, `rm`, `restore`, `trash`, `stats`, `doctor` (scan for skipped files and secrets, read-only), `path`, `serve` (MCP), from round 2 `quick`, `hook-prompt`, `install claude`, `uninstall claude`, and from round 3 `hotkey`, `install|uninstall launcher`, `ai rm`, `tray`, `install|uninstall tray`. CLI and MCP must share one core. | US-003, US-005, US-006 |
 | FR-014 | Secret guard: every write path (`add`, `n`, `quick`, hook, `edit`, `note_add`) must replace each match of the declared secret patterns (`core/guard.py`) with `[masked:<kind>]` before the write and report `N secret(s) masked` with the kinds, never echoing the match. Every read output (CLI and MCP) must mask matches in hand-edited and inbox files the same way (round 2, D21). | US-007 |
 | FR-015 | `note_stats` / `easy-note stats --json` must return counts by repo, task, tag, source and month, plus the oldest and newest note date. No text. | US-008, US-009 |
 | FR-016 | MCP list/search responses must hold ≤ 50 items, each with id, title, created, repo, task, tags and a ≤ 200-char snippet, plus `total` and `truncated`. | US-008 |
@@ -79,7 +79,7 @@ search and read notes; only the person edits or deletes them. Everything stays o
 | FR-019 | *(round 2)* `easy-note install claude` must add exactly one `UserPromptSubmit` hook entry to user-level Claude Code settings and write `~/.claude/commands/note.md` (fallback), after showing the diff and keeping a timestamped backup; `uninstall claude` must remove exactly those. No other key changes (DDR 0003). | US-001 |
 | FR-020 | *(round 2)* Console script `n` must equal `easy-note add`. `add` must join all arguments with spaces as the note text; with no arguments in a TTY it must read one line from a prompt; `-e` must open `$EDITOR`. | US-003 |
 | FR-021 | *(round 2)* Every capture path must print one confirmation line: id, repo (if any), task (if any), masked count (if any). | US-001, US-003 |
-| FR-022 | *(round 2)* `easy-note quick [--cwd DIR]` must open a native one-line input (`osascript` on macOS, `zenity` or `kdialog` on Linux), else a terminal prompt; save with `source: quick`; show the confirmation as a desktop notification where available. Empty input or cancel saves nothing. | US-011 |
+| FR-022 | *(round 2)* `easy-note quick [--cwd DIR]` must open a native one-line input (`osascript` on macOS, `zenity` or `kdialog` on Linux), else a `tkinter` box, else a terminal prompt; save with `source: quick`; show the confirmation as a desktop notification where available. Empty input or cancel saves nothing. | US-011 |
 | FR-023 | *(round 2)* Every `.md` or `.txt` file directly in `<notes dir>/inbox/` must be read as a note (`source: inbox`, id `inbox/<file stem>`, created from a `YYYYMMDD-HHMMSS` file-name prefix else mtime, tags from `#words`). easy-note must never write, rename or normalize inbox files; `rm` moves them to trash. | US-012 |
 | FR-024 | *(round 2)* The `note_add` description must tell the model: when the person's message starts with `note:` or `/note`, call it at once with the rest of the message and reply in one line. | US-001 |
 | FR-025 | *(round 3)* `easy-note hotkey` must detect the desktop (GNOME, KDE, macOS, Windows) and print the exact commands to bind a key to `easy-note quick`; it writes nothing. | US-014 |
@@ -99,9 +99,9 @@ search and read notes; only the person edits or deletes them. Everything stays o
 
 | ID | Requirement | Category |
 |----|-------------|----------|
-| NFR-001 | No traffic leaves the machine; HTTP mode binds `127.0.0.1` only. Subprocesses: read-only `git` (`rev-parse`, `branch --show-current`, `remote get-url`), and, in `quick` only, the OS input/notification tool (`osascript`, `zenity`, `kdialog`, `notify-send`). | Security |
+| NFR-001 | No traffic leaves the machine; HTTP mode binds `127.0.0.1` only. Subprocesses: read-only `git` (`rev-parse`, `branch --show-current`, `remote get-url`), in `quick` only, the OS input/notification tool (`osascript`, `zenity`, `kdialog`, `notify-send`), and in `tray` only, the OS opener (`xdg-open`, `open`). | Security |
 | NFR-002 | No secret appears in any note file written by the tool, any response, or any log (fixture with planted secrets proves it). Logs never contain note text. | Security / Privacy |
-| NFR-003 | Writes only inside the notes dir, the config file, and the one hook entry + command file owned by `install claude` (DDR 0001, DDR 0003). Nothing in any code repo is ever written. | Safety |
+| NFR-003 | Writes only inside the notes dir, the config file, the one hook entry + command file owned by `install claude`, the launcher file owned by `install launcher` and the autostart file owned by `install tray` (DDR 0001, DDR 0003). Nothing in any code repo is ever written. | Safety |
 | NFR-004 | Search p95 < 500 ms and `note_add` p95 < 150 ms over 10,000 notes on a laptop (provisional until T010). | Performance |
 | NFR-005 | Safe under a sync tool: two machines adding notes at the same time never lose a note (per-file writes, unique IDs). | Reliability |
 | NFR-006 | Python 3.11+, native install `uv tool install easy-note-mcp`; macOS and Linux in v1; Windows best effort. | Portability |
@@ -134,7 +134,7 @@ search and read notes; only the person edits or deletes them. Everything stays o
 - Cloud agent sessions (claude.ai/code, mobile): they cannot reach a local MCP server.
 - Connectors and any network call (Notion, Apple Notes, Google Keep); Obsidian needs no code.
 - Edit/delete/restore over MCP.
-- Search index, embeddings, LLM summaries or auto-tags.
+- Search index or embeddings. Model-written text inside a note file (AI detail lives only in separate AI files, FR-030, DDR 0004).
 - Git commit/push of the notes dir.
 - Daily-journal files, templates, to-dos, reminders, due dates.
 - Attachments and images.

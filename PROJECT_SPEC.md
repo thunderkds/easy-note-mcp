@@ -31,13 +31,13 @@ src/easy_note/
   core/format.py     parse / render a note (front matter + body), version check (easy-note: 1)
   core/store.py      resolve dir, new ID, atomic write, list files, trash/restore
   core/context.py    cwd resolution (arg → roots → process cwd), git repo/remote/branch, task patterns
-  core/guard.py      declared secret patterns: refuse on write, mask on read
+  core/guard.py      declared secret patterns: mask on write and on read (never refuse, D21)
   core/query.py      list / search / stats over parsed notes; bounded results
   surfaces/cli.py    `easy-note` commands (FR-013)
-  surfaces/mcp.py    5 tools (FR-012), stdio + streamable-http
+  surfaces/mcp.py    7 tools + 1 prompt (FR-012, D37), stdio + streamable-http
   surfaces/hook.py   Claude Code UserPromptSubmit capture (FR-018); stdlib-only pass path
   surfaces/quick.py  one-line native input box (FR-022)
-  surfaces/install.py `install|uninstall claude|launcher` (FR-019, FR-026, DDR 0003)
+  surfaces/install.py `install|uninstall claude|launcher|tray` (FR-019, FR-026, FR-033, DDR 0003)
   core/ai.py         AI detail files: write with caps + mask, hash staleness, pending list (FR-029–FR-032, DDR 0004)
   surfaces/tray.py   optional system tray (FR-033), extra `[tray]`
   surfaces/prompts.py fixed `enrich_notes` prompt text (FR-031)
@@ -70,7 +70,7 @@ Detail later (round 3): person runs `/mcp__easy-note__enrich_notes` → their Cl
 - **Note** — one Markdown file written in the format `easy-note: 1`: front matter + body. Never an easy-memory note (that is a saved agent turn).
 - **Notes dir** — the folder the person picked; the only store.
 - **Context** — the `repo`, `remote`, `branch`, `task` fields captured at add time.
-- **Guard** — the declared secret patterns; refuse on write, mask on read.
+- **Guard** — the declared secret patterns; mask on write and on read, never refuse (D21).
 - **Trash** — `<notes dir>/.easy-note/trash/`; restorable.
 - **Skipped** — a file in the notes dir the parser cannot read; counted and reported, never changed.
 
@@ -78,7 +78,7 @@ Detail later (round 3): person runs `/mcp__easy-note__enrich_notes` → their Cl
 
 ## Critical Constraints
 
-- Writes only inside the notes dir and `~/.config/easy-note/config.toml` (DDR 0001), plus exactly one hook entry in user-level `~/.claude/settings.json` and `~/.claude/commands/note.md`, only via person-run `install claude` with diff + backup (DDR 0003). Never in any code repo, never project-scope config, never Codex/Cursor config, never in another plug-in's folder.
+- Writes only inside the notes dir and `~/.config/easy-note/config.toml` (DDR 0001), plus exactly one hook entry in user-level `~/.claude/settings.json` and `~/.claude/commands/note.md`, only via person-run `install claude` with diff + backup (DDR 0003); `~/.local/share/applications/easy-note.desktop` only via `install launcher`; `~/.config/autostart/easy-note-tray.desktop` only via `install tray`. Never in any code repo, never project-scope config, never Codex/Cursor config, never in another plug-in's folder.
 - No capture path may drop typed text: no setup refusal, no secret refusal (mask instead).
 - Inbox files are never written, renamed or normalized.
 - The hook pass path imports only the stdlib and never fails a prompt.
@@ -175,6 +175,7 @@ Client config snippets (README, T009): Claude Code `claude mcp add easy-note -- 
 Dependencies: T001 → T004, T011; T002 → all; T003 → T004, T005, T006, T013; T006 → T007, T008; T005 → T007, T008, T011; T007 → T011, T012. T009 and T010 last.
 T003, T011 → T014. Vital slice for "easy" (ship first): T011 + T007's `n`/zero-setup + T005 masking. Then T012 (one press), T013, T014.
 Track: every task is extended track (new repo, more than one agent).
+Board IDs (Linear project `easy-note-mcp`, synced 2026-11-14; status lives on the board / `PROJECT_KANBAN.md`): T001=HUN-251 · T002=HUN-252 · T003=HUN-253 · T004=HUN-254 · T005=HUN-255 · T006=HUN-256 · T007=HUN-257 · T008=HUN-258 · T009=HUN-264 · T010=HUN-265 · T011=HUN-259 · T012=HUN-260 · T013=HUN-261 · T014=HUN-262 · T015=HUN-263.
 
 Follow-ups on other boards (not in this KANBAN — Hard-Stop Gate 4):
 - **F1 (easy-personal board)**: a read-only `notes` source: counts per repo/task + file links, front matter only; its own DDR beside its DDR 0002.
