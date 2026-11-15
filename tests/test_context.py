@@ -180,6 +180,10 @@ def test_repo_without_origin_has_no_remote(env):
     ("fix/t12345", None),
     ("feat/hun-221", None),
     ("fix/t120-and-t130", "T120"),
+    # PRD FR-005 tracker pattern `[A-Z][A-Z0-9]+-\d+` (HUN-267)
+    ("feat/AB2-12-x", "AB2-12"),
+    ("fix/PROJ-1234567", "PROJ-1234567"),
+    ("feat/A-12", None),
 ])
 def test_task_from_branch(branch, task):
     assert context.task_from_branch(branch) == task
