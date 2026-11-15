@@ -44,20 +44,33 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 -->
 
+## Auto decisions
+
+Mode: auto
+1. Ran easy-verifier on the branch at the user's request and wrote the Companion score row as fail (69, then 64) — RULE: `skills/score/SKILL.md:16` "The row is `pass` only when `overall ≥ 80` and no `change_risk` rule failed"
+2. Spawned qa-expert to add `tests/test_T001_probes.py` for the two probe scripts, then rescored once at 1d3d666 — RULE: `skills/score/SKILL.md:70` "Rescore only after the code changed"
+3. Left the solution-fit gate abstained; the offered refs are PRD user stories that do not describe a spike — RULE: `skills/score/SKILL.md:52` "A gate you cannot answer from held evidence stays abstained"
+4. Ran the missing Risk-Medium `security-review` on the spike diff: pass, P0 0, P1 0 (env-hint logging in `scripts/probe_server.py` is local and throwaway; hardening suggestion only) — RULE: `AGENTS.md` § Permanent Rules "Stage 4 security-review is mandatory for Medium/High risk tasks"
+Paused: move to Ready for Review — the Linear team HUN has no review status ("In Review"), and only the owner can add one; stop that stays `docs/claude-md/tracks.md:531` "a login or secret the Supervisor does not have"
+Checks: tests `uv run --with pytest pytest tests -q` — 20 passed; reviews code-review — P0 0 / P1 0 / P2 0 / P3 1, security-review — pass, easy-verifier — fail 64 (test-strategy 45: no test config or CI on a branch cut from main); real run `probe_server.py` over stdio in `tests/test_T001_probes.py` — logged start/initialize/roots (auto-checked, not /verify)
+Memory: memory/learnings.md — easy-verifier on a branch cut from main scores test-strategy low until the skeleton (HUN-252) merges
+Not done: merge (admin: after the auto verify pass); auto verify: not started (row cannot reach Ready for Review); merge HUN-252 first, then merge main into this branch and rescore
+
+
 ## Evidence
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/test_T001_fixtures.py` covers AC 5 (each fixture has `prompt`, `cwd`, `session_id`) and success criterion 3 (no `/home/`, no `token`). Run `uv run --with pytest pytest tests/test_T001_fixtures.py -q` -> `15 passed in 0.01s` (2026-11-14T16:47Z). AC 1-4 and 6 are measured findings in `docs/experiments/T001-client-launch.md`, not automated. AC 1 is PARTIAL: the Cursor row is not measured (cursor-agent not signed in; manual steps are in the doc). Follow-up 2026-11-15 (Companion `new_code_without_test_share`): `tests/test_T001_probes.py` runs `scripts/probe_hook.py` and `scripts/probe_server.py` as subprocesses (offline, stdlib + pytest; hook: `/note ` -> block JSON + event file, other prompt -> no output + event file, `EASY_NOTE_HOOK_PREFIX` override, invalid JSON -> no output, no crash; server: `initialize` -> `start`/`initialize`/`roots` log records with cwd, `clientInfo.name`, roots capability and the roots answer, mcp SDK taken from the uv offline cache when the interpreter lacks it, skipped if neither has it). Negative case: renaming the prefix env var in the test to `EASY_NOTE_HOOK_PREFIXX` gave `FAILED tests/test_T001_probes.py::test_hook_prefix_env_var_changes_match - json.decoder.JSONDecodeError` and `1 failed, 19 passed in 2.03s`; restored -> `20 passed in 1.93s`. |
+| Verification command run | ☑ pass | `uv run --with pytest pytest tests/test_T001_fixtures.py -q` -> `...............` then `15 passed in 0.01s`. The guide's bare `pytest` ran through `uv run --with pytest` because no project venv exists yet (HUN-252 is parallel). Follow-up 2026-11-15: `uv run --with pytest pytest tests -q` -> `....................` then `20 passed in 1.14s` (15 fixture tests + 5 probe tests). |
+| Negative cases hold | ☑ pass | Mutation: a fixture cwd set to `/home/bob/proj`, and `session_id` deleted from another -> `FAILED test_event_has_required_keys[passthrough_main_repo.json]`, `FAILED test_event_is_scrubbed[note_prefix_from_subdir.json]`, `2 failed, 13 passed`. Fixtures regenerated from the recorded events -> `15 passed`. Prior content: `ERROR: file or directory not found: tests/test_T001_fixtures.py` / `no tests ran`. |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
-| **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | New files only: `scripts/probe_server.py`, `scripts/probe_hook.py`, `docs/experiments/T001-client-launch.md`, `tests/fixtures/claude_hook/*.json`, `tests/test_T001_fixtures.py`, this file. No `src/`, no existing file edited. Stage 4 code-review (Supervisor, 2026-11-15) over `git diff d33b2a2..d268d82`: P0 0, P1 0, P2 0, P3 1 (scrub test greps only `/home/`; macOS `/Users/` paths would pass — acceptable, fixtures are Linux-recorded). Entry point Standalone — N/A. Startup reads: all 3 present (guide and role guide read from the main checkout). AC 1 accepted as partial by the owner 2026-11-15: Cursor row tracked in HUN-266. Spec follow-up applied: installer honors `CLAUDE_CONFIG_DIR` (FR-019, DDR 0003 item 7, HUN-259 AC 6b). |
+| Full smoke suite still green (no regression) | ☑ pass | No other tests exist in the repo (`tests/` did not exist before). The one new test file passes. |
+| **Companion score (easy-verifier)** | ☑ fail | overall 64 (floor missed, < 80; architecture 83, test-strategy 45: `test_config_and_ci_missing`, `source_files_without_covering_test_share`), change_risk 100 pass (feature, confirmed; test pairs confirmed: `scripts/probe_server.py` and `scripts/probe_hook.py` -> `tests/test_T001_probes.py`), scope changes, ref `main...HEAD` at 1d3d666, abstentions: solution-fit (no_static_rule), requirement-fidelity, blast-radius, reliability (insufficient_measured_weight), code-quality, security, supply-chain, api, data, operations, infrastructure (below_coverage_floor), gates: solution-fit left abstained (cited PRD stories do not describe a spike), no findings sent. Rescored after code change 1d3d666; prior run 69 (fail) at a454ece: `/home/hungnguyenhuu/.easy-verifier-reports/agent-a2a993b47b37d30d3/evidence-report-changes-20261115T024426-776069Z.html`. Branch was cut from `main`, which has no pyproject or CI; HUN-252 adds both. report: `/home/hungnguyenhuu/.easy-verifier-reports/agent-a2a993b47b37d30d3/evidence-report-changes-20261115T024925-388580Z.html` |
+| **UI: Visual regression (diff or verdict pasted)** | ☑ N/A | Pure backend/doc task, no UI component. |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ N/A | No UI component. |
+| **UI: Responsiveness at target viewports** | ☑ N/A | No UI component. |
 
 ---
 
@@ -68,12 +81,45 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE** (2026-11-14T16:42:39Z, before any commit; `ls tests` -> `No such file or directory`):
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+```
+$ uv run --with pytest pytest tests/test_T001_fixtures.py -q
+ERROR: file or directory not found: tests/test_T001_fixtures.py
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+no tests ran in 0.00s
+```
 
-**WITNESS**: [who ran it and when — derived from `memory/event-trace/Txxx.jsonl`, never the
-implementing agent alone]
+**BEFORE, follow-up (2026-11-15T02:45:50Z, before the test commit)**: `ls tests/test_T001_probes.py` -> `ls: cannot access 'tests/test_T001_probes.py': No such file or directory`.
+
+**AFTER** (2026-11-14T16:47:34Z):
+
+```
+$ uv run --with pytest pytest tests/test_T001_fixtures.py -q
+...............                                                          [100%]
+15 passed in 0.01s
+```
+
+**DELTA**: T004 and T011 can read measured facts (per-client launch cwd and roots, the hook's raw `/note ` and block behavior) from `docs/experiments/T001-client-launch.md`, with six real scrubbed hook events as fixtures. Cursor and the interactive Claude Code rows are still open for the owner.
+
+**WITNESS**: qa-expert agent (not the author of any product code; there is none), session of 2026-11-14 16:42-16:50Z. Clients: Claude Code 2.1.325, codex-cli 0.163.0. The Supervisor re-runs the test through the auto verify run.
+
+### Per-client table (AC 1; full detail in `docs/experiments/T001-client-launch.md`)
+
+| Client | Process cwd | `roots/list` | `clientInfo.name` |
+|---|---|---|---|
+| Claude Code 2.1.325 | launch folder (main repo, linked worktree, subfolder: each as launched) | declared (`listChanged: true`); one root = the launch folder | `claude-code` |
+| Codex 0.163.0 | launch folder (also `$HOME` when launched there) | no capability; request answered with `[]` | `codex-mcp-client` |
+| Cursor | NOT MEASURED (cursor-agent not signed in) | NOT MEASURED | NOT MEASURED |
+
+### AC 6: no probe entry left (checksums of the three user files, sha256, before and after the whole run)
+
+```
+before (2026-11-14T16:42:36Z)                                  after (2026-11-14T16:47:47Z)
+0f5bfd38c49bf976723bdec827dcd83d25337f6d152342fc7e35f381b8323dac  ~/.claude/settings.json   (same)
+24a955fbcbcc818064bed71727124338d604442ce43af361cb791d6f438cd28e  ~/.codex/config.toml      (same)
+0e1921435953cf506d38ad8639c3a5778fdfc24e14021fba8df87c5c2eda192a  ~/.cursor/mcp.json        (same)
+$ diff before after -> no output ("IDENTICAL (3 files)")
+```
+
+Also unchanged: `~/.claude-personal/settings.json` (the `CLAUDE_CONFIG_DIR` of this machine) `df59e98ace8ab99c0c8935fb8920f944b95dd30ebfaa5020a41719a95763d87a`; `~/.cursor/cli-config.json` `9a6f8dff461757bb5dde1e57ed77af8fc635716984534cefe9ae6bc57cb64930`; `~/.cursor/hooks.json` `58ea9d7ec2bbfcd5776ef0d7033e52a7f2e9fd33ba69a91144189a2cb1c76507`; `~/.claude.json` `436f42e1a37c904610501e662906ccc3ea6d3e457eca33285ac274a3b6c4a238` (user-scope MCP list: `easy-verifier` only). `grep` for `easy-note-probe|easynoteprobe|probe_server|probe_hook` in the four settings/MCP files -> no match. `~/.claude/commands/note.md` absent. The probe reached each client only through `--mcp-config`/`--settings` temp files (Claude Code), `-c` overrides (Codex), and a project-scope `.cursor/mcp.json` in the temp repo (never used: Cursor did not run).
