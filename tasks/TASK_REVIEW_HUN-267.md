@@ -53,7 +53,8 @@ Mode: auto
 4. Left DDR 0002's "draft" wording unchanged — SAFER OPTION: DDRs are owner-approved and its Status is "Proposed (owner to accept)" ⚠ decided for you — please review
 Checks: tests `.venv/bin/pytest -q tests` — 205 passed; reviews none (minimal track); real run `context.capture` on a temp repo on `feat/AB2-12-demo` — printed `{'repo': 'rr', 'branch': 'feat/AB2-12-demo', 'task': 'AB2-12'}` (auto-checked, not /verify)
 Memory: nothing new (the HUN-254 override entry in memory/decisions.md already records this follow-up)
-Not done: merge (admin: after the auto verify pass); auto verify: running (T182)
+Not done: merge (admin: after the auto verify pass); auto verify: ☑ pass (session 493af14b-8971-4801-9160-e26a73d61c45, commit efac55957a55724c5a9d615b13997b04b674ee66, log .claude/verify-runs/HUN-267-efac55957a55.log)
+Closed: row moved to Done 2026-11-15 — auto verify pass (session 493af14b-8971-4801-9160-e26a73d61c45, commit efac55957a55724c5a9d615b13997b04b674ee66); Gates 5 and 6 checked
 
 ## Evidence
 
@@ -62,7 +63,7 @@ Not done: merge (admin: after the auto verify pass); auto verify: running (T182)
 | **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/test_context.py::test_task_from_branch` new cases `feat/AB2-12-x` -> `AB2-12`, `fix/PROJ-1234567` -> `PROJ-1234567`, `feat/A-12` -> None. Before the fix: `2 failed, 12 passed`. |
 | Verification command run | ☑ pass | 2026-11-15, HEAD 76cf68f: `.venv/bin/pytest -q tests` -> `205 passed in 11.09s`; `uvx ruff check --isolated src/easy_note/core/context.py tests/test_context.py` -> `All checks passed!` |
 | Negative cases hold | ☑ pass | The old pattern is the negative case: with it, the two new cases fail (run before the fix, see row 1). `fix/art1234`, `feat/hun-221`, `feat/A-12` still give no task. |
-| verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
+| verify | ☑ pass | auto-run by hook, session 493af14b-8971-4801-9160-e26a73d61c45, commit efac55957a55724c5a9d615b13997b04b674ee66, log .claude/verify-runs/HUN-267-efac55957a55.log — pass |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ N/A | Minimal track (`docs/claude-md/tracks.md`): one regex line in `src/easy_note/core/context.py`; Decision record in `tasks/MINIMAL_LOG.md`. |
 | Full smoke suite still green (no regression) | ☑ pass | `205 passed in 11.09s` (202 from main + 3 new cases). |
 | **Companion score (easy-verifier)** | ☑ N/A | Minimal track: no Stage 4 score step. |
