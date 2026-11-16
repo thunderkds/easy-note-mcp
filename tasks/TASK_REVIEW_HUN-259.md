@@ -52,25 +52,24 @@ Mode: auto
 3. After a prefix match, any error lets the prompt through and prints the error as `reason` with no `decision` key — FACT: PRD.md:78 "On any error it must let the prompt through and print the error as the reason only when the prefix matched."
 4. Spawned the Backend-Implementer on `sonnet` (C2 cell "sonnet or opus", Risk Medium) — FACT: PROJECT_SPEC.md:168 "| claude | `claude` | haiku | sonnet | sonnet or opus | opus |"
 5. AC 10 (manual smoke in real Claude Code) is left to the owner, not run by the Supervisor or an agent — RULE: tasks/TASK_GUIDE_HUN-259.md § Files Must NOT Touch (the real `~/.claude/` is off limits)
-Checks: pending
-Memory: pending
-Not done: merge (admin: after the auto verify pass); auto verify: not started; AC 10 manual smoke (yours)
-Paused: auto-mode check failed — no test run in memory/event-trace/HUN-259.jsonl — write /home/hungnguyenhuu/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d/$CLAUDE_CODE_SESSION_ID with the task ID (minimal-track step 1): `mkdir -p /home/hungnguyenhuu/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d && printf '%s\n%s\n' "HUN-259" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /home/hungnguyenhuu/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d/$CLAUDE_CODE_SESSION_ID`, then rerun the task's tests so the trace records them under the task, then stop [report b0716639a0c8]
+Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — 337 passed, 0 failed (hook 14, install 17, leak 46); reviews code-review — 0 P0, 0 P1, 2 P2, 1 P3 (no fix needed before merge), security-review — no findings; real run `printf '{"prompt":"/note hello","cwd":"<worktree>"}' | easy-note hook-prompt` (temp HOME) — printed `{"decision":"block","reason":"✓ noted 20261116-214223-78ec · easy-note-mcp · HUN-259"}` (auto-checked, not /verify)
+Memory: nothing new (follow-ups recorded in Evidence: `init` erases `capture_prefix`; PROJECT_SPEC.md Python-era pass-path wording)
+Not done: merge (admin: after the auto verify pass); auto verify: running (T182); AC 10 manual smoke in real Claude Code (yours: `easy-note install claude`, then `/note test`); html-report pages not generated
 
 ## Evidence
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/hook.rs` (14: AC 1–5, 9), `tests/install.rs` (17: AC 6, 6b, 7, 8, 11), `tests/leak.rs` `surface_hook` in `SURFACES` (AC 9), unit tests in `src/surfaces/install.rs` (4). `cargo test --test hook`: `test result: ok. 14 passed; 0 failed`; `cargo test --test install`: `test result: ok. 17 passed; 0 failed`; `cargo test --test leak`: `test result: ok. 46 passed; 0 failed`. AC 10 (owner smoke in real Claude Code) has no automated test by design. |
+| Verification command run | ☑ pass | Supervisor rerun at 52c3415, worktree hun-259-hook: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — fmt clean, clippy `Finished`, per binary: unit 24, main 0, cli 43, context 29, format 13, guard 37, hook 14, inbox 19, install 17, leak 46, mcp 20, query 45, store 30 — all `0 failed` (337 passed). |
+| Negative cases hold | ☑ pass | Red before implementation (agent report): `cargo test --test hook` `FAILED. 0 passed; 13 failed`; `cargo test --test install` `FAILED. 1 passed; 16 failed` (the pass is clap's usage error); `cargo test --test leak` `45 passed; 1 failed` (hook surface). Mutations caught: default prefix `/note` without space → `ac2_a_longer_command_a_bare_prefix_and_empty_text_do_not_match` failed; idempotence check disabled → 3 install tests failed. |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
-| **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | code-review over `main...HEAD`: `src/surfaces/hook.rs`, `src/surfaces/install.rs`, `src/core/config.rs`, `src/surfaces/cli.rs`, `src/core/mod.rs`, `Cargo.toml`, plus callers of `safe`/`confirmation` (`src/surfaces/cli/write.rs`). Tests read for AC coverage only. Lane: `C2, 11 files, 1913 lines, EXCEEDS (lines 1913 > 500); unpredicted: src/core/mod.rs, tasks/TASK_GUIDE_HUN-259.md` (1177 of the lines are tests). Result: 0 P0, 0 P1, 2 P2 (`init`/`save_dir` erases `capture_prefix`; PROJECT_SPEC.md Python-era "pass path imports only the stdlib"), 1 P3 (guide names a missing `note_prefix.json` fixture). |
+| Full smoke suite still green (no regression) | ☑ pass | Same run as the verification row: every pre-existing binary keeps its count (cli 43, inbox 19, mcp 20, query 45, store 30, guard 37, context 29, format 13); leak 45 → 46 only by the new hook surface. |
+| **Companion score (easy-verifier)** | ☑ N/A | easy-verifier not run in this auto run; the merge gate blocks only on ☑ fail |
+| **UI: Visual regression (diff or verdict pasted)** | ☑ N/A | CLI-only task, no UI component |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ N/A | CLI-only task, no UI component |
+| **UI: Responsiveness at target viewports** | ☑ N/A | CLI-only task, no UI component |
 
 ---
 
