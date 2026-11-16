@@ -3,6 +3,25 @@
 > One Decision record per minimal-track task (`docs/claude-md/tracks.md`), **newest first**: insert each
 > new record directly under this note.
 
+## HUN-264 — README, RUNBOOK, client config snippets, install guide · minimal
+Mode: auto
+**Asked:** "continue [admin]" (session tag loop; HUN-262 paused for owner approval, so the next ready ticket at P1)
+**Decisions:**
+1. Track minimal — C0, Risk Low, docs plus one test, no UI, no user data — RULE: `docs/claude-md/tracks.md` `## Tracks` (minimal unless C2+, Risk Medium+, a UI component, or more than one agent)
+2. Install is `cargo install --path . --locked` plus an `n` symlink, not `uv tool install` (the guide's Python-era AC 1) — FACT: docs/ddr/0005-rust-single-binary.md:30 "3. Install: `cargo install --path .` (from a checkout)"
+3. The README lists the 5 current MCP tools only; the 2 enrich tools wait for HUN-262 and the owner's D37 approval — SAFER OPTION: docs must match the binary ⚠ decided for you — please review
+4. The command check scans only code spans and fenced blocks, so prose like "easy-note never writes" is not read as a command — SAFER OPTION: no false failures, every shown command still checked
+5. Kept the HUN-260 "One key press" section unchanged under the new sections — SAFER OPTION: smallest change
+6. Cursor's snippet is not run: `cursor-agent` is not signed in and sign-in writes `~/.cursor` — RULE: tasks/TASK_GUIDE_HUN-264.md § Files Must NOT Touch (the real `~/.cursor/` is off limits); owner run left open
+**Checked:**
+- New test `tests/readme.rs` (`every_command_the_readme_names_is_a_real_subcommand`, `the_readme_covers_install_first_note_clients_and_boundaries`, `the_word_finder_skips_names_that_are_not_commands`) — red before the README change: `test result: FAILED. 1 passed; 2 failed` (`README is missing "cargo install --path ."`); passes after: `test result: ok. 3 passed; 0 failed`. Mutation: a `easy-note bogus` span made it fail with `README names commands that do not exist: ["bogus"]`.
+- Suite: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — 379 passed, 0 failed
+- Real run (temp HOME, 2026-11-16 15:32 UTC): `claude mcp add easy-note -- easy-note serve` printed `Added stdio MCP server easy-note with command: easy-note serve to local config`; `claude mcp list` printed `easy-note: easy-note serve - ✔ Connected`; Codex with the README `config.toml`: `codex mcp list` printed `easy-note  easy-note  serve  -    -    enabled`; first note `easy-note add retry bug only on Firefox #flaky` printed `✓ noted 20261116-223537-a64a`, `easy-note search firefox` found it
+- Simplify: skipped: under 20 lines (0 changed lines outside tests and docs)
+**Memory:** nothing new
+**Files:** `README.md`, `RUNBOOK.md`, `tests/readme.rs`, `tasks/MINIMAL_LOG.md`
+**Not done:** merge (admin: after the auto verify pass); auto verify: running (T182); Cursor snippet run (yours: needs `cursor-agent` sign-in); README enrich tools after HUN-262
+
 ## HUN-267 — Align context task pattern with PRD FR-005 · minimal
 **Asked:** "you can start automate" (after the Supervisor offered the HUN-254 ticket-pattern fix as the next small item)
 **Decisions:**

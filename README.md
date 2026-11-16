@@ -1,8 +1,108 @@
 # easy-note
 
-Capture one-line notes from the terminal, from an editor and from MCP clients into a folder of
-Markdown files. This README holds the "One key press" section only; the full README comes with
-HUN-264.
+Capture one-line notes from the terminal, from Claude Code, Codex and Cursor, and from a desktop
+key press, into a folder of plain Markdown files. Each note gets its context for free: the repo,
+the branch and the task ID of the folder you were in. easy-note is one Linux binary with a CLI and
+an MCP server. It runs no model, makes no network call and masks secrets on every write and read.
+
+## Install
+
+Linux only, Rust stable:
+
+```
+git clone https://github.com/thunderkds/easy-note-mcp && cd easy-note-mcp
+cargo install --path . --locked
+ln -s "$(command -v easy-note)" ~/.cargo/bin/n   # `n` is the same binary: `n <text>` = `easy-note add <text>`
+```
+
+Another `n` (for example the Node version manager) may already be on `PATH`. `easy-note doctor`
+reports the clash; `easy-note add` always works.
+
+## First note
+
+No setup is needed. The first write creates `~/easy-notes`:
+
+```
+n retry bug only on Firefox #flaky
+```
+
+prints `✓ noted 20261114-164713-a1b2 · easy-ui-mcp · T120`. Then:
+
+```
+easy-note ls                 # newest first
+easy-note search firefox     # every word must match
+easy-note show 20261114-164713-a1b2
+easy-note tag 20261114-164713-a1b2 ui
+easy-note rm 20261114-164713-a1b2       # to the trash; `easy-note restore` brings it back
+```
+
+To keep notes somewhere else (a synced folder, for example), run `easy-note init` once, or set
+`EASY_NOTE_DIR`. `easy-note path` prints the folder in use.
+
+## Clients
+
+easy-note never writes a client's config file. Add it yourself, once, with one of these.
+
+**Claude Code**:
+
+```
+claude mcp add easy-note -- easy-note serve
+```
+
+This adds it for the current project only. Add `--scope user` after `add` to have it in every project.
+
+Then `/note <text>` in Claude Code saves a note with no model turn. That needs the prompt hook:
+
+```
+easy-note install claude
+```
+
+It shows a diff of `settings.json`, keeps a timestamped backup, and adds one hook entry and
+`commands/note.md` in `$CLAUDE_CONFIG_DIR` (else `~/.claude`). `easy-note uninstall claude`
+removes exactly those.
+
+**Codex**, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.easy-note]
+command = "easy-note"
+args = ["serve"]
+```
+
+Codex starts the server in the folder you started `codex` from. Started elsewhere, the note has no
+repo context unless the call passes `cwd`.
+
+**Cursor**, in `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "easy-note": { "command": "easy-note", "args": ["serve"] }
+  }
+}
+```
+
+Cursor's start folder is not measured yet, so pass `cwd` when the context matters.
+
+In Codex and Cursor, write `note: <text>` and the model calls `note_add` (one model turn). The MCP
+tools are `note_add`, `note_search`, `note_list`, `note_read` and `note_stats`. No tool edits,
+deletes or moves a note.
+
+## Notes are plain files
+
+Each note is one Markdown file, `<notes dir>/YYYY/MM/<id>.md`: a short front matter block
+(`id`, `created`, `repo`, `branch`, `task`, `tags`, `source`) and your text, exactly as typed.
+Read them, grep them, sync them or back them up with any tool. The format is a public contract:
+`docs/NOTE_FORMAT.md`. `easy-note edit` opens a note in `$EDITOR`; secrets are masked on save.
+
+Files dropped in `<notes dir>/inbox/` (`.md` or `.txt`, for example from a phone) are read as notes
+and never rewritten.
+
+## easy-note and easy-memory
+
+They do different jobs. easy-memory saves agent turns automatically (a "memory note"). easy-note
+saves only what you ask it to save (a "note"): your words, typed with `n`, `/note`, `note:` or the
+quick box. Neither reads the other's folder.
 
 ## One key press
 
