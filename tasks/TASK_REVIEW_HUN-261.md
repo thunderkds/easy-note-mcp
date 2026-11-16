@@ -52,9 +52,9 @@ Mode: auto
 3. Spawned the Backend-Implementer on `sonnet` — FACT: PROJECT_SPEC.md:169 "haiku | sonnet | sonnet or opus | opus"
 4. Inbox ids keep `id` fixed to `inbox/<stem>` even when the file has valid `easy-note: 1` front matter (every other key wins), so `show`/`rm`/`restore` always route to the file — SAFER OPTION: a front-matter id would point `rm` at a month folder that does not hold the file ⚠ decided for you — please review
 5. Trash keeps the origin in the trash file name (`inbox__<file name>`) instead of a sidecar file — SAFER OPTION: one file per trashed note, no second file to lose; matches the `inbox__<stem>` naming in docs/NOTE_FORMAT.md ⚠ decided for you — please review
-Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — pending (agent running); reviews pending; real run pending
+Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` at 679e8da (2026-11-16 10:26 UTC) — exit 0: lib 20, cli 43, context 29, format 13, guard 37, inbox 16, leak 46, mcp 19, query 45, store 30 passed; code-review (Supervisor, inline) — no P0/P1/P2; P3: lane check EXCEEDS (1194 lines > 250, mostly tests), `edit` calls `ensure_writable` after `read`; security-review — running; real run — pending
 Memory: nothing new (task in progress; the memory pass runs after merge)
-Not done: implementation (Backend-Implementer running in the background); code-review, security-review, auto verify, merge (admin: after the auto verify pass)
+Not done: security-review result, Evidence rows, auto verify, merge (admin: after the auto verify pass) — stopped at the usage limit
 Paused: auto-mode check failed — Risk Medium: decision 1 (`SAFER OPTION`) is a choice — it is flagged ⚠ — so it must be `DEBATED` with exactly 2 Advocates named; Risk Medium: decision 4 (`SAFER OPTION`) is a choice — it is flagged ⚠ — so it must be `DEBATED` with exactly 2 Advocates named; Risk Medium: decision 5 (`SAFER OPTION`) is a choice — it is flagged ⚠ — so it must be `DEBATED` with exactly 2 Advocates named [report 72cdbdd3d1aa]
 
 ## Evidence
