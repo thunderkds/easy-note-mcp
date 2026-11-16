@@ -53,25 +53,25 @@ Mode: auto
 4. Dropped the `tkinter` tier: `zenity` → `kdialog` → terminal prompt; no Rust GUI window in its place — FACT: docs/ddr/0005-rust-single-binary.md:31 "4. **All Python is removed** in the first Rust task"
 5. The "clear the context with one key" control is a leading `-` typed in the box (zenity/kdialog entries have no custom key binding); `--cwd` wins over the last context — SAFER OPTION: works the same in every tier, keeps the context by default, Risk Low (decide and log, no Advocates) ⚠ decided for you — please review
 6. AC 6 timing and the UI rows are measured by the agent under `xvfb-run` with a stub/real `zenity`; GNOME Wayland timing and look (AC 6b) and the editor snippets tried once (AC 9b) are left to the owner — SAFER OPTION: no dialog or notification is ever opened on the owner's live desktop during an auto run ⚠ decided for you — please review
-Checks: pending
-Memory: pending
-Not done: merge (admin: after the auto verify pass); auto verify: not started; AC 6b and AC 9b (yours)
+Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` at 9e8df5e — 376 passed, 0 failed (quick 26, hotkey 4, install 23, leak 46); reviews code-review — 0 P0, 0 P1, 1 P2 (silent cancel on a dialog error, follow-up), security-review not required (Risk Low); UX — Xvfb screenshots pass; real run `xvfb-run` real zenity box (agent, killed before save) — showed `Note — proj · T120 (start with - to drop)` (auto-checked, not /verify)
+Memory: nothing new (follow-up recorded in Evidence: only exit 1 should be a cancel)
+Not done: merge (admin: after the auto verify pass); auto verify: running (T182); AC 6b GNOME Wayland timing and look, AC 9b README snippets tried once (yours); html-report pages not generated
 Paused: auto-mode check failed — extended track, but the trace has no `code-review` Skill call (Stage 4 runs in auto mode) [report efe16998cf08]
 
 ## Evidence
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/quick.rs` (26: AC 1–6, 10), `tests/hotkey.rs` (4: AC 7), `tests/install.rs` (+6 `ac8_*`: AC 8), `tests/leak.rs` `surface_quick` in `SURFACES` (AC 10), unit tests in `src/surfaces/quick.rs` (3). `cargo test`: quick `26 passed; 0 failed`, hotkey `4 passed; 0 failed`, install `23 passed; 0 failed`, leak `46 passed; 0 failed`. AC 6b and AC 9b are the owner's by design. |
+| Verification command run | ☑ pass | Supervisor rerun at 9e8df5e: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — fmt clean, clippy `Finished`, 376 passed, 0 failed (unit 27, cli 43, context 29, format 13, guard 37, hook 14, hotkey 4, inbox 19, install 23, leak 46, mcp 20, query 45, quick 26, store 30). |
+| Negative cases hold | ☑ pass | Red before implementation (agent report, `cargo test --no-fail-fast --test quick --test hotkey --test install --test leak`): hotkey `0 passed, 4 failed`; install `17 passed, 6 failed`; leak `45 passed, 1 failed`; quick `1 passed, 25 failed` (`error: unrecognized subcommand 'quick'`). Mutations caught: window 3 h → `ac3_a_note_two_hours_old_or_more_gives_no_context` failed; `-x` as drop marker → `ac3_only_a_lone_dash_drops_the_context_not_dash_words` failed. |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
-| **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | code-review over `main...HEAD`: `src/surfaces/quick.rs`, `src/surfaces/install.rs`, `src/surfaces/cli.rs`, `src/surfaces/mod.rs`, README.md; callers of `confirmation`/`safe`; tests read for AC coverage. Lane: `C1, 14 files, 1702 lines, EXCEEDS (files 14 > 6; lines 1702 > 250)` (869 test lines, 4 PNGs). Result: 0 P0, 0 P1, 1 P2 (`quick.rs:203` any non-zero dialog exit is a silent cancel, e.g. zenity rejecting the non-ASCII label in a non-UTF-8 locale; follow-up). security-review not required (Risk Low). |
+| Full smoke suite still green (no regression) | ☑ pass | Same run: pre-existing binaries keep their counts (cli 43, context 29, format 13, guard 37, hook 14, inbox 19, mcp 20, query 45, store 30); install 17 → 23 and leak 45 → 46 only by new tests. |
+| **Companion score (easy-verifier)** | ☑ N/A | easy-verifier not run in this auto run; the merge gate blocks only on ☑ fail |
+| **UI: Visual regression (diff or verdict pasted)** | ☑ pass | Real `/usr/bin/zenity` 4.2.1 under `xvfb-run`, LLM-vision read by the Supervisor: `reports/hun-260/quick-cwd-1280x800.png` shows title `easy-note`, text `Note — proj · T120 (start with - to drop)`, one entry row, Cancel/OK, no extra chrome; `quick-nocontext-2560x1440.png` shows `Note` and one entry row. GNOME Wayland look is the owner's (AC 6b). |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ pass | LLM vision on the same PNGs: native GTK dialog, system theme colours and UI font, no hard-coded palette (easy-note sets none; only argv `--title`/`--text`). |
+| **UI: Responsiveness at target viewports** | ☑ pass | Xvfb 1280×800 and 2560×1440: the box (~330×260 px at the top-left, no window manager) is fully on screen, readable, not clipped. Mobile/tablet N/A (desktop-only surface). |
 
 ---
 
