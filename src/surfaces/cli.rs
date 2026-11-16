@@ -10,7 +10,7 @@ mod write;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 use crate::core::config::ConfigError;
 use crate::core::guard;
@@ -57,6 +57,13 @@ impl From<FilterArgs> for Filters {
             day: f.day,
         }
     }
+}
+
+/// What `install` and `uninstall` set up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum Target {
+    /// The Claude Code `/note` hook and `commands/note.md` in the Claude Code config dir.
+    Claude,
 }
 
 #[derive(Debug, PartialEq, Eq, Subcommand)]
@@ -141,6 +148,12 @@ pub enum Command {
     Doctor,
     /// Print the notes dir.
     Path,
+    /// Claude Code `UserPromptSubmit` hook: read the event on stdin, save a `/note ...` prompt.
+    HookPrompt,
+    /// Add the Claude Code hook (shows a diff, keeps a backup of settings.json).
+    Install { target: Target },
+    /// Remove what `install` added.
+    Uninstall { target: Target },
 }
 
 /// When the binary is started as `n`, run it as `easy-note add`.
@@ -176,7 +189,10 @@ pub fn starts_mcp(command: &Command) -> bool {
         | Command::Trash { .. }
         | Command::Stats { .. }
         | Command::Doctor
-        | Command::Path => false,
+        | Command::Path
+        | Command::HookPrompt
+        | Command::Install { .. }
+        | Command::Uninstall { .. } => false,
     }
 }
 
@@ -253,7 +269,7 @@ type Outcome = Result<(), Fail>;
 
 /// Text that came from a note, an argument or an error: secrets masked, and every control
 /// character but newline and tab shown as `\xNN`, so no note can drive the terminal.
-fn safe(text: &str) -> String {
+pub(crate) fn safe(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in guard::mask_for_output(text).chars() {
         if c.is_control() && c != '\n' && c != '\t' {
@@ -296,7 +312,12 @@ fn count(n: usize, word: &str) -> String {
 
 /// The one confirmation line every write prints (FR-021):
 /// `✓ noted <id> · <repo> · <task> · N secret(s) masked: <kinds>`.
-fn confirmation(verb: &str, id: &str, details: &[Option<&str>], masked: &[&str]) -> String {
+pub(crate) fn confirmation(
+    verb: &str,
+    id: &str,
+    details: &[Option<&str>],
+    masked: &[&str],
+) -> String {
     let mut line = format!("✓ {verb} {id}");
     for detail in details.iter().flatten() {
         line.push_str(" · ");
@@ -332,6 +353,24 @@ fn dispatch(command: Command) -> Outcome {
         Command::Stats { json, filters } => read::stats(json, filters.into()),
         Command::Doctor => read::doctor(),
         Command::Path => read::path(),
+        Command::HookPrompt => {
+            super::hook::run();
+            Ok(())
+        }
+        Command::Install { target } => installed(target, super::install::Action::Install),
+        Command::Uninstall { target } => installed(target, super::install::Action::Uninstall),
+    }
+}
+
+/// `install` / `uninstall`: print what the installer reports. The text may quote lines of the
+/// person's settings file, so it is masked like every other output.
+fn installed(target: Target, action: super::install::Action) -> Outcome {
+    let result = match target {
+        Target::Claude => super::install::claude(action),
+    };
+    match result {
+        Ok(text) => say_raw(&safe(&text)),
+        Err(message) => Err(Fail::runtime(message)),
     }
 }
 
@@ -530,6 +569,13 @@ mod tests {
             },
             Command::Doctor,
             Command::Path,
+            Command::HookPrompt,
+            Command::Install {
+                target: Target::Claude,
+            },
+            Command::Uninstall {
+                target: Target::Claude,
+            },
         ]
     }
 

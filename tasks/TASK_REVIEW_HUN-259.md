@@ -55,6 +55,7 @@ Mode: auto
 Checks: pending
 Memory: pending
 Not done: merge (admin: after the auto verify pass); auto verify: not started; AC 10 manual smoke (yours)
+Paused: auto-mode check failed — no test run in memory/event-trace/HUN-259.jsonl — write /home/hungnguyenhuu/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d/$CLAUDE_CODE_SESSION_ID with the task ID (minimal-track step 1): `mkdir -p /home/hungnguyenhuu/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d && printf '%s\n%s\n' "HUN-259" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /home/hungnguyenhuu/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d/$CLAUDE_CODE_SESSION_ID`, then rerun the task's tests so the trace records them under the task, then stop [report b0716639a0c8]
 
 ## Evidence
 
@@ -80,12 +81,66 @@ Not done: merge (admin: after the auto verify pass); auto verify: not started; A
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE** (captured 2026-11-16 12:04:46 UTC, base commit cb6507c, `cargo build` then temp HOME and EASY_NOTE_DIR, before any implementation commit):
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+```
+$ date -u
+Mon Nov 16 12:04:46 PM UTC 2026
+$ printf '%s' '{"prompt":"/note hello","cwd":"<worktree>"}' | target/debug/easy-note hook-prompt; echo exit=$?
+error: unrecognized subcommand 'hook-prompt'
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+Usage: easy-note <COMMAND>
+
+For more information, try '--help'.
+exit=2
+$ target/debug/easy-note install claude; echo exit=$?
+error: unrecognized subcommand 'install'
+
+  tip: a similar subcommand exists: 'init'
+
+Usage: easy-note <COMMAND>
+
+For more information, try '--help'.
+exit=2
+$ ls -A $HOME      # nothing written
+```
+
+**AFTER** (captured 2026-11-16 14:42:23 UTC by `date -u`, same commands, temp HOME and EASY_NOTE_DIR, `<worktree>` = this branch's worktree; the run was made after the change, before the commit):
+
+```
+$ date -u
+Mon Nov 16 02:42:23 PM UTC 2026
+$ printf '%s' '{"prompt":"/note hello","cwd":"<worktree>"}' | target/debug/easy-note hook-prompt; echo exit=$?
+{"decision":"block","reason":"✓ noted 20261116-214223-78ec · easy-note-mcp · HUN-259"}
+exit=0
+$ target/debug/easy-note install claude; echo exit=$?
+--- /dev/null
++++ <tmp HOME>/.claude/settings.json
+@@ -1,0 +1,15 @@
++{
++  "hooks": {
++    "UserPromptSubmit": [
++      {
++        "hooks": [
++          {
++            "type": "command",
++            "command": "easy-note hook-prompt",
++            "timeout": 5
++          }
++        ]
++      }
++    ]
++  }
++}
+✓ added the easy-note hook to <tmp HOME>/.claude/settings.json
+✓ wrote <tmp HOME>/.claude/commands/note.md
+exit=0
+$ target/debug/easy-note install claude; echo exit=$?     # second run
+already installed (<tmp HOME>/.claude)
+exit=0
+```
+
+**DELTA**: In Claude Code, the owner can run `easy-note install claude` once, and then `/note …` saves a note with no model turn (the hook answers `{"decision":"block","reason":"✓ noted <id> · <repo> · <task>"}`), while every other prompt passes untouched in about 2 ms; before, both subcommands did not exist and exited 2.
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/Txxx.jsonl`, never the
 implementing agent alone]

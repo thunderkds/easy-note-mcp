@@ -55,6 +55,34 @@ pub fn notes_dir() -> Result<PathBuf, ConfigError> {
     }
 }
 
+/// The capture prefix of the Claude Code hook when config.toml sets none (DDR 0003, D18).
+pub const DEFAULT_CAPTURE_PREFIX: &str = "/note ";
+
+/// `capture_prefix` in config.toml, else `/note `. A missing file or key gives the default. An
+/// unreadable file, a bad TOML text, or a value that is not a non-empty string is an error (an
+/// empty prefix would match every prompt); the hook treats any error as "use the default".
+pub fn capture_prefix() -> Result<String, ConfigError> {
+    let path = config_path()?;
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(DEFAULT_CAPTURE_PREFIX.to_string())
+        }
+        Err(e) => return Err(ConfigError(format!("cannot read {}: {e}", path.display()))),
+    };
+    let data: toml::Table = text
+        .parse()
+        .map_err(|e| ConfigError(format!("cannot read {}: {e}", path.display())))?;
+    match data.get("capture_prefix") {
+        None => Ok(DEFAULT_CAPTURE_PREFIX.to_string()),
+        Some(toml::Value::String(s)) if !s.is_empty() => Ok(s.clone()),
+        Some(_) => Err(ConfigError(format!(
+            "{}: 'capture_prefix' must be a non-empty string",
+            path.display()
+        ))),
+    }
+}
+
 /// Write `dir = "<path>"` as the whole config.toml, atomically (used by `easy-note init`).
 pub fn save_dir(path: &Path) -> Result<(), ConfigError> {
     let target = config_path()?;

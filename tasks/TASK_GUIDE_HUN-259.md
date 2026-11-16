@@ -156,7 +156,7 @@ Design (Supervisor, binding; auto decisions in TASK_REVIEW):
 | `src/core/config.rs` | `capture_prefix` read |
 | `Cargo.toml` | `serde_json` feature `preserve_order` |
 | `tests/hook.rs`, `tests/install.rs`, `tests/leak.rs` | new / hook surface |
-| Pre-existing pin tests | List each test in `tests/` that pins text, paths or counts of a file this task edits, and how it is handled |
+| Pre-existing pin tests | Checked 2026-11-16 by grep in `tests/` and `src/`. (1) `tests/cli.rs::usage_errors_exit_2_runtime_errors_exit_1_and_help_documents_both` pins that each old subcommand is in `--help` (a `contains` list, not an exact list): new subcommands do not break it; no change. (2) `src/surfaces/cli.rs` unit tests `every_command` and `only_serve_starts_mcp` and the exhaustive `match` in `starts_mcp`: the new variants must be added there (not a test that breaks silently: it does not compile until they are). (3) `tests/leak.rs::the_registry_holds_the_core_the_cli_and_the_inbox_surface` checks three names only; adding `hook` to `SURFACES` is additive (AC 9). No test pins exact help text, `Cargo.lock` or the `serde_json` features. |
 
 ## Files Must NOT Touch
 

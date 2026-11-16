@@ -659,11 +659,89 @@ fn surface_inbox(text: &str) -> Captured {
     got
 }
 
+/// The Claude Code prompt hook: the real binary, fed `UserPromptSubmit` events that hold the
+/// planted text. The match path, a prompt that passes, a truncated event that echoes the text,
+/// a failing store and a config error that names a path. Every stdout line (and the strings in
+/// it, decoded from JSON) and all stderr are captured and grepped.
+fn surface_hook(text: &str) -> Captured {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let home = PathBuf::from(std::env::var("HOME").unwrap());
+    let mut got = Captured {
+        objects: vec![],
+        stdout: String::new(),
+        stderr: String::new(),
+    };
+    let mut run = |event: &str, tweak: &dyn Fn(&mut Command)| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_easy-note"));
+        cmd.arg("hook-prompt")
+            .current_dir(&home)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        tweak(&mut cmd);
+        let mut child = cmd.spawn().unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(event.as_bytes())
+            .unwrap();
+        let out = child.wait_with_output().unwrap();
+        let (o, e) = (
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        );
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "the hook never fails a prompt: {e}"
+        );
+        let n = got.objects.len();
+        got.objects.push(format!("run {n}\n{o}\n{e}"));
+        for line in o.lines() {
+            if let Ok(v) = serde_json::from_str::<Value>(line) {
+                let mut strings = vec![];
+                json_strings(&v, &mut strings);
+                got.objects.extend(strings);
+            }
+        }
+        got.stdout.push_str(&o);
+        got.stderr.push_str(&e);
+        o
+    };
+    let cwd = home.to_string_lossy().into_owned();
+    let event = |prompt: &str| serde_json::json!({"prompt": prompt, "cwd": cwd}).to_string();
+
+    let blocked = run(&event(&format!("/note {text}")), &|_| {});
+    assert!(blocked.contains("\"decision\":\"block\""), "{blocked}");
+    run(&event(&format!("not a note: {text}")), &|_| {});
+    // a truncated event: malformed input, so the prompt passes and nothing is echoed
+    let truncated = event(&format!("/note {text}"));
+    run(&truncated[..truncated.len() - 2], &|_| {});
+    // the store cannot write: the error is the reason
+    let blocker = home.join("blocker");
+    std::fs::write(&blocker, "x").unwrap();
+    let failed = run(&event(&format!("/note {text}")), &|c| {
+        c.env("EASY_NOTE_DIR", blocker.join("notes"));
+    });
+    assert!(!failed.contains("\"decision\""), "{failed}");
+    // a config error names a path under HOME
+    let bad_home = home.join("bad-home");
+    std::fs::create_dir_all(bad_home.join(".config/easy-note/config.toml")).unwrap();
+    run(&event(&format!("/note {text}")), &|c| {
+        c.env("HOME", &bad_home).env_remove("EASY_NOTE_DIR");
+    });
+    got
+}
+
 const SURFACES: &[(&str, Surface)] = &[
     ("core", surface_core),
     ("cli", surface_cli),
     ("mcp", surface_mcp),
     ("inbox", surface_inbox),
+    ("hook", surface_hook),
 ];
 
 fn nothing_leaked(secret: &str, got: &Captured, root: &Path) -> Result<(), String> {
@@ -713,7 +791,7 @@ fn planted_secret_never_leaks() {
 
 #[test]
 fn the_registry_holds_the_core_the_cli_and_the_inbox_surface() {
-    for wanted in ["core", "cli", "inbox"] {
+    for wanted in ["core", "cli", "inbox", "hook"] {
         assert!(SURFACES.iter().any(|(name, _)| *name == wanted), "{wanted}");
     }
 }
