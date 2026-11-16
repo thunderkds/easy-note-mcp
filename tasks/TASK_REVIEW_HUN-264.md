@@ -44,6 +44,18 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 -->
 
+## Auto decisions
+
+Mode: auto
+1. Track minimal — C0, Risk Low, docs plus one test, no UI, no user data; the Decision record is `tasks/MINIMAL_LOG.md` § HUN-264 — RULE: `docs/claude-md/tracks.md` `## Tracks`
+2. Install is `cargo install --path . --locked` plus an `n` symlink, not `uv tool install` — FACT: docs/ddr/0005-rust-single-binary.md:30 "3. Install: `cargo install --path .` (from a checkout)"
+3. The README lists the 5 current MCP tools only; the enrich tools wait for HUN-262 and the owner's D37 approval — SAFER OPTION: docs must match the binary ⚠ decided for you — please review
+4. The command check scans only code spans and fenced blocks — SAFER OPTION: no false failures on prose, every shown command still checked
+5. Cursor's snippet is not run (`cursor-agent` not signed in; sign-in writes `~/.cursor`) — RULE: tasks/TASK_GUIDE_HUN-264.md § Files Must NOT Touch
+Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — 379 passed, 0 failed (readme 3, red first `1 passed; 2 failed`); reviews code-review — 0 findings (lane EXCEEDS by the record and the test file); real run `claude mcp list` (temp HOME) — printed `easy-note: easy-note serve - ✔ Connected` (auto-checked, not /verify)
+Memory: nothing new
+Not done: merge (admin: after the auto verify pass); auto verify: ☑ pass (session 657e766b-020c-46dc-a747-262d0190c2b1, commit 5e090f49c85b8812fa182c27300b868b81f7918a, log .claude/verify-runs/HUN-264-5e090f49c85b.log); Cursor snippet run (yours)
+
 ## Evidence
 
 | Check | Result | Notes / output snippet |
@@ -51,7 +63,7 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 | **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/readme.rs`: `test result: ok. 3 passed; 0 failed` (red first: `1 passed; 2 failed`). Full record: `tasks/MINIMAL_LOG.md` § HUN-264 (minimal track). |
 | Verification command run | ☑ pass | `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` at 208ad51 — 379 passed, 0 failed |
 | Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
-| verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
+| verify | ☑ pass | auto-run by hook, session 657e766b-020c-46dc-a747-262d0190c2b1, commit 5e090f49c85b8812fa182c27300b868b81f7918a, log .claude/verify-runs/HUN-264-5e090f49c85b.log — pass |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
 | Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
 | **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
