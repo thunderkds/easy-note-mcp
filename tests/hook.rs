@@ -317,6 +317,10 @@ fn ac3_a_core_error_after_a_match_passes_the_prompt_and_shows_the_error() {
     let reason = v["reason"].as_str().unwrap();
     assert!(reason.starts_with("easy-note: "), "{reason}");
     assert!(reason.ends_with(" — note not saved"), "{reason}");
+    // Claude Code shows `reason` only with a block, so `systemMessage` carries the warning.
+    assert_eq!(v["systemMessage"].as_str(), Some(reason), "{v}");
+    assert!(v.get("hookSpecificOutput").is_none(), "{v}");
+    assert!(v.get("additionalContext").is_none(), "{v}");
 }
 
 #[test]
@@ -337,6 +341,8 @@ fn ac3_the_error_reason_is_masked() {
     let reason = v["reason"].as_str().unwrap();
     assert!(reason.starts_with("easy-note: "), "{reason}");
     assert!(reason.contains("[masked:aws_key]"), "{reason}");
+    assert_eq!(v["systemMessage"].as_str(), Some(reason), "{v}");
+    assert!(v.get("hookSpecificOutput").is_none(), "{v}");
     assert!(!stdout.contains(AWS), "{stdout}");
     assert!(!String::from_utf8_lossy(&o.stderr).contains(AWS));
 }

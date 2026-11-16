@@ -45,9 +45,11 @@ fn answer(input: &[u8]) -> Option<String> {
     let cwd = event.get("cwd").and_then(Value::as_str).map(Path::new);
     let reply = match save(text, cwd) {
         Ok(reason) => json!({"decision": "block", "reason": reason}),
-        // The prompt passes: there is no `decision`, so Claude Code goes on and shows the reason.
+        // The prompt passes, so there is no `decision`. Claude Code drops `reason` without a
+        // block, so `systemMessage` carries the same warning to the person.
         Err(message) => {
-            json!({"reason": format!("easy-note: {} — note not saved", safe(&message))})
+            let warning = format!("easy-note: {} — note not saved", safe(&message));
+            json!({"reason": warning, "systemMessage": warning})
         }
     };
     Some(reply.to_string())
