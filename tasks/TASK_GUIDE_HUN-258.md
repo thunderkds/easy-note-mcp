@@ -1,10 +1,10 @@
-**Date**: 2026-11-14
+**Date**: 2026-11-16 (re-planned for Rust; first plan 2026-11-14)
 **Complexity Level**: C1
 **Risk Level**: Medium
 **Priority**: P1
 **Assigned agent**: Backend-Implementer
 **Agent guide**: `agents/backend.md`
-**Plan ID**: T008 (`linear-tasks.md`, `PROJECT_SPEC.md` Tasks)
+**Plan ID**: T008 (`linear-tasks.md`, `PROJECT_SPEC.md` Tasks); Rust re-plan under DDR 0005
 
 ---
 
@@ -30,6 +30,10 @@ Plan T008: "5 tools registered and no others (test lists the names); each of the
 **Restated intent** (Supervisor's interpretation, in the project's domain language):
 
 > Agents in Claude Code, Codex and Cursor can add, search and read the person's notes, but can never edit, delete or move one.
+>
+> DDR 0005: the server is `src/surfaces/mcp.rs` in the one Rust binary, built on `rmcp` (already a dependency; `serve` already answers `initialize` over stdio with no tools, HUN-268). The tools are thin calls into `core::store`, `core::query`, `core::context`, `core::guard`. The tokio runtime is built only inside `serve` (NFR-010; HUN-257 owns the `starts_mcp` test).
+>
+> Parallel work: HUN-257 (CLI) runs at the same time on `feat/HUN-257-rust-cli`. This task changes `src/surfaces/cli.rs` only to add the `serve` flags (`--http`, `--host`, `--port`) on the existing `Command::Serve` variant, and `tests/leak.rs` only to add one `SURFACES` entry. Keep both hunks small; the second branch to merge resolves the conflict.
 
 **Out of scope** (what this task explicitly does NOT do):
 
@@ -48,10 +52,10 @@ Plan T008: "5 tools registered and no others (test lists the names); each of the
 
 ### Requirement Fidelity Gate (sign off BEFORE implementation)
 
-- [ ] Restated intent confirmed to match the user's request (by Supervisor / user — not the implementing agent)
-- [ ] Domain terms align with `PROJECT_SPEC.md` glossary (`grill-with-docs` run if terminology was fuzzy)
-- [ ] Every Acceptance Criterion below traces to a line in the Requirement
-- [ ] All Requirement Refs exist in `PRD.md` and are fully covered by the Acceptance Criteria above
+- [x] Restated intent confirmed to match the user's request (by Supervisor / user — not the implementing agent)
+- [x] Domain terms align with `PROJECT_SPEC.md` glossary (`grill-with-docs` run if terminology was fuzzy)
+- [x] Every Acceptance Criterion below traces to a line in the Requirement
+- [x] All Requirement Refs exist in `PRD.md` and are fully covered by the Acceptance Criteria above
 
 > An agent must NOT start implementing until this gate is checked. If anything here is unclear,
 > STOP and ask the Supervisor (Karpathy: Think Before Coding).
@@ -60,7 +64,7 @@ Plan T008: "5 tools registered and no others (test lists the names); each of the
 
 ## Dependencies & Reachability
 
-**Depends on**: HUN-254 (plan T004) — context capture incl. roots; HUN-255 (plan T005) — guard + leak harness; HUN-256 (plan T006) — query engine
+**Depends on**: HUN-271 (R4) — context capture (`core::context`); HUN-270 (R3) — guard + leak harness (`core::guard`, `tests/leak.rs`); HUN-272 (R5) — query engine (`core::query`); HUN-269 (R2) — store (`core::store`); HUN-268 (R1) — `serve` stub. All Done. (The Python HUN-254/255/256 are superseded.) Not blocked by HUN-257.
 
 **Entry point**: `easy-note serve`
 
@@ -76,9 +80,9 @@ Plan T008: "5 tools registered and no others (test lists the names); each of the
 | 4 | `note_add` context uses the `cwd` arg, else MCP roots, else process cwd (order from T001) | FR-004 |
 | 5 | List/search responses ≤ 50 items, snippet ≤ 200, with `total` and `truncated` | FR-016 |
 | 6 | Tool descriptions contain "only when the person asks" and the FR-024 `note:` / `/note` instruction | FR-024, D26 |
-| 7 | `easy-note serve --http` binds `127.0.0.1:8769`; `--host 0.0.0.0` is refused with exit 2 | NFR-001 |
-| 8 | Smoke test: MCP SDK client over stdio calls every tool | end-to-end |
-| 9 | MCP surface registered in `tests/test_leak.py` and passing | NFR-002 |
+| 7 | `easy-note serve --http` binds `127.0.0.1:8769` (streamable HTTP); `--host` with any value but `127.0.0.1` is refused with exit 2 before anything binds | NFR-001 |
+| 8 | Smoke test: an `rmcp` client (dev-dependency) spawns the real `easy-note serve` binary over stdio and calls every tool | end-to-end |
+| 9 | MCP surface registered in `tests/leak.rs` `SURFACES` (real tool calls; every returned object, stdout and stderr captured) and passing; tool error text is masked (`guard::mask_for_output`) | NFR-002 |
 
 ---
 
@@ -90,13 +94,14 @@ Plan T008: "5 tools registered and no others (test lists the names); each of the
 
 | \# | Given (input/state) | Expect (output/behavior) | How it's checked |
 | -- | -- | -- | -- |
-| 1 | SDK client `list_tools()` | the 5 names, nothing else | automated test |
+| 1 | `rmcp` client `list_tools()` | the 5 names, nothing else | automated test |
 | 2 | `note_read` on a hand-edited file with a token | masked output, file unchanged | automated test |
+| 3 | `easy-note serve --http --host 0.0.0.0` | exit 2, nothing bound | automated test |
 
 ### Verification Command (exact, runnable)
 
 ```bash
-uv run pytest tests/test_mcp.py tests/test_leak.py -q
+cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
 ### Evidence (filled by reviewer at Stage 4/5)
@@ -115,13 +120,13 @@ N/A — pure backend / CLI task; no UI component. The three UI Evidence rows are
 
 ## Approach
 
-**Pattern reference**: `src/easy_note/surfaces/cli.py` (T007) — thin calls into core
+**Pattern reference**: `src/core/query.rs` (HUN-272) — core call shape; `tests/cli.rs` `serve_answers_initialize_then_exits_on_eof` (HUN-268) — subprocess test with temp HOME
 
 **Vital slice**: the 5 tools with the no-write guarantee on reads
 
 **Cut list**: Resources and resource templates; Auth on HTTP (localhost-only bind instead)
 
-FastMCP from the official SDK. Read `clientInfo` from the initialize request context; call `roots/list` lazily only when no `cwd` arg is given. HTTP via the SDK's streamable-http transport with a host check before start.
+`rmcp` `#[tool_router]` / `#[tool]` macros (enable the `macros` feature; tool inputs derive `schemars::JsonSchema` via rmcp's re-export). Read the client name from the peer info of the initialize request (`RequestContext::peer`); call `roots/list` lazily only when no `cwd` arg is given, and fall back to process cwd on error or no roots support. HTTP: rmcp's streamable-HTTP server transport (`transport-streamable-http-server` feature) on a tokio `TcpListener`; check the host before binding. Add only the crate features and tokio features this needs (`net`, `macros`); no new crate unless rmcp requires it (Search Before You Build). Tool outputs are JSON text; the field names follow the frozen MCP Tool Contract in `PROJECT_SPEC.md`.
 
 ---
 
@@ -139,10 +144,13 @@ FastMCP from the official SDK. Read `clientInfo` from the initialize request con
 
 | File | Change |
 | -- | -- |
-| `src/easy_note/surfaces/mcp.py` | tools + transports |
-| `tests/test_mcp.py` | new |
-| `tests/test_leak.py` | register the MCP surface |
-| Pre-existing pin tests | List each test in `tests/` that pins text, paths or counts of a file this task edits, and how it is handled |
+| `src/surfaces/mcp.rs` (or `src/surfaces/mcp/*.rs`) | tools + transports |
+| `src/surfaces/cli.rs` | `serve` flags only (`--http`, `--host`, `--port`); HUN-257 edits this file in parallel |
+| `Cargo.toml`, `Cargo.lock` | rmcp/tokio features; `rmcp` client + child-process features as a dev-dependency |
+| `tests/mcp.rs` | new |
+| `tests/leak.rs` | register the MCP surface (one `SURFACES` entry) |
+| `src/core/*` | only if a core gap blocks a tool; report it in the hand-off |
+| Pre-existing pin tests | `tests/cli.rs` `serve_answers_initialize_then_exits_on_eof` pins `serverInfo.name == "easy-note"` and exit on EOF: keep it passing. `src/surfaces/cli.rs` unit tests on `normalize_args`/`starts_mcp`: keep passing. Agent lists any other pin found |
 
 ## Files Must NOT Touch
 
@@ -157,7 +165,7 @@ FastMCP from the official SDK. Read `clientInfo` from the initialize request con
 
 ## Test Plan
 
-SDK in-memory client tests; hash-before/after for read tools; HTTP bind test.
+In-process `rmcp` client/server over a duplex pipe for tool logic; one subprocess smoke over stdio against the real binary; hash-before/after of every file for read tools; HTTP bind and refused-host tests (pick a free port, never assume 8769 is free in CI). Temp HOME and EASY_NOTE_DIR only.
 
 ---
 
