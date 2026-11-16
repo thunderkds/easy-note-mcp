@@ -56,6 +56,7 @@ Mode: auto
 Checks: pending
 Memory: pending
 Not done: merge (admin: after the auto verify pass); auto verify: not started; AC 6b and AC 9b (yours)
+Paused: auto-mode check failed — extended track, but the trace has no `code-review` Skill call (Stage 4 runs in auto mode) [report efe16998cf08]
 
 ## Evidence
 
@@ -81,8 +82,34 @@ Not done: merge (admin: after the auto verify pass); auto verify: not started; A
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE**: captured on main 3a41088 (`cargo build`, then each command with a temp HOME and EASY_NOTE_DIR, an empty stub-only PATH, `DISPLAY=:99`, `XDG_CURRENT_DESKTOP=GNOME`, stdin `/dev/null`), before any HUN-260 implementation commit:
+
+```
+Mon Nov 16 03:08:27 PM UTC 2026
+$ easy-note quick
+error: unrecognized subcommand 'quick'
+
+Usage: easy-note <COMMAND>
+
+For more information, try '--help'.
+exit=2
+$ easy-note hotkey
+error: unrecognized subcommand 'hotkey'
+
+Usage: easy-note <COMMAND>
+
+For more information, try '--help'.
+exit=2
+$ easy-note install launcher
+error: invalid value 'launcher' for '<TARGET>'
+  [possible values: claude]
+
+  tip: a similar value exists: 'claude'
+
+For more information, try '--help'.
+exit=2
+files under temp HOME: 0
+```
 
 **AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
 
