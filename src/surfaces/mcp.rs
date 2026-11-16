@@ -134,6 +134,12 @@ fn json_text(value: &impl serde::Serialize) -> Result<String, String> {
     serde_json::to_string(value).map_err(fail)
 }
 
+/// An inbox note's id is its file name, which the sync app chose and which may hold a secret.
+/// Every id and path that leaves through MCP is masked, as the CLI does through `safe`.
+fn masked_id(id: &str) -> String {
+    guard::mask_for_output(id)
+}
+
 fn note_json(note: &Note) -> Json {
     let mut out = Map::new();
     for (key, value) in &note.fields {
@@ -141,6 +147,7 @@ fn note_json(note: &Note) -> Json {
             key.clone(),
             match value {
                 Value::Int(n) => json!(n),
+                Value::Str(s) if key == "id" => json!(masked_id(s)),
                 Value::Str(s) => json!(s),
                 Value::List(list) => json!(list),
             },
@@ -248,7 +255,10 @@ impl EasyNote {
         blocking(move || {
             let found = filters(args.filters, None);
             let limit = args.limit.unwrap_or(DEFAULT_LIMIT);
-            let page = query::search_in(&store, &args.query, &found, limit).map_err(fail)?;
+            let mut page = query::search_in(&store, &args.query, &found, limit).map_err(fail)?;
+            for item in &mut page.items {
+                item.id = masked_id(&item.id);
+            }
             json_text(&page)
         })
         .await
@@ -263,7 +273,10 @@ impl EasyNote {
         blocking(move || {
             let found = filters(args.filters, args.day);
             let limit = args.limit.unwrap_or(DEFAULT_LIMIT);
-            let page = query::list_notes_in(&store, &found, limit).map_err(fail)?;
+            let mut page = query::list_notes_in(&store, &found, limit).map_err(fail)?;
+            for item in &mut page.items {
+                item.id = masked_id(&item.id);
+            }
             json_text(&page)
         })
         .await
@@ -293,7 +306,10 @@ impl EasyNote {
     async fn note_stats(&self, Parameters(args): Parameters<FilterArgs>) -> Result<String, String> {
         let store = self.store()?;
         blocking(move || {
-            let stats = query::stats_in(&store, &filters(args, None)).map_err(fail)?;
+            let mut stats = query::stats_in(&store, &filters(args, None)).map_err(fail)?;
+            for skipped in &mut stats.skipped {
+                skipped.path = masked_id(&skipped.path);
+            }
             json_text(&stats)
         })
         .await

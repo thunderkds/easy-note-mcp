@@ -540,6 +540,57 @@ async fn protocol_error_text_never_echoes_a_secret() {
     assert!(note_files(&sb.notes).is_empty());
 }
 
+/// HUN-261 security finding: an inbox file name becomes the note id, and the name is whatever the
+/// sync app chose. A secret in it must not reach any read tool, in an id or in a `skipped` path.
+#[tokio::test]
+async fn inbox_file_names_with_a_secret_are_masked_in_every_read_tool() {
+    let sb = Sandbox::new("inboxname");
+    let inbox = sb.notes.join("inbox");
+    std::fs::create_dir_all(&inbox).unwrap();
+    // Built at run time: the second secret is a `password=` pair, the first a token.
+    let password = concat!("pass", "word=hunter2hunter2");
+    let named = [format!("{GITHUB}.md"), format!("{password}.md")];
+    for name in &named {
+        std::fs::write(inbox.join(name), "phone note about lunch\n").unwrap();
+    }
+    // An empty file is Skipped; `stats` reports its path.
+    std::fs::write(inbox.join(format!("{GITHUB}-empty.txt")), "").unwrap();
+    let before = tree(&sb.notes);
+
+    let client = connect(&sb, TestClient::plain("t")).await;
+    let mut shown = vec![
+        ("note_list", call(&client, "note_list", json!({})).await),
+        (
+            "note_search",
+            call(&client, "note_search", json!({"query": "lunch"})).await,
+        ),
+        ("note_stats", call(&client, "note_stats", json!({})).await),
+    ];
+    for name in &named {
+        let id = format!("inbox/{}", name.trim_end_matches(".md"));
+        shown.push((
+            "note_read",
+            call(&client, "note_read", json!({"id": id})).await,
+        ));
+    }
+    for (tool, (is_error, text)) in &shown {
+        assert!(!is_error || *tool == "note_read", "{tool} failed: {text}");
+        assert!(!text.contains(GITHUB), "{tool} leaked a token: {text}");
+        assert!(
+            !text.contains("hunter2"),
+            "{tool} leaked a password: {text}"
+        );
+    }
+    let list: Value = serde_json::from_str(&shown[0].1 .1).unwrap();
+    assert_eq!(
+        list["total"], 2,
+        "both inbox notes are still listed: {list}"
+    );
+    let stats: Value = serde_json::from_str(&shown[2].1 .1).unwrap();
+    assert_eq!(stats["skipped"].as_array().unwrap().len(), 1, "{stats}");
+    assert_eq!(tree(&sb.notes), before);
+}
+
 // ---------------------------------------------------------------------------------------------
 // AC 7: HTTP binds 127.0.0.1 only
 // ---------------------------------------------------------------------------------------------
