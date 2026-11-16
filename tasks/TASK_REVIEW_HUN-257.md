@@ -68,8 +68,21 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE**: captured 2026-11-16T07:24:54Z on branch feat/HUN-257-rust-cli at d7c0f35 (no implementation commit yet), `cargo build`, temp HOME `/tmp/tmp.ojZQoKhX25`:
+
+```
+$ HOME=$H EASY_NOTE_DIR= ./target/debug/easy-note add hello '#a'; echo exit=$?
+easy-note: add is not implemented yet
+exit=2
+$ HOME=$H EASY_NOTE_DIR= ./target/debug/easy-note ls; echo exit=$?
+error: unrecognized subcommand 'ls'
+
+Usage: easy-note <COMMAND>
+
+For more information, try '--help'.
+exit=2
+$ ls -A $H     # nothing written
+```
 
 **AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
 
