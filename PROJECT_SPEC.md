@@ -198,7 +198,7 @@ Client config snippets (README, T009): Claude Code `claude mcp add easy-note -- 
 | T004 | Context capture: cwd order, main-worktree repo name, remote sanitizing, task patterns | Todo | Backend-Implementer | C1 | Med | P0 |
 | T005 | Secret guard + masking + leak test suite | Todo | Backend-Implementer + QA-Automation-Agent | C1 | High | P0 |
 | T006 | Query engine: list, search, stats, bounded results | Todo | Backend-Implementer | C1 | Low | P1 |
-| T007 | CLI commands (FR-013) | Todo | Backend-Implementer | C1 | Low | P1 |
+| T007 | CLI commands (FR-013) | Todo | Backend-Implementer | C1 | Med | P1 |
 | T008 | MCP surface: 5 tools, stdio + streamable-http on 127.0.0.1:8769, no-write test for 4 read tools | Todo | Backend-Implementer | C1 | Med | P1 |
 | T009 | README, RUNBOOK, client config snippets, install guide | Todo | Backend-Implementer | C0 | Low | P1 |
 | T010 | Perf check: 10,000-note fixture; confirm or reset NFR-004, NFR-009, NFR-010 | Todo | QA-Automation-Agent | C0 | Low | P2 |

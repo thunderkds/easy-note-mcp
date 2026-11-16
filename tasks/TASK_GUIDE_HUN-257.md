@@ -180,3 +180,7 @@ CLI runner tests with temp HOME and `EASY_NOTE_DIR`; leak harness registration.
 - [ ] Tests written AND pass — output pasted into `tasks/TASK_REVIEW_<ID>.md`'s Evidence table (Hard-Stop Gate 5)
 - [ ] `Skill({ skill: "verify" })` run — feature confirmed working in the real CLI / client
 - [ ] Supervisor notified: task ready for Stage 4 review
+
+## Questions Log
+
+- 2026-11-16 DEBATE Should HUN-257 stay Risk Low or be raised to Medium? → Medium (Advocate 1: Medium, PROJECT_SPEC.md:138 + tracks.md:26; Advocate 2: Medium, TASK_REVIEW_HUN-270.md:54) ⚠ decided for you — please review (Linear comment on HUN-257)
