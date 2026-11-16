@@ -38,9 +38,9 @@ Mode: auto
 3. <what was decided> — DEBATED: <option> (Advocate 1: <its proposal>; Advocate 2: <its proposal>) ⚠ decided for you — please review
 4. <what was decided> — SAFER OPTION: <why> ⚠ decided for you — please review
 Paused: <only when a stop that stays paused the task: which one, and why>
-Checks: tests `<command>` — <result>; reviews <skill — result>; real run `<command>` — printed `<what it printed>` (auto-checked, not /verify)
+Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` at 8a6dfa9 (2026-11-16) — exit 0, 299 passed (mcp 20 incl. the new masking test); code-review (session 2, re-review 8199f7b..HEAD) — no P0/P1; P2: tests/mcp.rs:578 assertion allows a note_read error that never happens (strict variant passes); P3: lane EXCEEDS (files 8 > 6, lines 1279 > 250, mostly tests); security-review (session 2, main...HEAD) — no findings ≥ 8/10; session-1 finding (inbox file-name secrets in MCP ids and skipped paths) FIXED by d24bead and confirmed; real run `easy-note ls` / `show inbox/20261114-183002` on a temp notes dir — printed the inbox note, file sha256 unchanged (see Demonstration) (auto-checked, not /verify)
 Memory: <each entry the memory pass wrote, as `file — entry` | nothing new>
-Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | /verify (yours), with [admin] only after the one retry also ended blocked>
+Not done: merge (admin: after the auto verify pass); auto verify: running (T182); html-report pages for code-review/security-review not generated; follow-up: front-matter `source` in an inbox file wins over `source: inbox` (docs/NOTE_FORMAT.md:55 vs :100); readiness incomplete: `Codebase map` file `none`, `Approved by` empty (yours)
 
 -->
 
@@ -60,16 +60,16 @@ Not done: security-review finding fix (session 2 running, 2026-11-16), Evidence 
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/inbox.rs` (16 tests, AC 1-7, 9, 10), `tests/leak.rs` inbox surface (AC 8), `tests/mcp.rs::inbox_file_names_with_a_secret_are_masked_in_every_read_tool` (security fix). Run 2026-11-16 at 8a6dfa9: `test result: ok. 16 passed` (inbox), `ok. 46 passed` (leak), `ok. 20 passed` (mcp) |
+| Verification command run | ☑ pass | `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` at 8a6dfa9: fmt and clippy clean; lib 20, cli 43, context 29, format 13, guard 37, inbox 16, leak 46, mcp 20, query 45, store 30 passed, 0 failed |
+| Negative cases hold | ☑ pass | Security fix red run on unfixed code (before d24bead): `test inbox_file_names_with_a_secret_are_masked_in_every_read_tool ... FAILED` / `note_list leaked a token: {"items":[{"id":"inbox/ghp_EXAMPLE…` / `test result: FAILED. 0 passed; 1 failed`. Inbox feature red: Demonstration BEFORE (`show inbox/…` exit 2 `not a note id`). AC 9/10 refusal tests in tests/inbox.rs |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
-| **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | code-review: session 1 on 679e8da (src/core/store.rs, src/surfaces/cli/write.rs, tests); session 2 re-review of 8199f7b..HEAD (src/surfaces/mcp.rs, tests/mcp.rs, docs/NOTE_FORMAT.md) plus callers in src/core/query.rs. security-review: main...HEAD, src + tests |
+| Full smoke suite still green (no regression) | ☑ pass | full `cargo test` above, 299 passed, 0 failed |
+| **Companion score (easy-verifier)** | ☑ N/A | not run this session: easy-verifier `score` skill not invoked for HUN-261 (optional tool) |
+| **UI: Visual regression (diff or verdict pasted)** | ☑ N/A | pure backend / CLI task, no UI (Hard-Stop Gate 6 N/A) |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ N/A | pure backend / CLI task, no UI (Hard-Stop Gate 6 N/A) |
+| **UI: Responsiveness at target viewports** | ☑ N/A | pure backend / CLI task, no UI (Hard-Stop Gate 6 N/A) |
 
 ---
 
@@ -113,5 +113,4 @@ inbox file sha256 before and after both: 1771b6cff0b5654a3e9fe23e60acc88e8ea7063
 
 **DELTA**: A note a phone sync app saved in `inbox/` now shows up in `ls`, `search`, `stats`, `show` and the MCP read tools, and easy-note never rewrites the file.
 
-**WITNESS**: [who ran it and when — derived from `memory/event-trace/HUN-261.jsonl`, never the
-implementing agent alone]
+**WITNESS**: Supervisor (session 1) ran BEFORE at 10:15:02 UTC and AFTER at 10:23:51 UTC on 2026-11-16, recorded in `memory/event-trace/HUN-261.jsonl`; Supervisor (session 2) reran the full suite at 8a6dfa9 on 2026-11-16 (299 passed).
