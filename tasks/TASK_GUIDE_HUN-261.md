@@ -5,6 +5,7 @@
 **Assigned agent**: Backend-Implementer
 **Agent guide**: `agents/backend.md`
 **Plan ID**: T013 (`linear-tasks.md`, `PROJECT_SPEC.md` Tasks)
+**Re-planned**: 2026-11-16 for Rust (DDR 0005); the Python paths below were replaced by their Rust homes
 
 ---
 
@@ -35,6 +36,7 @@ Plan T013: "Tests: `inbox/20261114-183002.txt` → id `inbox/20261114-183002`, c
 
 * A network endpoint (D23)
 * Normalizing inbox files into dated folders
+* Writing inbox files in any way: `edit` and `tag` on an inbox id are refused with "inbox notes are read-only" (exit 1); `add`/`note_add` never write into `inbox/`
 
 **Requirement Refs** (FR/NFR/US IDs from `PRD.md` this task satisfies):
 
@@ -46,10 +48,10 @@ Plan T013: "Tests: `inbox/20261114-183002.txt` → id `inbox/20261114-183002`, c
 
 ### Requirement Fidelity Gate (sign off BEFORE implementation)
 
-- [ ] Restated intent confirmed to match the user's request (by Supervisor / user — not the implementing agent)
-- [ ] Domain terms align with `PROJECT_SPEC.md` glossary (`grill-with-docs` run if terminology was fuzzy)
-- [ ] Every Acceptance Criterion below traces to a line in the Requirement
-- [ ] All Requirement Refs exist in `PRD.md` and are fully covered by the Acceptance Criteria above
+- [x] Restated intent confirmed to match the user's request (by Supervisor / user — not the implementing agent) — Supervisor, [admin] auto, 2026-11-16
+- [x] Domain terms align with `PROJECT_SPEC.md` glossary (`grill-with-docs` run if terminology was fuzzy)
+- [x] Every Acceptance Criterion below traces to a line in the Requirement
+- [x] All Requirement Refs exist in `PRD.md` and are fully covered by the Acceptance Criteria above
 
 > An agent must NOT start implementing until this gate is checked. If anything here is unclear,
 > STOP and ask the Supervisor (Karpathy: Think Before Coding).
@@ -58,9 +60,9 @@ Plan T013: "Tests: `inbox/20261114-183002.txt` → id `inbox/20261114-183002`, c
 
 ## Dependencies & Reachability
 
-**Depends on**: HUN-253 (plan T003) — store and format; HUN-256 (plan T006) — query engine; HUN-257 (plan T007) — CLI rm/show
+**Depends on**: HUN-269 (R2) — Rust store and format; HUN-272 (R5) — Rust query engine; HUN-257 — CLI rm/restore/show/trash; HUN-258 — MCP read tools. All Done.
 
-**Entry point**: `easy_note.core.store.iter_inbox`
+**Entry point**: `iter_inbox` (`src/core/store.rs`, called from `Store::iter_notes`)
 
 ---
 
@@ -68,14 +70,16 @@ Plan T013: "Tests: `inbox/20261114-183002.txt` → id `inbox/20261114-183002`, c
 
 | \# | Criterion (testable) | Traces to requirement |
 | -- | -- | -- |
-| 1 | `inbox/20261114-183002.txt` → id `inbox/20261114-183002`, `created` from the name (local time), `source: inbox` | FR-023 |
+| 1 | `inbox/20261114-183002.txt` → id `inbox/20261114-183002`, `created` from the name (local time, RFC 3339 with offset), `source: inbox` | FR-023 |
 | 2 | A file with no time prefix → `created` = mtime | FR-023 |
 | 3 | `#tags` in the text become tags; valid `easy-note: 1` front matter keys win | FR-023 |
-| 4 | `ls`, `search`, `stats`, `show` and the MCP read tools include inbox notes | FR-023 |
+| 4 | `ls`, `search`, `stats`, `show` and the MCP read tools (`note_list`, `note_search`, `note_stats`, `note_read`) include inbox notes | FR-023 |
 | 5 | The inbox dir is byte-identical (hash + mtime) after every read command | FR-023 |
 | 6 | `rm inbox/<stem>` moves the file to trash; `restore` puts it back | FR-023, FR-009 |
-| 7 | Subfolders and extensions other than `.md`/`.txt` are ignored | FR-023 |
-| 8 | Inbox surface registered in `tests/test_leak.py` (secret in an inbox file is masked on every read) | FR-014 |
+| 7 | Subfolders, dot files and extensions other than `.md`/`.txt` are ignored | FR-023 |
+| 8 | Inbox surface registered in `tests/leak.rs` `SURFACES` (a secret in an inbox file is masked on every read output, CLI and MCP) | FR-014 |
+| 9 | An inbox id that escapes `inbox/` (`inbox/../x`, `inbox/a/b`, `inbox/.hidden`, `inbox/`) is a bad id: CLI exit 2 `not a note id`, MCP `not a note id`; no file outside `inbox/` is read or moved | FR-023 (path safety, Risk Medium) |
+| 10 | `edit`/`tag` on an inbox id exit 1 with `inbox notes are read-only`; the file is unchanged | FR-023 ("never write") |
 
 ---
 
@@ -93,7 +97,8 @@ Plan T013: "Tests: `inbox/20261114-183002.txt` → id `inbox/20261114-183002`, c
 ### Verification Command (exact, runnable)
 
 ```bash
-uv run pytest tests/test_inbox.py tests/test_leak.py -q
+cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+cargo test --test inbox --test leak
 ```
 
 ### Evidence (filled by reviewer at Stage 4/5)
@@ -112,13 +117,20 @@ N/A — pure backend / CLI task; no UI component. The three UI Evidence rows are
 
 ## Approach
 
-**Pattern reference**: `src/easy_note/core/store.py` (T003)
+**Pattern reference**: `src/core/store.rs` (`iter_notes`, `parse_file`, `rm`, `restore`, `mask_note`)
 
-**Vital slice**: read-only parse + inclusion in queries
+**Vital slice**: read-only parse of `inbox/*.{md,txt}` yielded by `Store::iter_notes` (so query, CLI and MCP get it with no change of their own), inbox ids in `read`/`rm`/`restore`, refusal in `update`.
 
-**Cut list**: Watching the folder for changes; Attachments in inbox
+**Cut list**: Watching the folder for changes; Attachments in inbox; a trash sidecar file (the trash name carries the origin instead); disambiguating ids by anything but the file name
 
-Inbox notes are parsed views, never written. IDs with `inbox/` prefix route rm/restore to the inbox path; trash keeps a sidecar of the original relative path.
+Design (Supervisor, auto decisions recorded in TASK_REVIEW):
+- Inbox notes are parsed views, never written. `iter_notes` yields month-folder notes, then inbox notes, all masked by `mask_note`.
+- Id: `inbox/<file stem>`. When an `.md` and a `.txt` share a stem, both ids become `inbox/<file name>` (with extension). Lookup by id: `inbox/<name>` accepts an exact `.md`/`.txt` file name, else `<name>.md` / `<name>.txt`; both present → error naming both ids.
+- Valid inbox name part: non-empty, no `/`, no NUL, does not start with `.`. Anything else is `StoreError::BadId`.
+- Plain file: body = whole text, tags = `tags::extract(text)`, `created` = `YYYYMMDD-HHMMSS` file-name prefix as local time (bad date → mtime), else mtime, `source: inbox`, no context fields.
+- File with valid `easy-note: 1` front matter: its keys win, except `id`, which stays the inbox id (rm/show route by it). Front matter that does not parse as `easy-note: 1` → the whole file is the body.
+- Non-UTF-8 or empty file → `Skipped` with its path (never content).
+- Trash: `rm inbox/<x>` moves the file to `.easy-note/trash/inbox__<file name>`; `restore inbox/<x>` moves it back into `inbox/` (no replace). `trash` lists it as `inbox/<stem>`.
 
 ---
 
@@ -136,9 +148,12 @@ Inbox notes are parsed views, never written. IDs with `inbox/` prefix route rm/r
 
 | File | Change |
 | -- | -- |
-| `src/easy_note/core/store.py` | `iter_inbox`, inbox ids in rm/restore |
-| `src/easy_note/core/query.py` | include inbox |
-| `tests/test_inbox.py` | new |
+| `src/core/store.rs` | `iter_inbox`, inbox ids in read/rm/restore, read-only refusal in update |
+| `src/core/query.rs` | only if `iter_notes` does not already carry inbox notes through |
+| `src/surfaces/cli/write.rs` | `trash` listing shows `inbox__` names as `inbox/<stem>`; read-only error text |
+| `src/surfaces/cli.rs`, `src/surfaces/mcp.rs` | only error mapping for the new read-only error |
+| `tests/inbox.rs` | new (AC 1–7, 9, 10) |
+| `tests/leak.rs` | `inbox` surface (AC 8) |
 | Pre-existing pin tests | List each test in `tests/` that pins text, paths or counts of a file this task edits, and how it is handled |
 
 ## Files Must NOT Touch
@@ -146,6 +161,7 @@ Inbox notes are parsed views, never written. IDs with `inbox/` prefix route rm/r
 | File | Reason |
 | -- | -- |
 | `PRD.md`, `PROJECT_SPEC.md`, `PROJECT_KANBAN.md` | Supervisor-owned; report needed changes instead |
+| `docs/NOTE_FORMAT.md` | Final since HUN-253 (DDR 0002); report a mismatch instead |
 | `docs/ddr/*` | Decisions are owner-approved; a change needs a new DDR from the Supervisor |
 | `memory/*`, `AGENTS.md`, `CLAUDE.md`, `agents/`, `skills/`, `.claude/` | Kit files; Supervisor-only |
 | The real `~/easy-notes/`, `~/.config/easy-note/`, `~/.claude/`, `~/.codex/`, `~/.cursor/` | Tests use a temp `HOME` and `EASY_NOTE_DIR` only (NFR-003) |
