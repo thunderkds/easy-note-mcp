@@ -44,6 +44,18 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 -->
 
+## Auto decisions
+
+Mode: auto
+1. Picked HUN-261 rather than HUN-259 (both P1, both ready, HUN-259 first in board order), so the second Supervisor session can take HUN-259 without a collision; claimed HUN-261 on the board (In Progress) first — SAFER OPTION: two sessions picking by the same board order would both take HUN-259 ⚠ decided for you — please review
+2. Re-planned the guide for Rust (Rust paths, cargo verification command, AC 9 path escape and AC 10 read-only refusal, a binding Design list) and signed the Requirement Fidelity Gate as Supervisor — RULE: `docs/claude-md/tracks.md` `### Every user stop and its auto rule` (row 13)
+3. Spawned the Backend-Implementer on `sonnet` — FACT: PROJECT_SPEC.md:169 "haiku | sonnet | sonnet or opus | opus"
+4. Inbox ids keep `id` fixed to `inbox/<stem>` even when the file has valid `easy-note: 1` front matter (every other key wins), so `show`/`rm`/`restore` always route to the file — SAFER OPTION: a front-matter id would point `rm` at a month folder that does not hold the file ⚠ decided for you — please review
+5. Trash keeps the origin in the trash file name (`inbox__<file name>`) instead of a sidecar file — SAFER OPTION: one file per trashed note, no second file to lose; matches the `inbox__<stem>` naming in docs/NOTE_FORMAT.md ⚠ decided for you — please review
+Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — pending (agent running); reviews pending; real run pending
+Memory: nothing new (task in progress; the memory pass runs after merge)
+Not done: implementation (Backend-Implementer running in the background); code-review, security-review, auto verify, merge (admin: after the auto verify pass)
+
 ## Evidence
 
 | Check | Result | Notes / output snippet |
