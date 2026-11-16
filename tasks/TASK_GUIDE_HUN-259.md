@@ -5,6 +5,7 @@
 **Assigned agent**: Backend-Implementer
 **Agent guide**: `agents/backend.md`
 **Plan ID**: T011 (`linear-tasks.md`, `PROJECT_SPEC.md` Tasks)
+**Re-planned**: 2026-11-16 for Rust (DDR 0005); the Python paths and checks below were replaced by their Rust homes
 
 ---
 
@@ -46,10 +47,10 @@ Plan T011: "Hook tests with recorded event JSON: prefix → one file, `source: h
 
 ### Requirement Fidelity Gate (sign off BEFORE implementation)
 
-- [ ] Restated intent confirmed to match the user's request (by Supervisor / user — not the implementing agent)
-- [ ] Domain terms align with `PROJECT_SPEC.md` glossary (`grill-with-docs` run if terminology was fuzzy)
-- [ ] Every Acceptance Criterion below traces to a line in the Requirement
-- [ ] All Requirement Refs exist in `PRD.md` and are fully covered by the Acceptance Criteria above
+- [x] Restated intent confirmed to match the user's request (by Supervisor / user — not the implementing agent) — Supervisor, [admin] auto, 2026-11-16
+- [x] Domain terms align with `PROJECT_SPEC.md` glossary (`grill-with-docs` run if terminology was fuzzy)
+- [x] Every Acceptance Criterion below traces to a line in the Requirement
+- [x] All Requirement Refs exist in `PRD.md` and are fully covered by the Acceptance Criteria above
 
 > An agent must NOT start implementing until this gate is checked. If anything here is unclear,
 > STOP and ask the Supervisor (Karpathy: Think Before Coding).
@@ -58,9 +59,9 @@ Plan T011: "Hook tests with recorded event JSON: prefix → one file, `source: h
 
 ## Dependencies & Reachability
 
-**Depends on**: HUN-251 (plan T001) — hook facts and default prefix (result: `/note ` default; event keys and fixtures in `docs/experiments/T001-client-launch.md`, `tests/fixtures/claude_hook/`); HUN-255 (plan T005) — guard; HUN-257 (plan T007) — CLI and core add path
+**Depends on**: HUN-251 — hook facts and default prefix (`/note `; event keys and fixtures in `docs/experiments/T001-client-launch.md`, `tests/fixtures/claude_hook/`); HUN-270 (R3, replaces HUN-255) — Rust guard; HUN-269 (R2) — `Store::add`; HUN-271 (R4) — context capture; HUN-257 — Rust CLI. All Done.
 
-**Entry point**: `easy-note hook-prompt`
+**Entry point**: `hook-prompt` (subcommand in `src/surfaces/cli.rs`, handled in `src/surfaces/hook.rs`)
 
 ---
 
@@ -71,14 +72,15 @@ Plan T011: "Hook tests with recorded event JSON: prefix → one file, `source: h
 | 1 | With a recorded event whose prompt starts with the prefix: one file, `source: hook`, context from event `cwd`, stdout `{"decision":"block","reason":"✓ noted <id> · <repo> · <task>"}` | FR-018 |
 | 2 | Any other prompt: no stdout, exit 0, no file | FR-018 |
 | 3 | Malformed stdin or a core error: the prompt passes; the error is shown as the reason only when the prefix matched | FR-018 |
-| 4 | The pass path imports only the stdlib (subprocess test on `sys.modules`); core is imported only after a prefix match | NFR-009 |
+| 4 | The pass path opens no store and touches no file: with `EASY_NOTE_DIR` pointing at a missing dir and an unreadable `config.toml`, a non-prefix prompt still exits 0 with empty stdout and creates nothing; 50 runs of the pass path p95 < 50 ms (test with a generous CI bound) | NFR-009 |
 | 5 | Prefix is configurable (`config.toml` `capture_prefix`), default from T001's decision | D18 |
-| 6 | `install claude` on a temp settings file shows a diff, writes a timestamped backup (never overwrites an older one), adds exactly one `UserPromptSubmit` entry and `commands/note.md` in the Claude Code config dir; running it twice changes nothing | FR-019, DDR 0003 |
+| 6 | `install claude` on a temp settings file prints a diff, writes a timestamped backup `settings.json.easy-note-<YYYYMMDD-HHMMSS>.bak` (never overwrites an older one), adds exactly one `UserPromptSubmit` entry (command `easy-note hook-prompt`, timeout 5) and `commands/note.md` in the Claude Code config dir; running it twice changes nothing (second run prints `already installed`, writes no backup) | FR-019, DDR 0003 |
 | 6b | Config dir: with `CLAUDE_CONFIG_DIR=<tmp>/cfg` set, install/uninstall touch only `<tmp>/cfg/settings.json` and `<tmp>/cfg/commands/note.md`; unset, they use `<tmp HOME>/.claude`; the diff header names the resolved dir | FR-019, DDR 0003 item 7 (HUN-251 finding) |
 | 7 | Existing hook entries (e.g. easy-memory's) are byte-identical after install and uninstall; a symlinked settings file stays a symlink | DDR 0003 |
 | 8 | `uninstall claude` removes exactly its entry and `note.md` | FR-019 |
-| 9 | Hook surface registered in `tests/test_leak.py` and passing | NFR-002 |
-| 10 | Manual smoke in real Claude Code: `/note test` shows `✓ noted …` and the model does not answer (pasted) | US-013 |
+| 9 | Hook surface registered in `tests/leak.rs` `SURFACES` (a secret in a `/note` prompt is masked in the saved file and in the block `reason`) and passing | NFR-002 |
+| 10 | Manual smoke in real Claude Code: `/note test` shows `✓ noted …` and the model does not answer (pasted) — owner run, not automated (it needs the owner's real Claude Code config) | US-013 |
+| 11 | Settings with comments or invalid JSON, or a top-level value that is not an object, or `hooks.UserPromptSubmit` that is not an array → `install`/`uninstall` exit 1 naming the file, change nothing, write no backup | FR-019 (safe edit) |
 
 ---
 
@@ -96,7 +98,8 @@ Plan T011: "Hook tests with recorded event JSON: prefix → one file, `source: h
 ### Verification Command (exact, runnable)
 
 ```bash
-uv run pytest tests/test_hook.py tests/test_install.py tests/test_leak.py -q
+cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+cargo test --test hook --test install --test leak
 ```
 
 ### Evidence (filled by reviewer at Stage 4/5)
@@ -121,7 +124,14 @@ N/A — pure backend / CLI task; no UI component. The three UI Evidence rows are
 
 **Cut list**: Windows settings paths beyond the resolved config dir; Auto-update of an old entry's command string
 
-Hook reads stdin JSON with `json`, checks the prefix, and only then imports core. Install edits settings JSON preserving key order (`json` with `object_pairs_hook`), identifies its own entry by command string `easy-note hook-prompt`, writes via temp + replace on the resolved path so symlinks stay.
+Design (Supervisor, binding; auto decisions in TASK_REVIEW):
+- `hook-prompt` reads all of stdin, parses JSON with `serde_json`, reads `prompt` (string) and `cwd` (string). The prefix comes from `config.toml` `capture_prefix` only after the prompt could match: read the prefix cheaply (default `/note `); a config read error → default prefix. No store is opened before a prefix match.
+- Match: `prompt.starts_with(prefix)`; the text is the rest, trimmed; empty text → pass (no output, exit 0). `/notes x` never matches `/note `.
+- Save: `Store::add` with `source: "hook"`, context captured from the event `cwd` (same capture as the CLI uses for its cwd). Output one line `{"decision":"block","reason":"✓ noted <id> · <repo> · <task>"}` (omit a missing repo/task part with its ` · `), reason masked by the guard. Exit 0 always.
+- Error after a match (store, config, guard refusal): the prompt passes and the error is the reason (PRD.md:78): stdout one line `{"reason":"easy-note: <masked error> — note not saved"}` with no `decision` key, exit 0. Malformed stdin, or no match → no stdout, exit 0.
+- `install claude` / `uninstall claude`: config dir = `$CLAUDE_CONFIG_DIR` if set and non-empty, else `$HOME/.claude`. Parse `settings.json` (missing → `{}`) with `serde_json` `preserve_order`. Own entry = a `hooks.UserPromptSubmit[]` element whose `hooks[]` holds a command exactly `easy-note hook-prompt`. Install appends `{"hooks":[{"type":"command","command":"easy-note hook-prompt","timeout":5}]}` if absent. Print a unified-style diff with a header naming the resolved file. Backup the old file (if it existed) before writing. Write with temp file + rename on the symlink's resolved target, so a symlink stays a symlink. Other entries are re-serialized with 2-space indent; keep them value-identical (a test compares the parsed values and the raw bytes of an easy-memory entry's object text when the file was 2-space-indented).
+- `commands/note.md`: a short slash-command file saying the hook saves `/note` prompts; written only if absent or byte-identical to ours; uninstall removes it only if byte-identical to ours.
+- New files: `src/surfaces/hook.rs`, `src/surfaces/install.rs`; tests `tests/hook.rs`, `tests/install.rs`.
 
 ---
 
@@ -140,10 +150,12 @@ Hook reads stdin JSON with `json`, checks the prefix, and only then imports core
 
 | File | Change |
 | -- | -- |
-| `src/easy_note/surfaces/hook.py` | new, stdlib-only top level |
-| `src/easy_note/surfaces/install.py` | new: claude target |
-| `src/easy_note/surfaces/cli.py` | `hook-prompt`, `install claude`, `uninstall claude` |
-| `tests/test_hook.py`, `tests/test_install.py` | new |
+| `src/surfaces/hook.rs` | new: hook-prompt |
+| `src/surfaces/install.rs` | new: claude target |
+| `src/surfaces/cli.rs`, `src/surfaces/mod.rs` | `hook-prompt`, `install claude`, `uninstall claude` subcommands |
+| `src/core/config.rs` | `capture_prefix` read |
+| `Cargo.toml` | `serde_json` feature `preserve_order` |
+| `tests/hook.rs`, `tests/install.rs`, `tests/leak.rs` | new / hook surface |
 | Pre-existing pin tests | List each test in `tests/` that pins text, paths or counts of a file this task edits, and how it is handled |
 
 ## Files Must NOT Touch
