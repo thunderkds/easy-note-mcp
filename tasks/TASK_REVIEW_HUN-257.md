@@ -44,20 +44,35 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 -->
 
+## Auto decisions
+
+Mode: auto
+1. Closed HUN-255 (Python guard) as superseded by HUN-270 — RULE: `memory/decisions.md § 2026-11-15 — App rewritten in Rust; HUN-268 merged over a failing Companion score` ("HUN-255 (Python guard) not merged; its branch at 3c5e40f is the oracle for HUN-270")
+2. Re-planned this guide for Rust (Depends on HUN-269..272; cargo verification command; `tests/leak.rs` registration) — RULE: `memory/decisions.md § 2026-11-16 — HUN-271, HUN-270, HUN-272 merged by the owner over failing Companion scores; Rust port of the core complete` ("HUN-257–265 guides still describe Python and must be re-planned in Rust")
+3. Raised Risk from Low to Medium (CLI output is a leak path), so security-review runs — SAFER OPTION: tracks.md lets the Supervisor move a task only up ⚠ decided for you — please review
+4. Tickets run one at a time, not in parallel as asked; parallel work stays inside one ticket (reviewers, planning) — RULE: `docs/claude-md/tracks.md` `### Session tags` ("The loop opens no pull request and runs no two tickets at once") ⚠ decided for you — please review
+5. Confirmation line says `1 secret masked` / `2 secrets masked` instead of the literal `secret(s)` — SAFER OPTION: FR-021 fixes the content (id, repo, task, masked count), not the plural form ⚠ decided for you — please review
+6. `edit` saves only text and tags; any other changed front-matter key is refused, original kept; scratch file inside `<notes dir>/.easy-note/edit/` — RULE: `PRD.md` NFR-003 ("Writes only inside the notes dir, the config file, …")
+7. Companion score ☑ fail (74) recorded as is; the code is not reworded to dodge `redaction_hits_observed` — RULE: `skills/score/SKILL.md § Never` ("Never rerun the same ref to shop for a better number") and `memory/decisions.md § 2026-11-16 — HUN-271, HUN-270, HUN-272 merged by the owner over failing Companion scores` (same false positive)
+Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — 260 passed, 0 failed (Supervisor rerun 2026-11-16T08:03:49Z, 73cc93f); reviews code-review (Skill) — 0 P0, 2 P1 fixed in 73cc93f (`add -e <text>` wrote unmasked text to the scratch file; scratch file left on a killed run), 8 P2 fixed (edit extra keys/tag shape/#word tags, broken pipe exit 101, `n --version <words>`, `$EDITOR` with spaces + `$VISUAL`, control characters shown as `\xNN`, leak test exit codes), cheap P3s fixed; deferred: SIGINT ignore while the editor runs, lost update during `edit`, keep typed text on a refused edit, `Fail`→`CliError` rename; security-review (Skill) — no finding at ≥ 8 (terminal-escape lead scored 7, hardened anyway in 73cc93f); score — ☑ fail 74; real run `easy-note add hello '#a'` in a fresh temp HOME — printed `easy-note: created notes dir …/easy-notes` then `✓ noted 20261116-144849-38db` (Demonstration AFTER; auto-checked, not /verify)
+Memory: nothing new yet — the diff-driven memory pass runs after the merge
+Not done: merge (admin: after the auto verify pass); auto verify: not started
+Paused: auto-mode check failed — Risk Medium: decision 3 (`SAFER OPTION`) is a choice — it is flagged ⚠ — so it must be `DEBATED` with exactly 2 Advocates named; Risk Medium: decision 4 (`RULE`) is a choice — it is flagged ⚠ — so it must be `DEBATED` with exactly 2 Advocates named; Risk Medium: decision 5 (`SAFER OPTION`) is a choice — it is flagged ⚠ — so it must be `DEBATED` with exactly 2 Advocates named; Risk Medium: decision 6 (`RULE`) is a choice — its RULE cites no written rule (`path:line`, `path § <heading>` or `docs/claude-md/tracks.md` `### <section>`) — so it must be `DEBATED` with exactly 2 Advocates named [report 19204e399faf]
+
 ## Evidence
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/cli.rs` (43 tests; AC 1–7, 9, 10 mapped per test in the implementer report), `tests/leak.rs` `surface_cli` (AC 8: real binary, add by arg/pipe/`-e`/`-e <text>`, ls, search, show, edit, tag, stats, doctor, rm, trash, restore + 12 error paths), unit tests in `src/surfaces/cli.rs`, `src/surfaces/cli/write.rs`, `src/surfaces/cli/scratch.rs`, `src/core/tags.rs` |
+| Verification command run | ☑ pass | Supervisor rerun 2026-11-16T08:03:49Z at 73cc93f: `cargo fmt --check` ok; `cargo clippy --all-targets -- -D warnings` `Finished`; `cargo test`: `test result: ok.` 17 + 43 (cli) + 29 + 13 + 37 + 46 (leak) + 45 + 30 passed, 0 failed |
+| Negative cases hold | ☑ pass | Red runs before the fix commit 73cc93f: leak `"cli x aws_key:...: secret on disk: home/seen-3968173.txt"` (P1.1, `add -e <text>`); `edit_and_add_dash_e_sweep_scratch_files_of_dead_processes` and `doctor_lists_leftover_scratch_files_by_name_and_stays_read_only` failed with src/ reverted (P1.2); P2 tests 11 of 43 failed before the code. Mutations in 9d4f22a: unmasked `fail.msg` fails `error_text_is_masked_before_it_is_printed` + CLI leak; disabled changed-field refusal fails `edit_refuses_bad_front_matter_and_keeps_the_original` |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
-| **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Reviewed `git diff origin/main..HEAD`: src/surfaces/cli.rs, cli/{read,write,scratch}.rs, src/core/tags.rs, src/core/mod.rs, Cargo.toml, tests/cli.rs, tests/leak.rs + direct callees in src/core/{store,guard,query,config,context}.rs. Skipped: src/surfaces/mcp.rs (unchanged; only the `starts_mcp` boundary checked). lane_check: `EXCEEDS (files 9 > 6; lines 1848 > 250)` — about half are tests |
+| Full smoke suite still green (no regression) | ☑ pass | Full `cargo test` green (all 10 test binaries, 260 tests) at 73cc93f |
+| **Companion score (easy-verifier)** | ☑ fail | overall 74 (floor missed: 74 < 80), change_risk 100 pass (detected bugfix from commit 73cc93f; branch signal feature; rule `bugfix_without_regression_test` 2 ≥ 1 passed), scope changes, ref `origin/main...HEAD` (73cc93f), ratings: architecture 100, supply-chain 100, code-quality 87, test-strategy 72 (`source_files_without_covering_test_share` 1.0: name pairing does not link src/surfaces/cli/*.rs to tests/cli.rs), requirement-fidelity 67 (`requirement_items_traced_share` 0.18), blast-radius 65 (`changed_files_in_churn_hotspots_share` 0.58), security 30 (`redaction_hits_observed` 6: guard patterns and runtime-built planted values in tests, as in HUN-269..272); abstentions: solution-fit (no static rule), reliability (insufficient measured weight), api, data, operations, infrastructure (below coverage floor); gates: none answered (rung 2 CLI, MCP not registered in this session; CLI never asks); findings sent empty; report: `/home/hungnguyenhuu/.easy-verifier-reports-local/hun-257-cli/hun-257-cli/evidence-report-changes-20261116T080519-734795Z.html` |
+| **UI: Visual regression (diff or verdict pasted)** | ☑ N/A | Pure CLI task, no UI component (guide § UI / Design Acceptance Criteria) |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ N/A | Pure CLI task, no UI component (guide § UI / Design Acceptance Criteria) |
+| **UI: Responsiveness at target viewports** | ☑ N/A | Pure CLI task, no UI component (guide § UI / Design Acceptance Criteria) |
 
 ---
 
@@ -109,5 +124,4 @@ note> ✓ noted 20261116-144850-ebb4
 
 **DELTA**: a person can now type `n <words>` (or `easy-note add`) in a fresh account with no setup and get a saved, tagged note and the confirmation line, then list, search, show, edit, tag, remove, restore, count and check notes from the terminal.
 
-**WITNESS**: [who ran it and when — derived from `memory/event-trace/Txxx.jsonl`, never the
-implementing agent alone]
+**WITNESS**: Supervisor session 16bb6d5a reran the full check at 2026-11-16T08:03:49Z on 73cc93f (trace `memory/event-trace/HUN-257.jsonl`); three independent reviewers (correctness/adversarial, tests/maintainability, security) probed the binary in temp HOMEs

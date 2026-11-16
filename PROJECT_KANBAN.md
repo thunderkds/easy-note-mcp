@@ -20,9 +20,9 @@
 - [ ] **HUN-266** — Manual run: measure how Cursor starts a stdio MCP server (HUN-251 follow-up) | Owner | C0 | Risk: Low | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-266.md`
 
 ### In Progress
-- [ ] **HUN-257** — CLI commands (Rust): init, add/n, ls, search, show, edit, tag, rm, restore, trash, stats, doctor, path | Backend-Implementer | C1 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-257.md` | Branch: `feat/HUN-257-rust-cli`
 
 ### Ready for Review
+- [ ] **HUN-257** — CLI commands (Rust): init, add/n, ls, search, show, edit, tag, rm, restore, trash, stats, doctor, path | Backend-Implementer | C1 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-257.md` | Branch: `feat/HUN-257-rust-cli`
 
 ### Done
 - [x] **HUN-270** — R3 Rust secret guard: ten kinds, mask on write and read, leak suite | Backend-Implementer | C1 | Risk: High | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-270.md` | Branch: `feat/HUN-270-rust-guard` | Done 2026-11-16: merged 2d023e1 by the owner over a failing Companion score (71); auto verify pass (session 4820c8b8-f2e6-4327-9393-8416549bfa05, commit f49c09fd69fb)
