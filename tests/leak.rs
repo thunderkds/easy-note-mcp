@@ -357,7 +357,146 @@ fn surface_cli(text: &str) -> Captured {
     got
 }
 
-const SURFACES: &[(&str, Surface)] = &[("core", surface_core), ("cli", surface_cli)];
+/// Every string in a JSON value, and inside any string that is itself JSON (a tool answer is
+/// JSON text in a JSON line), so a secret JSON escaping would hide is still grepped.
+fn json_strings(value: &Value, out: &mut Vec<String>) {
+    match value {
+        Value::String(s) => {
+            out.push(s.clone());
+            if let Ok(inner @ (Value::Object(_) | Value::Array(_))) = serde_json::from_str(s) {
+                json_strings(&inner, out);
+            }
+        }
+        Value::Array(list) => list.iter().for_each(|v| json_strings(v, out)),
+        Value::Object(map) => map.values().for_each(|v| json_strings(v, out)),
+        _ => {}
+    }
+}
+
+/// The real `easy-note serve` over stdio, driven line by line: add, read, a read of an id that
+/// is the secret (a tool error), an add with a wrongly typed argument (a protocol-level error
+/// that quotes the value), search, list, stats. Every answer line, its decoded strings, the whole
+/// of stdout and stderr are captured. The child inherits the temp HOME and EASY_NOTE_DIR.
+fn surface_mcp(text: &str) -> Captured {
+    use std::io::{BufRead, Read, Write};
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_easy-note"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut lines = std::io::BufReader::new(child.stdout.take().unwrap()).lines();
+    let home = std::env::var("HOME").unwrap();
+    let mut stdout = String::new();
+    let mut objects = vec![];
+    let mut next_id = 0u32;
+    let mut send = |method: &str, params: Value, expect_answer: bool| -> Option<Value> {
+        next_id += 1;
+        let mut request = serde_json::json!({"jsonrpc": "2.0", "method": method, "params": params});
+        if expect_answer {
+            request["id"] = next_id.into();
+        }
+        writeln!(stdin, "{request}").unwrap();
+        stdin.flush().unwrap();
+        if !expect_answer {
+            return None;
+        }
+        let line = lines.next().expect("the server answers").unwrap();
+        stdout.push_str(&line);
+        stdout.push('\n');
+        let answer: Value = serde_json::from_str(&line).expect("one JSON-RPC line");
+        assert_eq!(answer["id"], next_id, "{line}");
+        objects.push(line);
+        let mut decoded = vec![];
+        json_strings(&answer, &mut decoded);
+        objects.extend(decoded);
+        Some(answer)
+    };
+    let call = |name: &str, args: Value| serde_json::json!({"name": name, "arguments": args});
+
+    send(
+        "initialize",
+        serde_json::json!({"protocolVersion": "2025-03-26", "capabilities": {},
+            "clientInfo": {"name": "leak-test", "version": "0"}}),
+        true,
+    );
+    send("notifications/initialized", serde_json::json!({}), false);
+    let added = send(
+        "tools/call",
+        call(
+            "note_add",
+            serde_json::json!({"text": text, "tags": ["leak"], "cwd": home}),
+        ),
+        true,
+    )
+    .unwrap();
+    let reply = added["result"]["content"][0]["text"].as_str().unwrap();
+    let id = serde_json::from_str::<Value>(reply).expect("note_add answers JSON")["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    send(
+        "tools/call",
+        call("note_read", serde_json::json!({"id": id})),
+        true,
+    );
+    send(
+        "tools/call",
+        call("note_read", serde_json::json!({"id": text})),
+        true,
+    );
+    send(
+        "tools/call",
+        call("note_add", serde_json::json!({"text": "x", "tags": text})),
+        true,
+    );
+    send(
+        "tools/call",
+        call("note_search", serde_json::json!({"query": "leak"})),
+        true,
+    );
+    send(
+        "tools/call",
+        call("note_search", serde_json::json!({"query": text})),
+        true,
+    );
+    send("tools/call", call("note_list", serde_json::json!({})), true);
+    send(
+        "tools/call",
+        call("note_stats", serde_json::json!({})),
+        true,
+    );
+    drop(stdin);
+
+    for line in lines {
+        let line = line.unwrap();
+        stdout.push_str(&line);
+        stdout.push('\n');
+    }
+    let mut stderr = String::new();
+    child
+        .stderr
+        .take()
+        .unwrap()
+        .read_to_string(&mut stderr)
+        .unwrap();
+    assert!(child.wait().unwrap().success());
+    Captured {
+        objects,
+        stdout,
+        stderr,
+    }
+}
+
+const SURFACES: &[(&str, Surface)] = &[
+    ("core", surface_core),
+    ("cli", surface_cli),
+    ("mcp", surface_mcp),
+];
 
 fn nothing_leaked(secret: &str, got: &Captured, root: &Path) -> Result<(), String> {
     if got.objects.is_empty() {

@@ -45,3 +45,9 @@
 ### 2026-11-16 — Masking raw YAML misses escaped tokens (HUN-270)
 - **Pattern**: Running the secret guard on the raw YAML source of a front-matter value is not enough. In a double-quoted scalar, `\n`/`\t`/`\r` before a token removes the `\b` boundary the anchored patterns need, and `\x41` escapes can spell a token. Mask the decoded scalar strings too (`store.rs` `mask_decoded`), and test each escape before each anchored kind.
 **Files**: src/core/store.rs, src/core/guard.rs, tests/leak.rs
+
+### 2026-11-16 — rmcp argument errors echo escaped values; spawn pull rewrites the worktree's board cache (HUN-258)
+- **Pattern**: When an MCP tool argument has the wrong type, rmcp/serde quote the value in the error text, JSON-escaped, so `guard::mask_for_output` cannot see a secret in it. `src/surfaces/mcp.rs` overrides `call_tool`: a `failed to deserialize parameters:` error other than `missing field` becomes a fixed message, and `error.data` is cleared. The leak harness's `mcp` surface caught this; keep it for any new tool.
+- **Pattern**: `scripts/pull_moment.py spawn <ID>` run from a task worktree rewrites that worktree's `PROJECT_KANBAN.md` and the `tasks/TASK_GUIDE_*.md` copies from the board. Restore them (`git restore <files>`) before review, so the task branch carries only its own work.
+- **Pattern**: Two Supervisor sessions can run in parallel when their tasks share only small hunks: HUN-258 ran beside HUN-257 and touched `src/surfaces/cli.rs` (`Command::Serve` flags, `run_serve`) and one `tests/leak.rs` `SURFACES` entry. The second branch to merge resolves the conflict.
+**Files**: src/surfaces/mcp.rs, tests/leak.rs, scripts/pull_moment.py

@@ -61,8 +61,18 @@ impl From<FilterArgs> for Filters {
 
 #[derive(Debug, PartialEq, Eq, Subcommand)]
 pub enum Command {
-    /// Run the MCP server over stdio.
-    Serve,
+    /// Run the MCP server over stdio, or over HTTP on 127.0.0.1 with `--http`.
+    Serve {
+        /// Serve streamable HTTP instead of stdio.
+        #[arg(long)]
+        http: bool,
+        /// The address to bind. Only 127.0.0.1 is allowed.
+        #[arg(long, default_value = "127.0.0.1", requires = "http")]
+        host: String,
+        /// The HTTP port.
+        #[arg(long, default_value_t = super::mcp::DEFAULT_PORT, requires = "http")]
+        port: u16,
+    },
     /// Choose the notes dir and save it in the config file.
     Init {
         /// The notes dir (default: the dir in use now).
@@ -153,7 +163,7 @@ pub fn normalize_args(mut args: Vec<OsString>) -> Vec<OsString> {
 /// command, so a new one does not compile until it is classified.
 pub fn starts_mcp(command: &Command) -> bool {
     match command {
-        Command::Serve => true,
+        Command::Serve { .. } => true,
         Command::Init { .. }
         | Command::Add { .. }
         | Command::Ls { .. }
@@ -304,7 +314,7 @@ fn confirmation(verb: &str, id: &str, details: &[Option<&str>], masked: &[&str])
 
 fn dispatch(command: Command) -> Outcome {
     match command {
-        Command::Serve => Err(Fail::runtime("serve is not a note command")),
+        Command::Serve { .. } => Err(Fail::runtime("serve is not a note command")),
         Command::Init { dir } => write::init(dir),
         Command::Add { edit, text } => write::add(edit, &text),
         Command::Ls { filters, limit } => read::ls(filters.into(), limit),
@@ -341,13 +351,9 @@ pub fn run(args: Vec<OsString>) -> i32 {
         }
     };
     if starts_mcp(&cli.command) {
-        return match super::mcp::serve() {
-            Ok(()) => 0,
-            Err(err) => {
-                eprintln!("easy-note: serve failed: {}", safe(&err.to_string()));
-                1
-            }
-        };
+        if let Command::Serve { http, host, port } = &cli.command {
+            return run_serve(*http, host, *port);
+        }
     }
     match dispatch(cli.command) {
         Ok(()) => 0,
@@ -356,6 +362,26 @@ pub fn run(args: Vec<OsString>) -> i32 {
                 eprintln!("easy-note: {}", safe(&fail.msg));
             }
             fail.code
+        }
+    }
+}
+
+/// `serve`: a host other than 127.0.0.1 exits 2 before anything binds; a failed start exits 1.
+fn run_serve(http: bool, host: &str, port: u16) -> i32 {
+    let mode = if http {
+        if let Err(message) = super::mcp::check_host(host) {
+            eprintln!("easy-note: {}", safe(&message));
+            return 2;
+        }
+        super::mcp::Mode::Http { port }
+    } else {
+        super::mcp::Mode::Stdio
+    };
+    match super::mcp::serve(mode) {
+        Ok(()) => 0,
+        Err(err) => {
+            eprintln!("easy-note: serve failed: {}", safe(&err.to_string()));
+            1
         }
     }
 }
@@ -466,7 +492,11 @@ mod tests {
     fn every_command() -> Vec<Command> {
         let id = || "20261114-164713-ab12".to_string();
         vec![
-            Command::Serve,
+            Command::Serve {
+                http: false,
+                host: "127.0.0.1".into(),
+                port: 8769,
+            },
             Command::Init { dir: None },
             Command::Add {
                 edit: false,
@@ -508,7 +538,7 @@ mod tests {
         for command in every_command() {
             assert_eq!(
                 starts_mcp(&command),
-                command == Command::Serve,
+                matches!(command, Command::Serve { .. }),
                 "{command:?}"
             );
         }

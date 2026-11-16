@@ -36,3 +36,4 @@
 - [Close-out placeholder check; verifier CLI reports dir](learnings.md#2026-11-16--auto-close-out-placeholder-check-easy-verifier-cli-reports-dir-hun-257) — no `<word>` in Evidence Notes; verifier CLI needs a writable reports dir
 - [`[admin]` merge gate behaviour](learnings.md#2026-11-15--admin-merge-gate-behaviour-hun-251-hun-252) — name the task; whole-board check; no main merge-in; branch must hold task ID
 - [easy-verifier scores of early branches](learnings.md#2026-11-15--easy-verifier-scores-of-early-branches-hun-251-hun-252) — merge skeleton first; uv.lock makes change_risk abstain; pin CI SHAs + uv sync --locked
+- [rmcp arg errors echo values; spawn pull rewrites worktree board](learnings.md#2026-11-16--rmcp-argument-errors-echo-escaped-values-spawn-pull-rewrites-the-worktrees-board-cache-hun-258) — mask via call_tool override; git restore board cache before review
