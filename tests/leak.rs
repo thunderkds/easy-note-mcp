@@ -244,7 +244,108 @@ fn surface_core(text: &str) -> Captured {
     }
 }
 
-const SURFACES: &[(&str, Surface)] = &[("core", surface_core)];
+/// The CLI: the real binary, every command that takes note text or prints it, and the error
+/// paths that echo an argument. All stdout and stderr are captured and grepped.
+fn surface_cli(text: &str) -> Captured {
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::{Command, Stdio};
+
+    let home = PathBuf::from(std::env::var("HOME").unwrap());
+    // An $EDITOR stub that appends the planted text from its environment (never a file).
+    let stub = home.join("append.sh");
+    std::fs::write(
+        &stub,
+        "#!/bin/sh\nprintf '\\nedited %s\\n' \"$PLANT\" >> \"$1\"\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut got = Captured {
+        objects: vec![],
+        stdout: String::new(),
+        stderr: String::new(),
+    };
+    let mut run = |args: &[&str], stdin: Option<&str>| -> String {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_easy-note"))
+            .args(args)
+            .env("PLANT", text)
+            .env("EDITOR", &stub)
+            .current_dir(&home)
+            .stdin(if stdin.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        if let Some(input) = stdin {
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(input.as_bytes())
+                .unwrap();
+        }
+        let out = child.wait_with_output().unwrap();
+        let (o, e) = (
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        );
+        // The arguments are left out: they hold the planted text this test is hiding from the output.
+        let n = got.objects.len();
+        got.objects
+            .push(format!("run {n} -> {:?}\n{o}\n{e}", out.status.code()));
+        got.stdout.push_str(&o);
+        got.stderr.push_str(&e);
+        o
+    };
+    let id_of = |line: &str| {
+        line.split_whitespace()
+            .nth(2)
+            .unwrap_or_default()
+            .to_string()
+    };
+
+    let by_arg = id_of(&run(&["add", text], None));
+    let by_pipe = id_of(&run(&["add"], Some(text)));
+    let by_editor = id_of(&run(&["add", "-e", "start"], None));
+    run(&["ls"], None);
+    run(&["search", text], None);
+    run(&["show", &by_arg], None);
+    run(&["edit", &by_pipe], None);
+    run(&["show", &by_pipe], None);
+    run(&["tag", &by_arg, "leak", "again"], None);
+    run(&["stats"], None);
+    run(&["stats", "--json"], None);
+    run(&["doctor"], None);
+    run(&["rm", &by_editor], None);
+    run(&["trash"], None);
+    run(&["restore", &by_editor], None);
+    run(&["path"], None);
+    // the text where an id, a filter, a tag or a command should be: every error echoes or not
+    for args in [
+        vec!["show", text],
+        vec!["rm", text],
+        vec!["restore", text],
+        vec!["edit", text],
+        vec!["tag", text, "x"],
+        vec!["tag", &by_arg, text],
+        vec!["ls", text],
+        vec!["ls", "--since", text],
+        vec!["ls", "--tag", text],
+        vec!["search", "--bogus", text],
+        vec!["trash", "--empty", "--older-than", text],
+        vec![text],
+    ] {
+        run(&args, None);
+    }
+    got
+}
+
+const SURFACES: &[(&str, Surface)] = &[("core", surface_core), ("cli", surface_cli)];
 
 fn nothing_leaked(secret: &str, got: &Captured, root: &Path) -> Result<(), String> {
     if got.objects.is_empty() {
@@ -292,8 +393,10 @@ fn planted_secret_never_leaks() {
 }
 
 #[test]
-fn the_registry_holds_the_core_surface() {
-    assert!(SURFACES.iter().any(|(name, _)| *name == "core"));
+fn the_registry_holds_the_core_and_the_cli_surface() {
+    for wanted in ["core", "cli"] {
+        assert!(SURFACES.iter().any(|(name, _)| *name == wanted), "{wanted}");
+    }
 }
 
 /// Pin of the harness itself: it must catch a leak, or "finds none" proves nothing.
