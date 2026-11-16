@@ -1,16 +1,17 @@
 //! The commands that change the notes dir: `init`, `add`, `edit`, `tag`, `rm`, `restore`, `trash`.
 
-use std::fs::{self, File, OpenOptions};
+use std::collections::BTreeMap;
+use std::fs;
 use std::io::{self, BufRead, IsTerminal, Write};
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use super::{confirmation, count, safe, Fail, Outcome};
+use super::scratch::Scratch;
+use super::{confirmation, count, safe, say, Fail, Outcome};
 use crate::core::format::{parse, render, Note, Value};
 use crate::core::store::Store;
-use crate::core::{config, context, tags};
+use crate::core::{config, context, guard, tags};
 
 /// `init [--dir PATH]`: make the dir and save it in the config file (FR-001).
 pub fn init(dir: Option<PathBuf>) -> Outcome {
@@ -20,8 +21,10 @@ pub fn init(dir: Option<PathBuf>) -> Outcome {
     };
     fs::create_dir_all(&dir)?;
     config::save_dir(&dir)?;
-    println!("✓ notes dir {}", safe(&dir.display().to_string()));
-    Ok(())
+    if std::env::var_os("EASY_NOTE_DIR").is_some_and(|v| !v.is_empty()) {
+        eprintln!("easy-note: EASY_NOTE_DIR is set and overrides the config file; unset it to use the saved dir");
+    }
+    say(&format!("✓ notes dir {}", safe(&dir.display().to_string())))
 }
 
 /// Read the note text when none is on the command line: one line at a terminal, else all of it.
@@ -42,7 +45,11 @@ fn read_input(tty: bool, mut input: impl BufRead, mut prompt: impl Write) -> io:
 pub fn add(edit: bool, words: &[String]) -> Outcome {
     let store = Store::open()?;
     let given = words.join(" ");
+    // The editor sees a file, so a secret in the given words is masked before the file exists.
+    let mut masked_first: Vec<&'static str> = vec![];
     let text = if edit {
+        let (given, kinds) = guard::mask(&given);
+        masked_first = kinds;
         edit_text(&store, "new", &given)?
     } else if !words.is_empty() {
         given
@@ -61,78 +68,34 @@ pub fn add(edit: bool, words: &[String]) -> Outcome {
             safe(&store.root.display().to_string())
         );
     }
-    println!(
-        "{}",
-        confirmation(
-            "noted",
-            &added.id,
-            &[found.repo.as_deref(), found.task.as_deref()],
-            &added.masked
-        )
-    );
-    Ok(())
+    masked_first.extend(&added.masked);
+    say(&confirmation(
+        "noted",
+        &added.id,
+        &[found.repo.as_deref(), found.task.as_deref()],
+        &masked_first,
+    ))
 }
 
-/// A temp file in `<notes dir>/.easy-note/edit/` for the editor (the only place easy-note writes
-/// besides notes and config). Removed when dropped, with the folders this run made.
-struct Scratch {
-    path: PathBuf,
-    root: PathBuf,
-    root_existed: bool,
-}
-
-impl Scratch {
-    fn create(store: &Store, name: &str, content: &str) -> io::Result<Scratch> {
-        let root_existed = store.root.exists();
-        let dir = store.root.join(".easy-note").join("edit");
-        fs::create_dir_all(&dir)?;
-        let scratch = Scratch {
-            path: dir.join(format!("{name}-{}.md", std::process::id())),
-            root: store.root.clone(),
-            root_existed,
-        };
-        let mut file: File = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&scratch.path)?;
-        file.write_all(content.as_bytes())?;
-        Ok(scratch)
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
-        let Some(edit_dir) = self.path.parent().filter(|p| p.ends_with("edit")) else {
-            return;
-        };
-        // `remove_dir` fails on a folder that holds anything, so a person's files are safe.
-        let _ = fs::remove_dir(edit_dir);
-        if let Some(hidden) = edit_dir.parent() {
-            let _ = fs::remove_dir(hidden);
-        }
-        if !self.root_existed {
-            let _ = fs::remove_dir(&self.root);
-        }
-    }
-}
-
-/// Open `$EDITOR` (else `vi`) on `path`; it may hold arguments, like `code -w`.
+/// Open the editor on `path`, the way git does: `$VISUAL`, else `$EDITOR`, else `vi`, run by
+/// `sh` so the command may hold quotes and arguments (`"/my editors/ed" --wait`).
 fn run_editor(path: &Path) -> Outcome {
-    let var = std::env::var("EDITOR").unwrap_or_default();
-    let mut parts = var.split_whitespace();
-    let program = parts.next().unwrap_or("vi");
-    let status = Command::new(program)
-        .args(parts)
+    let pick = |var: &str| std::env::var(var).ok().filter(|v| !v.trim().is_empty());
+    let editor = pick("VISUAL")
+        .or_else(|| pick("EDITOR"))
+        .unwrap_or_else(|| "vi".to_string());
+    let status = Command::new("sh")
+        .arg("-c")
+        .arg(format!("{editor} \"$@\""))
+        .arg("sh")
         .arg(path)
         .status()
-        .map_err(|e| Fail::runtime(format!("cannot run the editor {program:?}: {e}")))?;
+        .map_err(|e| Fail::runtime(format!("cannot run the editor {editor}: {e}")))?;
     if status.success() {
         Ok(())
     } else {
         Err(Fail::runtime(format!(
-            "the editor {program:?} ended with {status}; nothing saved"
+            "the editor {editor} ended with {status}; nothing saved"
         )))
     }
 }
@@ -151,18 +114,64 @@ fn tags_of(note: &Note) -> Vec<String> {
     }
 }
 
-/// The first front-matter key, other than `tags` and `updated`, whose value differs.
+/// Unknown front-matter keys of a note, each with its YAML text.
+fn extra_by_key(note: &Note) -> BTreeMap<&str, &str> {
+    note.extra
+        .iter()
+        .map(|chunk| {
+            let key = chunk.split(':').next().unwrap_or_default().trim();
+            (key, chunk.trim_end_matches('\n'))
+        })
+        .collect()
+}
+
+/// The first front-matter key, other than `tags` and `updated`, that was added, removed or changed;
+/// known keys first, then unknown keys.
 fn changed_key(old: &Note, new: &Note) -> Option<String> {
     let skip = |key: &&String| !matches!(key.as_str(), "tags" | "updated");
-    old.fields
+    let known = old
+        .fields
         .keys()
         .chain(new.fields.keys())
         .filter(skip)
         .find(|key| old.fields.get(*key) != new.fields.get(*key))
-        .cloned()
+        .cloned();
+    known.or_else(|| {
+        let (before, after) = (extra_by_key(old), extra_by_key(new));
+        before
+            .keys()
+            .chain(after.keys())
+            .find(|key| before.get(*key) != after.get(*key))
+            .map(|key| key.to_string())
+    })
 }
 
-/// `edit <id>`: the whole file in `$EDITOR`, then parse it again, mask, save (FR-013, FR-014).
+/// The tags to save after an edit: those in the edited front matter (a new one must be a tag),
+/// plus the `#words` of the new text when the text changed (FR-006). `None`: no change.
+fn edited_tags(old: &Note, new: &Note, text_changed: bool) -> Result<Option<Vec<String>>, String> {
+    let before = tags_of(old);
+    let mut wanted: Vec<String> = vec![];
+    for tag in tags_of(new) {
+        let tag = if before.contains(&tag) {
+            tag
+        } else {
+            tags::normalize(&tag).ok_or_else(|| format!("not a tag: {tag}"))?
+        };
+        if !wanted.contains(&tag) {
+            wanted.push(tag);
+        }
+    }
+    if text_changed {
+        for tag in tags::extract(&new.body) {
+            if !wanted.contains(&tag) {
+                wanted.push(tag);
+            }
+        }
+    }
+    Ok((wanted != before).then_some(wanted))
+}
+
+/// `edit <id>`: the whole file in the editor, then parse it again, mask, save (FR-013, FR-014).
 /// Only the text and the tags are saved; any other change refuses the edit.
 pub fn edit(id: &str) -> Outcome {
     let store = Store::open()?;
@@ -177,7 +186,7 @@ pub fn edit(id: &str) -> Outcome {
     }
     if let Some(key) = changed_key(&note, &new) {
         return Err(refuse(format!(
-            "only the text and tags can change, not {key:?}"
+            "only the text and tags can change, not {key}"
         )));
     }
     let text = (new.body != note.body).then_some(new.body.as_str());
@@ -186,15 +195,13 @@ pub fn edit(id: &str) -> Outcome {
             "the text is empty (use rm to delete a note)".to_string(),
         ));
     }
-    let new_tags = tags_of(&new);
-    let tags = (new_tags != tags_of(&note)).then_some(new_tags);
+    let tags = edited_tags(&note, &new, text.is_some()).map_err(refuse)?;
     if text.is_none() && tags.is_none() {
         eprintln!("easy-note: no changes");
         return Ok(());
     }
     let updated = store.update(id, text, tags.as_deref())?;
-    println!("{}", confirmation("edited", id, &[], &updated.masked));
-    Ok(())
+    say(&confirmation("edited", id, &[], &updated.masked))
 }
 
 /// `tag <id> <tags...>`, or `--remove`.
@@ -226,23 +233,24 @@ pub fn tag(id: &str, remove: bool, wanted: &[String]) -> Outcome {
             .collect::<Vec<_>>()
             .join(" ")
     };
-    println!(
-        "{}",
-        confirmation("tagged", id, &[Some(&shown)], &updated.masked)
-    );
-    Ok(())
+    say(&confirmation(
+        "tagged",
+        id,
+        &[Some(&shown)],
+        &updated.masked,
+    ))
 }
 
 pub fn rm(id: &str) -> Outcome {
     Store::open()?.rm(id)?;
-    println!("✓ removed {id} (easy-note restore {id} brings it back)");
-    Ok(())
+    say(&format!(
+        "✓ removed {id} (easy-note restore {id} brings it back)"
+    ))
 }
 
 pub fn restore(id: &str) -> Outcome {
     Store::open()?.restore(id)?;
-    println!("✓ restored {id}");
-    Ok(())
+    say(&format!("✓ restored {id}"))
 }
 
 /// `30d` is 30 days.
@@ -268,10 +276,12 @@ pub fn trash(empty: bool, older_than: Option<&str>) -> Outcome {
         let age = parse_days(older_than.unwrap_or_default())?;
         let gone = store.empty_trash(age)?;
         for path in &gone {
-            println!("deleted {}", stem(path));
+            say(&format!("deleted {}", safe(&stem(path))))?;
         }
-        println!("✓ deleted {} from the trash", count(gone.len(), "note"));
-        return Ok(());
+        return say(&format!(
+            "✓ deleted {} from the trash",
+            count(gone.len(), "note")
+        ));
     }
     // The layout is the store's: `<dir>/.easy-note/trash/<id>.md`.
     let mut ids: Vec<String> = match fs::read_dir(store.root.join(".easy-note").join("trash")) {
@@ -285,7 +295,7 @@ pub fn trash(empty: bool, older_than: Option<&str>) -> Outcome {
     };
     ids.sort();
     for id in ids {
-        println!("{}", safe(&id));
+        say(&safe(&id))?;
     }
     Ok(())
 }

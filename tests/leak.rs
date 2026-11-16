@@ -252,11 +252,12 @@ fn surface_cli(text: &str) -> Captured {
     use std::process::{Command, Stdio};
 
     let home = PathBuf::from(std::env::var("HOME").unwrap());
-    // An $EDITOR stub that appends the planted text from its environment (never a file).
+    // An $EDITOR stub that copies the file it was given into $HOME (so the harness greps what the
+    // editor saw), then appends the planted text from its environment (never from a file).
     let stub = home.join("append.sh");
     std::fs::write(
         &stub,
-        "#!/bin/sh\nprintf '\\nedited %s\\n' \"$PLANT\" >> \"$1\"\n",
+        "#!/bin/sh\ncp \"$1\" \"$HOME/seen-$$.txt\"\nprintf '\\nedited %s\\n' \"$PLANT\" >> \"$1\"\n",
     )
     .unwrap();
     std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -266,7 +267,7 @@ fn surface_cli(text: &str) -> Captured {
         stdout: String::new(),
         stderr: String::new(),
     };
-    let mut run = |args: &[&str], stdin: Option<&str>| -> String {
+    let mut run = |args: &[&str], stdin: Option<&str>| -> (String, Option<i32>) {
         let mut child = Command::new(env!("CARGO_BIN_EXE_easy-note"))
             .args(args)
             .env("PLANT", text)
@@ -300,31 +301,42 @@ fn surface_cli(text: &str) -> Captured {
             .push(format!("run {n} -> {:?}\n{o}\n{e}", out.status.code()));
         got.stdout.push_str(&o);
         got.stderr.push_str(&e);
-        o
+        (o, out.status.code())
+    };
+    // A happy-path run must exit 0: a run that failed early would leave nothing to leak.
+    let mut ok = |args: &[&str], stdin: Option<&str>| -> String {
+        let (out, code) = run(args, stdin);
+        assert_eq!(code, Some(0), "`{}` failed: {out}", args[0]);
+        out
     };
     let id_of = |line: &str| {
-        line.split_whitespace()
+        let id = line
+            .split_whitespace()
             .nth(2)
             .unwrap_or_default()
-            .to_string()
+            .to_string();
+        assert!(id.starts_with("20"), "a note id, got {id:?}");
+        id
     };
 
-    let by_arg = id_of(&run(&["add", text], None));
-    let by_pipe = id_of(&run(&["add"], Some(text)));
-    let by_editor = id_of(&run(&["add", "-e", "start"], None));
-    run(&["ls"], None);
-    run(&["search", text], None);
-    run(&["show", &by_arg], None);
-    run(&["edit", &by_pipe], None);
-    run(&["show", &by_pipe], None);
-    run(&["tag", &by_arg, "leak", "again"], None);
-    run(&["stats"], None);
-    run(&["stats", "--json"], None);
-    run(&["doctor"], None);
-    run(&["rm", &by_editor], None);
-    run(&["trash"], None);
-    run(&["restore", &by_editor], None);
-    run(&["path"], None);
+    let by_arg = id_of(&ok(&["add", text], None));
+    let by_pipe = id_of(&ok(&["add"], Some(text)));
+    let by_editor = id_of(&ok(&["add", "-e", "start"], None));
+    // the given text goes through the editor file: it must be masked before the editor sees it
+    id_of(&ok(&["add", "-e", text], None));
+    ok(&["ls"], None);
+    ok(&["search", text], None);
+    ok(&["show", &by_arg], None);
+    ok(&["edit", &by_pipe], None);
+    ok(&["show", &by_pipe], None);
+    ok(&["tag", &by_arg, "leak", "again"], None);
+    ok(&["stats"], None);
+    ok(&["stats", "--json"], None);
+    ok(&["doctor"], None);
+    ok(&["rm", &by_editor], None);
+    ok(&["trash"], None);
+    ok(&["restore", &by_editor], None);
+    ok(&["path"], None);
     // the text where an id, a filter, a tag or a command should be: every error echoes or not
     for args in [
         vec!["show", text],

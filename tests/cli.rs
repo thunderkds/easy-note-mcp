@@ -10,11 +10,23 @@ fn bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_easy-note"))
 }
 
-fn sandbox(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("easy-note-cli-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+/// A temp dir used as HOME; removed when the test ends.
+struct Sandbox(tempfile::TempDir);
+
+impl std::ops::Deref for Sandbox {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        self.0.path()
+    }
+}
+
+fn sandbox(name: &str) -> Sandbox {
+    Sandbox(
+        tempfile::Builder::new()
+            .prefix(&format!("easy-note-cli-{name}-"))
+            .tempdir()
+            .unwrap(),
+    )
 }
 
 fn run(program: &Path, args: &[&str], home: &Path) -> Output {
@@ -692,16 +704,15 @@ fn doctor_reports_skipped_files_secrets_by_kind_and_an_n_clash_read_only() {
 fn doctor_on_a_clean_dir_says_so_and_n_as_ours_is_no_clash() {
     let home = sandbox("doctor-clean");
     add(&home, &["clean"]);
-    let n = link_n(&home);
-    let bin_dir = home.clone();
+    link_n(&home);
+    let ours_first = format!("{}:/usr/bin:/bin", home.display());
     let out = exec(&home, &bin(), &["doctor"], None, |c| {
-        c.env("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()));
+        c.env("PATH", ours_first);
     });
     assert_eq!(out.status.code(), Some(0));
     let report = text(&out.stdout);
     assert!(report.contains("no problems"), "{report}");
     assert!(!report.contains("clash"), "{report}");
-    let _ = n;
 }
 
 fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
@@ -734,9 +745,10 @@ fn usage_errors_exit_2_runtime_errors_exit_1_and_help_documents_both() {
     let help = easy(&home, &["--help"]);
     assert_eq!(help.status.code(), Some(0));
     let help = text(&help.stdout);
-    for words in ["Exit codes", "0", "1", "2"] {
-        assert!(help.contains(words), "{words}: {help}");
-    }
+    assert!(
+        help.contains("Exit codes: 0 ok, 1 runtime error, 2 usage error."),
+        "{help}"
+    );
     for cmd in [
         "init", "add", "ls", "search", "show", "edit", "tag", "rm", "restore", "trash", "stats",
         "doctor", "path", "serve",
@@ -756,52 +768,47 @@ fn usage_errors_exit_2_runtime_errors_exit_1_and_help_documents_both() {
 #[test]
 fn error_text_is_masked_before_it_is_printed() {
     let home = sandbox("masked-errors");
-    for args in [
-        vec!["show", AWS],
-        vec!["rm", AWS],
-        vec!["restore", AWS],
-        vec!["tag", AWS, "x"],
-        vec!["ls", "--since", AWS],
-        vec!["trash", "--empty", "--older-than", AWS],
-        vec!["ls", AWS],
-        vec!["frobnicate", AWS],
-    ] {
+    // (arguments, whether the error text echoes the argument, so the marker must show)
+    let cases: [(Vec<&str>, bool); 8] = [
+        (vec!["show", AWS], true),
+        (vec!["rm", AWS], true),
+        (vec!["restore", AWS], true),
+        (vec!["tag", AWS, "x"], true),
+        (vec!["ls", "--since", AWS], false),
+        (vec!["trash", "--empty", "--older-than", AWS], true),
+        (vec!["ls", AWS], true),
+        (vec!["frobnicate", AWS], false),
+    ];
+    for (args, echoes) in cases {
         let out = easy(&home, &args);
         assert_ne!(out.status.code(), Some(0), "{args:?}");
         let all = format!("{}{}", text(&out.stdout), text(&out.stderr));
         assert!(!all.contains(AWS), "{args:?}: {all}");
-        assert!(
-            all.contains("[masked:aws_key]")
-                || args[0] == "ls"
-                || args[0] == "frobnicate"
-                || args[0] == "trash",
-            "{args:?}: {all}"
-        );
+        if echoes {
+            assert!(all.contains("[masked:aws_key]"), "{args:?}: {all}");
+        }
     }
 }
 
 #[test]
 fn no_command_except_serve_reaches_the_mcp_module_or_a_runtime() {
-    // Only mcp.rs names tokio or rmcp; only cli.rs names `mcp::` (once, for `serve`).
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/surfaces");
-    let mut cli_sources = vec![];
-    for entry in walk_rs(&dir) {
-        let src = std::fs::read_to_string(&entry).unwrap();
-        if entry.file_name().unwrap() == "mcp.rs" {
+    // Only src/surfaces/mcp.rs names tokio or rmcp; one call, `mcp::serve`, exists.
+    let src_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mcp = src_dir.join("surfaces/mcp.rs");
+    let mut calls = 0;
+    for entry in walk_rs(&src_dir) {
+        if entry == mcp {
             continue;
         }
+        let src = std::fs::read_to_string(&entry).unwrap();
         assert!(
             !src.contains("tokio") && !src.contains("rmcp"),
             "{}",
             entry.display()
         );
-        cli_sources.push((entry, src));
+        calls += src.matches("mcp::serve").count();
     }
-    let calls: usize = cli_sources
-        .iter()
-        .map(|(_, s)| s.matches("mcp::").count())
-        .sum();
-    assert_eq!(calls, 1, "one call into the mcp module: `serve`");
+    assert_eq!(calls, 1, "one call into the mcp module: `mcp::serve`");
 }
 
 fn walk_rs(dir: &Path) -> Vec<PathBuf> {
@@ -817,12 +824,383 @@ fn walk_rs(dir: &Path) -> Vec<PathBuf> {
     out
 }
 
+// ---------------------------------------------------------------------------------------------
+// HUN-257 Stage 4 fixes
+// ---------------------------------------------------------------------------------------------
+
+fn all_bytes(root: &Path) -> Vec<u8> {
+    snapshot(root).into_iter().flat_map(|(_, b)| b).collect()
+}
+
+fn holds(haystack: &[u8], needle: &str) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|w| w == needle.as_bytes())
+}
+
+#[test]
+fn add_dash_e_masks_the_given_text_before_it_reaches_the_scratch_file() {
+    let home = sandbox("dash-e-mask");
+    let seen = home.join("seen.txt");
+    let stub = editor(&home, "ed.sh", &format!("cp \"$1\" '{}'", seen.display()));
+    let out = with_editor(&home, &["add", "-e", &format!("key {AWS} now")], &stub);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let shown = std::fs::read_to_string(&seen).unwrap();
+    assert!(
+        !shown.contains(AWS),
+        "the editor file held the secret: {shown}"
+    );
+    assert!(shown.contains("key [masked:aws_key] now"), "{shown}");
+    let line = text(&out.stdout);
+    assert!(
+        line.trim_end().ends_with("· 1 secret masked: aws_key"),
+        "{line}"
+    );
+    assert!(!holds(&all_bytes(&home), AWS), "no file holds the secret");
+}
+
+const DEAD_PID: &str = "2147483646";
+
+/// A scratch dir with: a file of a dead process, an editor swap file, a stray file, and the
+/// file of a live process (this test) with its swap file.
+fn plant_scratch(home: &Path) -> PathBuf {
+    let dir = home.join("notes/.easy-note/edit");
+    std::fs::create_dir_all(&dir).unwrap();
+    let live = std::process::id();
+    for name in [
+        format!("new-{DEAD_PID}.md"),
+        format!("20261114-164713-ab12-{DEAD_PID}.md"),
+        format!(".new-{DEAD_PID}.md.swp"),
+        "stray.txt".to_string(),
+        format!("new-{live}.md"),
+        format!(".new-{live}.md.swp"),
+    ] {
+        std::fs::write(dir.join(name), "what somebody typed").unwrap();
+    }
+    dir
+}
+
+fn names(dir: &Path) -> Vec<String> {
+    let mut all: Vec<String> = std::fs::read_dir(dir)
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    all.sort();
+    all
+}
+
+#[test]
+fn doctor_lists_leftover_scratch_files_by_name_and_stays_read_only() {
+    let home = sandbox("doctor-scratch");
+    add(&home, &["clean"]);
+    let dir = plant_scratch(&home);
+    let before = snapshot(&home.join("notes"));
+    let report = ok(&home, &["doctor"]);
+    for gone in [
+        format!("new-{DEAD_PID}.md"),
+        format!(".new-{DEAD_PID}.md.swp"),
+        "stray.txt".to_string(),
+    ] {
+        assert!(report.contains(&gone), "{gone} in: {report}");
+    }
+    assert!(
+        !report.contains("what somebody typed"),
+        "names only: {report}"
+    );
+    let live = format!("new-{}.md", std::process::id());
+    assert!(
+        !report.contains(&live),
+        "a live process's file is no leftover: {report}"
+    );
+    assert!(!report.contains("no problems"), "{report}");
+    assert_eq!(snapshot(&home.join("notes")), before, "doctor is read-only");
+    assert_eq!(names(&dir).len(), 6);
+}
+
+#[test]
+fn edit_and_add_dash_e_sweep_scratch_files_of_dead_processes() {
+    let live = std::process::id();
+    let kept = vec![format!(".new-{live}.md.swp"), format!("new-{live}.md")];
+    for command in ["edit", "add"] {
+        let home = sandbox("sweep");
+        let id = add(&home, &["hello"]);
+        let dir = plant_scratch(&home);
+        let same = editor(&home, "same.sh", ":");
+        let out = if command == "edit" {
+            with_editor(&home, &["edit", &id], &same)
+        } else {
+            with_editor(&home, &["add", "-e", "x"], &same)
+        };
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{command}: {}",
+            text(&out.stderr)
+        );
+        let mut want = kept.clone();
+        want.sort();
+        assert_eq!(names(&dir), want, "{command}");
+    }
+}
+
+#[test]
+fn n_version_followed_by_words_saves_a_note_but_alone_prints_the_version() {
+    let home = sandbox("n-version-words");
+    let n = link_n(&home);
+    let out = exec(&home, &n, &["--version", "bump", "to", "2.0"], None, |_| {});
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let id = noted_id(&text(&out.stdout));
+    assert_eq!(parsed(&home, &id).body, "--version bump to 2.0\n");
+    let out = exec(&home, &n, &["-V"], None, |_| {});
+    assert_eq!(text(&out.stdout).trim(), "easy-note 0.1.0");
+}
+
+fn edit_with(home: &Path, id: &str, script: &str) -> Output {
+    let stub = editor(home, "ed.sh", script);
+    with_editor(home, &["edit", id], &stub)
+}
+
+#[test]
+fn edit_refuses_a_changed_added_or_removed_unknown_key_and_names_it() {
+    let home = sandbox("edit-extra");
+    let id = add(&home, &["hello"]);
+    let path = note_file(&home, &id);
+    // a hand-added key the editor will change or remove
+    let raw = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, raw.replacen("source:", "x-keep: \"a\"\nsource:", 1)).unwrap();
+    let before = std::fs::read(&path).unwrap();
+    for (script, key) in [
+        ("sed -i 's/^source:/x-new: 1\\nsource:/' \"$1\"", "x-new"),
+        ("sed -i 's/^x-keep: .*/x-keep: \"b\"/' \"$1\"", "x-keep"),
+        ("sed -i '/^x-keep:/d' \"$1\"", "x-keep"),
+    ] {
+        let out = edit_with(&home, &id, script);
+        assert_eq!(
+            out.status.code(),
+            Some(1),
+            "{script}: {}",
+            text(&out.stdout)
+        );
+        let err = text(&out.stderr);
+        assert!(
+            err.contains(key) && err.contains("unchanged"),
+            "{script}: {err}"
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before, "{script}");
+    }
+    // no change to the unknown key: the edit goes through and keeps it
+    let out = edit_with(&home, &id, "printf 'more\\n' >> \"$1\"");
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    assert!(std::fs::read_to_string(&path)
+        .unwrap()
+        .contains("x-keep: \"a\""));
+}
+
+#[test]
+fn edit_refuses_a_tag_that_is_not_a_tag() {
+    let home = sandbox("edit-bad-tag");
+    let id = add(&home, &["hello", "#a"]);
+    let before = std::fs::read(note_file(&home, &id)).unwrap();
+    let out = edit_with(
+        &home,
+        &id,
+        "sed -i 's/^tags: .*/tags: [\"a\", \"bad tag!\"]/' \"$1\"",
+    );
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out.stdout));
+    let err = text(&out.stderr);
+    assert!(
+        err.contains("bad tag!") && err.contains("unchanged"),
+        "{err}"
+    );
+    assert_eq!(std::fs::read(note_file(&home, &id)).unwrap(), before);
+}
+
+#[test]
+fn edit_that_changes_the_text_adds_its_hash_tags() {
+    let home = sandbox("edit-hash-tags");
+    let id = add(&home, &["hello", "#a"]);
+    let out = edit_with(&home, &id, "printf 'now #Fresh and #a\\n' >> \"$1\"");
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    assert_eq!(tag_list(&parsed(&home, &id)), ["a", "fresh"]);
+}
+
+#[test]
+fn a_closed_stdout_pipe_is_not_a_panic() {
+    let home = sandbox("broken-pipe");
+    for word in ["one", "two", "three"] {
+        add(&home, &[word]);
+    }
+    for args in [
+        vec!["ls"],
+        vec!["--help"],
+        vec!["show", &add(&home, &["x"])],
+    ] {
+        let mut child = Command::new(bin())
+            .args(&args)
+            .env("HOME", &*home)
+            .env("EASY_NOTE_DIR", home.join("notes"))
+            .current_dir(&*home)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        drop(child.stdout.take()); // the reader goes away
+        let out = child.wait_with_output().unwrap();
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{args:?}: {}",
+            text(&out.stderr)
+        );
+        assert!(!text(&out.stderr).contains("panicked"), "{args:?}");
+    }
+}
+
+fn with_env(home: &Path, args: &[&str], vars: &[(&str, String)]) -> Output {
+    exec(home, &bin(), args, None, |c| {
+        for (k, v) in vars {
+            c.env(k, v);
+        }
+    })
+}
+
+#[test]
+fn editor_command_runs_like_git_quoted_paths_arguments_and_visual_first() {
+    let home = sandbox("editor-sh");
+    let seen = home.join("seen.txt");
+    // an editor in a folder with a space in its name, quoted as git needs it
+    std::fs::create_dir_all(home.join("my editors")).unwrap();
+    let spaced = editor(
+        &home,
+        "my editors/ed.sh",
+        &format!(
+            "echo \"$@\" > '{}'\nprintf 'by spaced editor\\n' > \"$1\"",
+            seen.display()
+        ),
+    );
+    let quoted = format!("\"{}\"", spaced.display());
+    let out = with_env(&home, &["add", "-e"], &[("EDITOR", quoted)]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    assert_eq!(
+        parsed(&home, &noted_id(&text(&out.stdout))).body,
+        "by spaced editor\n"
+    );
+    // arguments before the file name
+    let flagged = editor(
+        &home,
+        "flag.sh",
+        &format!(
+            "echo \"$@\" > '{}'\nprintf 'flagged\\n' > \"$2\"",
+            seen.display()
+        ),
+    );
+    let out = with_env(
+        &home,
+        &["add", "-e"],
+        &[("EDITOR", format!("{} --wait", flagged.display()))],
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    assert!(std::fs::read_to_string(&seen)
+        .unwrap()
+        .starts_with("--wait "));
+    // VISUAL wins over EDITOR
+    let visual = editor(&home, "visual.sh", "printf 'from visual\\n' > \"$1\"");
+    let editor_ = editor(&home, "editor.sh", "printf 'from editor\\n' > \"$1\"");
+    let out = with_env(
+        &home,
+        &["add", "-e"],
+        &[
+            ("VISUAL", visual.display().to_string()),
+            ("EDITOR", editor_.display().to_string()),
+        ],
+    );
+    assert_eq!(
+        parsed(&home, &noted_id(&text(&out.stdout))).body,
+        "from visual\n"
+    );
+}
+
+#[test]
+fn control_characters_never_reach_the_terminal() {
+    let home = sandbox("controls");
+    let evil = "red \u{1b}[31mtext\u{7} bell \u{9b}c1 del\u{7f} cr\r end";
+    let id = add(&home, &[evil, "#t"]);
+    // a hand-edited tag, and a trash file whose name holds ESC
+    let path = note_file(&home, &id);
+    let raw = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(
+        &path,
+        raw.replace("tags: [\"t\"]", "tags: [\"t\", \"a\\x1bb\"]"),
+    )
+    .unwrap();
+    let trash = home.join("notes/.easy-note/trash");
+    std::fs::create_dir_all(&trash).unwrap();
+    std::fs::write(trash.join("ev\u{1b}il.md"), "x").unwrap();
+    let mut seen = String::new();
+    for args in [
+        vec!["ls"],
+        vec!["search", "red"],
+        vec!["show", &id],
+        vec!["stats"],
+        vec!["doctor"],
+        vec!["trash"],
+        vec!["trash", "--empty", "--older-than", "0d"],
+        vec!["show", "bad\u{1b}[2Jid"],
+    ] {
+        let out = easy(&home, &args);
+        let all = format!("{}{}", text(&out.stdout), text(&out.stderr));
+        for c in all.chars() {
+            assert!(
+                !c.is_control() || c == '\n' || c == '\t',
+                "{args:?} printed {c:?}: {all}"
+            );
+        }
+        seen.push_str(&all);
+    }
+    assert!(
+        seen.contains("\\x1b[31mtext"),
+        "the escape stays visible: {seen}"
+    );
+    assert!(seen.contains("ev\\x1bil"), "trash name: {seen}");
+}
+
+#[test]
+fn init_warns_when_the_env_var_overrides_the_config() {
+    let home = sandbox("init-warn");
+    let chosen = home.join("chosen");
+    let out = easy(&home, &["init", "--dir", chosen.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0));
+    assert!(
+        text(&out.stderr).contains("EASY_NOTE_DIR"),
+        "{}",
+        text(&out.stderr)
+    );
+    let out = exec(
+        &home,
+        &bin(),
+        &["init", "--dir", chosen.to_str().unwrap()],
+        None,
+        |c| {
+            c.env_remove("EASY_NOTE_DIR");
+        },
+    );
+    assert_eq!(out.status.code(), Some(0));
+    assert!(
+        !text(&out.stderr).contains("EASY_NOTE_DIR"),
+        "{}",
+        text(&out.stderr)
+    );
+}
+
 #[test]
 fn serve_answers_initialize_then_exits_on_eof() {
     let home = sandbox("serve");
     let mut child = Command::new(bin())
         .arg("serve")
-        .env("HOME", &home)
+        .env("HOME", &*home)
         .env("EASY_NOTE_DIR", home.join("notes"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

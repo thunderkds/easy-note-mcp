@@ -4,6 +4,7 @@
 //! printed (FR-014): a bad argument may be a pasted secret and an error message may echo it.
 
 mod read;
+mod scratch;
 mod write;
 
 use std::ffi::OsString;
@@ -133,14 +134,16 @@ pub enum Command {
 }
 
 /// When the binary is started as `n`, run it as `easy-note add`.
-/// Help and version flags pass through, so `n --version` prints the version.
+/// A help or version flag passes through only as the one argument, so `n --version` prints the
+/// version and `n --version bump to 2.0` saves a note.
 pub fn normalize_args(mut args: Vec<OsString>) -> Vec<OsString> {
     let as_n = args
         .first()
         .and_then(|a| Path::new(a).file_name())
         .is_some_and(|name| name == "n");
     let is_flag = |a: &OsString| matches!(a.to_str(), Some("--version" | "-V" | "--help" | "-h"));
-    if as_n && !args.get(1).is_some_and(is_flag) {
+    let sole_flag = args.len() == 2 && is_flag(&args[1]);
+    if as_n && !sole_flag {
         args.insert(1, OsString::from("add"));
     }
     args
@@ -175,6 +178,14 @@ pub struct Fail {
 }
 
 impl Fail {
+    /// The reader of our output went away (`easy-note ls | head`): stop without a word.
+    fn reader_gone() -> Fail {
+        Fail {
+            code: 0,
+            msg: String::new(),
+        }
+    }
+
     fn runtime(msg: impl Into<String>) -> Fail {
         Fail {
             code: 1,
@@ -220,15 +231,52 @@ impl From<ConfigError> for Fail {
 
 impl From<std::io::Error> for Fail {
     fn from(err: std::io::Error) -> Fail {
-        Fail::runtime(err.to_string())
+        if err.kind() == std::io::ErrorKind::BrokenPipe {
+            Fail::reader_gone()
+        } else {
+            Fail::runtime(err.to_string())
+        }
     }
 }
 
 type Outcome = Result<(), Fail>;
 
-/// Text that came from a note, an argument or an error: masked before it is printed.
+/// Text that came from a note, an argument or an error: secrets masked, and every control
+/// character but newline and tab shown as `\xNN`, so no note can drive the terminal.
 fn safe(text: &str) -> String {
-    guard::mask_for_output(text)
+    let mut out = String::with_capacity(text.len());
+    for c in guard::mask_for_output(text).chars() {
+        if c.is_control() && c != '\n' && c != '\t' {
+            out.push_str(&format!("\\x{:02x}", u32::from(c)));
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Print `text` and a newline to stdout. A closed pipe is not an error (see `Fail::reader_gone`).
+fn say(text: &str) -> Outcome {
+    say_raw(&format!("{text}\n"))
+}
+
+fn say_raw(text: &str) -> Outcome {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    out.write_all(text.as_bytes())?;
+    out.flush()?;
+    Ok(())
+}
+
+/// The kinds of a list, each once, in first-seen order.
+fn unique_kinds<'a>(kinds: &[&'a str]) -> Vec<&'a str> {
+    let mut unique: Vec<&str> = vec![];
+    for kind in kinds {
+        if !unique.contains(kind) {
+            unique.push(kind);
+        }
+    }
+    unique
 }
 
 /// "1 note", "3 notes".
@@ -245,16 +293,10 @@ fn confirmation(verb: &str, id: &str, details: &[Option<&str>], masked: &[&str])
         line.push_str(&safe(detail));
     }
     if !masked.is_empty() {
-        let mut kinds: Vec<&str> = vec![];
-        for kind in masked {
-            if !kinds.contains(kind) {
-                kinds.push(kind);
-            }
-        }
         line.push_str(&format!(
             " · {} masked: {}",
             count(masked.len(), "secret"),
-            kinds.join(", ")
+            unique_kinds(masked).join(", ")
         ));
     }
     line
@@ -293,7 +335,7 @@ pub fn run(args: Vec<OsString>) -> i32 {
             if err.use_stderr() {
                 eprint!("{}", safe(&shown));
             } else {
-                print!("{shown}");
+                let _ = say_raw(&shown);
             }
             return code;
         }
@@ -310,7 +352,9 @@ pub fn run(args: Vec<OsString>) -> i32 {
     match dispatch(cli.command) {
         Ok(()) => 0,
         Err(fail) => {
-            eprintln!("easy-note: {}", safe(&fail.msg));
+            if fail.code != 0 {
+                eprintln!("easy-note: {}", safe(&fail.msg));
+            }
             fail.code
         }
     }
@@ -337,6 +381,31 @@ mod tests {
         for flag in ["--version", "-V", "--help", "-h"] {
             assert_eq!(normalize_args(os(&["n", flag])), os(&["n", flag]));
         }
+    }
+
+    #[test]
+    fn n_flag_with_more_words_is_a_note() {
+        assert_eq!(
+            normalize_args(os(&["n", "--version", "bump", "to", "2.0"])),
+            os(&["n", "add", "--version", "bump", "to", "2.0"])
+        );
+        assert_eq!(
+            normalize_args(os(&["n", "-h", "me"])),
+            os(&["n", "add", "-h", "me"])
+        );
+    }
+
+    #[test]
+    fn safe_masks_secrets_and_shows_control_characters() {
+        assert_eq!(
+            safe("a\u{1b}[2Jb\u{7}\u{7f}\u{9b}c\rd"),
+            "a\\x1b[2Jb\\x07\\x7f\\x9bc\\x0dd"
+        );
+        assert_eq!(safe("tab\there\nnext é ✓"), "tab\there\nnext é ✓");
+        assert_eq!(
+            safe(&format!("k {}", concat!("AK", "IAIOSFODNN7EXAMPLE"))),
+            "k [masked:aws_key]"
+        );
     }
 
     #[test]

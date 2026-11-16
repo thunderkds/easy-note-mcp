@@ -5,18 +5,19 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
-use super::{count, safe, Fail, Outcome};
+use super::scratch;
+use super::{count, safe, say, say_raw, unique_kinds, Fail, Outcome};
 use crate::core::query::{self, Counts, Filters, Page, Stats};
 use crate::core::store::{Item, Store};
 use crate::core::{config, format, guard};
 
-fn print_page(page: &Page) {
+fn print_page(page: &Page) -> Outcome {
     for item in &page.items {
         let mut line = format!("{}  {}", item.id, item.title);
         for tag in &item.tags {
             line.push_str(&format!("  #{tag}"));
         }
-        println!("{}", safe(&line));
+        say(&safe(&line))?;
     }
     if page.truncated {
         eprintln!(
@@ -26,28 +27,25 @@ fn print_page(page: &Page) {
             query::MAX_LIMIT
         );
     }
+    Ok(())
 }
 
 pub fn ls(filters: Filters, limit: usize) -> Outcome {
-    print_page(&query::list_notes(&filters, limit)?);
-    Ok(())
+    print_page(&query::list_notes(&filters, limit)?)
 }
 
 pub fn search(words: &str, filters: Filters, limit: usize) -> Outcome {
-    print_page(&query::search(words, &filters, limit)?);
-    Ok(())
+    print_page(&query::search(words, &filters, limit)?)
 }
 
 /// The note as its file reads, front matter and text, with secrets masked.
 pub fn show(id: &str) -> Outcome {
     let note = Store::open()?.read(id)?;
-    print!("{}", safe(&format::render(&note)));
-    Ok(())
+    say_raw(&safe(&format::render(&note)))
 }
 
 pub fn path() -> Outcome {
-    println!("{}", safe(&config::notes_dir()?.display().to_string()));
-    Ok(())
+    say(&safe(&config::notes_dir()?.display().to_string()))
 }
 
 fn counts_line(label: &str, counts: &Counts) -> Option<String> {
@@ -89,11 +87,10 @@ pub fn stats(json: bool, filters: Filters) -> Outcome {
     if json {
         let text = serde_json::to_string_pretty(&stats)
             .map_err(|e| Fail::runtime(format!("cannot write JSON: {e}")))?;
-        println!("{}", safe(&text));
+        say(&safe(&text))
     } else {
-        println!("{}", safe(&stats_text(&stats)));
+        say(&safe(&stats_text(&stats)))
     }
-    Ok(())
 }
 
 /// The `n` the shell runs, when it is not this program (FR-020).
@@ -110,52 +107,67 @@ fn n_clash() -> Option<PathBuf> {
         .filter(|first| first.canonicalize().ok().as_ref() != Some(&me))
 }
 
-/// `doctor`: report, never fix. Skipped files, kinds of secret in hand-edited files, an `n` clash.
-pub fn doctor() -> Outcome {
-    let store = Store::open()?;
-    println!("notes dir: {}", safe(&store.root.display().to_string()));
-    let (mut notes, mut problems) = (0, 0);
+/// The doctor's finding about one note: the kinds of secret its file holds, if any. The store
+/// masks what it yields, so this reads the file itself.
+fn secrets_line(note: &format::Note) -> Option<String> {
+    let path = note.path.as_ref()?;
+    let (_, kinds) = guard::mask(&fs::read_to_string(path).ok()?);
+    (!kinds.is_empty()).then(|| {
+        format!(
+            "secrets in {}: {}",
+            path.display(),
+            unique_kinds(&kinds).join(", ")
+        )
+    })
+}
+
+/// The doctor's findings about the notes dir, one line each, and how many notes it checked.
+fn findings(store: &Store) -> (Vec<String>, usize) {
+    let (mut lines, mut notes) = (vec![], 0);
     for item in store.iter_notes() {
         match item {
-            Item::Skipped(file) => {
-                problems += 1;
-                let shown = format!("skipped: {} ({})", file.path.display(), file.reason);
-                println!("{}", safe(&shown));
-            }
+            Item::Skipped(file) => lines.push(format!(
+                "skipped: {} ({})",
+                file.path.display(),
+                file.reason
+            )),
             Item::Note(note) => {
                 notes += 1;
-                // The store masks what it yields, so read the file itself for what is in it.
-                let Some(path) = &note.path else { continue };
-                let Ok(raw) = fs::read_to_string(path) else {
-                    continue;
-                };
-                let (_, kinds) = guard::mask(&raw);
-                if !kinds.is_empty() {
-                    problems += 1;
-                    let mut unique: Vec<&str> = vec![];
-                    for kind in kinds {
-                        if !unique.contains(&kind) {
-                            unique.push(kind);
-                        }
-                    }
-                    let shown = format!("secrets in {}: {}", path.display(), unique.join(", "));
-                    println!("{}", safe(&shown));
-                }
+                lines.extend(secrets_line(&note));
             }
         }
     }
+    for path in scratch::leftovers(&store.root) {
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        lines.push(format!(
+            "leftover editor file: {name} (the next edit removes it)"
+        ));
+    }
     if let Some(other) = n_clash() {
-        problems += 1;
-        println!(
+        lines.push(format!(
             "clash: `n` on your PATH is {}, not easy-note",
-            safe(&other.display().to_string())
-        );
+            other.display()
+        ));
     }
-    println!("{} checked", count(notes, "note"));
-    if problems == 0 {
-        println!("no problems found");
+    (lines, notes)
+}
+
+/// `doctor`: report, never fix. Skipped files, kinds of secret in hand-edited files, leftover
+/// editor files, an `n` clash.
+pub fn doctor() -> Outcome {
+    let store = Store::open()?;
+    say(&format!(
+        "notes dir: {}",
+        safe(&store.root.display().to_string())
+    ))?;
+    let (lines, notes) = findings(&store);
+    for line in &lines {
+        say(&safe(line))?;
+    }
+    say(&format!("{} checked", count(notes, "note")))?;
+    if lines.is_empty() {
+        say("no problems found")
     } else {
-        println!("{} found", count(problems, "problem"));
+        say(&format!("{} found", count(lines.len(), "problem")))
     }
-    Ok(())
 }
