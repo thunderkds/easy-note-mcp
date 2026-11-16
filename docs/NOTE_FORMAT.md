@@ -89,7 +89,7 @@ Whole text (title + body) ≤ 20,000 chars: a longer text is refused on write, t
 
 `easy-note rm <id>` moves the file to `<notes dir>/.easy-note/trash/<id>.md` and sets its mtime to the time of the move.
 `easy-note restore <id>` moves it back with the same bytes; neither move replaces an existing file.
-An inbox note goes to `<notes dir>/.easy-note/trash/inbox__<file name>` (extension kept); `restore inbox/<stem>` moves it back to `inbox/<file name>`.
+An inbox note goes to `<notes dir>/.easy-note/trash/inbox__<mtime>__<file name>` (`<mtime>` = the file's original mtime in Unix seconds; extension kept); `restore inbox/<stem>` moves it back to `inbox/<file name>` and sets that mtime back.
 `easy-note trash --empty --older-than 30d` deletes trash files whose mtime is older than the cutoff.
 
 ## Inbox files (round 2)

@@ -131,7 +131,7 @@ Design (Supervisor, auto decisions recorded in TASK_REVIEW):
 * Plain file: body = whole text, tags = `tags::extract(text)`, `created` = `YYYYMMDD-HHMMSS` file-name prefix as local time (bad date → mtime), else mtime, `source: inbox`, no context fields.
 * File with valid `easy-note: 1` front matter: its keys win, except `id`, which stays the inbox id (rm/show route by it). Front matter that does not parse as `easy-note: 1` → the whole file is the body.
 * Non-UTF-8 or empty file → `Skipped` with its path (never content).
-* Trash: `rm inbox/<x>` moves the file to `.easy-note/trash/inbox__<file name>`; `restore inbox/<x>` moves it back into `inbox/` (no replace). `trash` lists it as `inbox/<stem>`.
+* Trash: `rm inbox/<x>` moves the file to `.easy-note/trash/inbox__<unix seconds of its original mtime>__<file name>` and sets the trash file's mtime to now (trash age); `restore inbox/<x>` moves it back into `inbox/` (no replace) and sets its mtime back to the value in the name, so `created` of an undated inbox note is unchanged. `trash` lists it as `inbox/<stem>`. `rm`/`restore` success lines print the id masked.
 
 ---
 
