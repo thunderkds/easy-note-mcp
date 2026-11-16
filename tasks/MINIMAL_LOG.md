@@ -20,7 +20,7 @@ Mode: auto
 - Simplify: skipped: under 20 lines (0 changed lines outside tests and docs)
 **Memory:** nothing new
 **Files:** `README.md`, `RUNBOOK.md`, `tests/readme.rs`, `tasks/MINIMAL_LOG.md`
-**Not done:** merge (admin: after the auto verify pass); auto verify: pass at 5e090f4; Cursor snippet run (yours: needs `cursor-agent` sign-in); README enrich tools after HUN-262
+**Not done:** merge (admin: after the auto verify pass); auto verify: running (T182); Cursor snippet run (yours: needs `cursor-agent` sign-in); README enrich tools after HUN-262
 
 ## HUN-267 — Align context task pattern with PRD FR-005 · minimal
 **Asked:** "you can start automate" (after the Supervisor offered the HUN-254 ticket-pattern fix as the next small item)
