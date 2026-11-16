@@ -22,23 +22,23 @@
 ### In Progress
 
 ### Ready for Review
-- [ ] **HUN-257** — CLI commands (Rust): init, add/n, ls, search, show, edit, tag, rm, restore, trash, stats, doctor, path | Backend-Implementer | C1 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-257.md` | Branch: `feat/HUN-257-rust-cli`
 
 ### Done
-- [x] **HUN-270** — R3 Rust secret guard: ten kinds, mask on write and read, leak suite | Backend-Implementer | C1 | Risk: High | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-270.md` | Branch: `feat/HUN-270-rust-guard` | Done 2026-11-16: merged 2d023e1 by the owner over a failing Companion score (71); auto verify pass (session 4820c8b8-f2e6-4327-9393-8416549bfa05, commit f49c09fd69fb)
-- [x] **HUN-272** — R5 Rust query engine: list, search, stats, bounded results | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-272.md` | Branch: `feat/HUN-272-rust-query` | Done 2026-11-15: auto verify pass (session 8536879c-9e4d-4f5b-aee1-fff530a455d5, commit 18272656a19d23751f55cf6b836644c26a279f33)
-- [x] **HUN-271** — R4 Rust context capture: cwd order, main-worktree repo name, remote sanitizing, task patterns | Backend-Implementer | C1 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-271.md` | Branch: `feat/HUN-271-rust-context` | Done 2026-11-15: auto verify pass (session 98bed120-ede1-42ae-ba63-910c1605f4f6, commit 5b9c5dabb4d83397506a8ba5ba776237085e7742)
-- [x] **HUN-269** — R2 Rust note format and store: parse/render, ID, never-overwrite write, clash suffix, trash/restore, skipped files | Backend-Implementer | C2 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-269.md` | Branch: `feat/HUN-269-rust-store` | Done 2026-11-15: merged 5c223a0 by the owner over a failing Companion score (67); auto verify pass (session e978d4eb-4075-4dc8-87ed-0cecf5d1dadc, commit 1d4ef7681476fe6e4e4f3996fad4915349900bbd)
-- [x] **HUN-268** — R1 Rust skeleton: cargo binary easy-note (+ n link), CI, remove all Python app code | Common-Infrastructure-Agent | C1 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-268.md` | Branch: `feat/HUN-268-rust-skeleton` | Done 2026-11-15: auto verify pass (session 112498b1-18d7-47b0-9c29-228891780e6c, commit bf07f5c92b516e48539051a66fc7e3eb17d97a91)
+- [x] **HUN-257** — CLI commands (Rust): init, add/n, ls, search, show, edit, tag, rm, restore, trash, stats, doctor, path | Backend-Implementer | C1 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-257.md` | Branch: `feat/HUN-257-rust-cli` | Done 2026-11-16: auto verify pass (session 27a40f00-bf07-468f-8161-5c4c46c88047, commit 9293c9328cbb7e5d50bedc9e6c0be2554fe8e555); Companion score 74 (fail); merge into main pending (owner)
 - [x] **HUN-251** — Spike: how Claude Code, Codex and Cursor start stdio MCP servers, and what the prompt hook sees | QA-Automation-Agent | C1 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-251.md`
 - [x] **HUN-252** — Repo skeleton: uv project, src/easy_note/{core,surfaces}, CLI and MCP entry points over one core, CI | Common-Infrastructure-Agent | C1 | Risk: Low | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-252.md`
 - [x] **HUN-253** — Note format and store: parse/render, ID, atomic write, clash suffix, trash/restore, skipped files | Backend-Implementer | C2 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-253.md`
 - [x] **HUN-254** — Context capture: cwd order, main-worktree repo name, remote sanitizing, task patterns | Backend-Implementer | C1 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-254.md`
 - [x] **HUN-256** — Query engine: list, search, stats, bounded results | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-256.md`
 - [x] **HUN-267** — Align context task pattern with PRD FR-005 | ? | ? | Risk: ? | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-267.md`
+- [x] **HUN-268** — R1 Rust skeleton: cargo binary easy-note (+ n link), CI, remove all Python app code | ? | C1 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-268.md`
+- [x] **HUN-269** — R2 Note format and store in Rust: parse/render, ID, atomic write, clash suffix, trash/restore, skipped files | ? | C2 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-269.md`
+- [x] **HUN-270** — R3 Secret guard in Rust: declared patterns, mask on write and read, leak test suite | ? | C1 | Risk: High | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-270.md`
+- [x] **HUN-271** — R4 Context capture in Rust: cwd order, main-worktree repo name, remote sanitizing, task patterns | ? | C1 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-271.md`
+- [x] **HUN-272** — R5 Query engine in Rust: list, search, stats, bounded results | ? | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-272.md`
 
 ### Closed (will not do)
-- [x] **HUN-255** — Secret guard (Python) | Closed 2026-11-16: superseded by HUN-270 (Rust guard, merged 2d023e1); branch 3c5e40f kept as its oracle
+- [~] **HUN-255** — Secret guard: declared patterns, mask on write and read, leak test suite | Backend-Implementer | C1 | Risk: High | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-255.md`
 
 ## Blocked
 
