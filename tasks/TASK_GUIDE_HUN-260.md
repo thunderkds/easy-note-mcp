@@ -189,7 +189,7 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 | `tests/install.rs` | launcher tests |
 | `tests/leak.rs` | `quick` surface in `SURFACES` |
 | `README.md` | "One key press" section |
-| Pre-existing pin tests | List each test in `tests/` that pins text, paths or counts of a file this task edits, and how it is handled |
+| Pre-existing pin tests | `tests/cli.rs` `usage_errors_exit_2_runtime_errors_exit_1_and_help_documents_both` pins that `--help` lists 14 named commands: only adds `quick`/`hotkey`, so it still passes unchanged. `tests/install.rs` `an_unknown_install_target_is_a_usage_error` uses `vim`, not `launcher`: unchanged. `tests/leak.rs` `the_registry_holds_the_core_the_cli_and_the_inbox_surface` extended with `quick` (task edit). `src/surfaces/cli.rs` unit test `every_command` extended with `Quick`, `Hotkey`, `Target::Launcher`. `tests/install.rs` pins of `commands/note.md` text/paths: the shared `OwnFile` code keeps the same messages; all 17 existing tests pass unchanged. No test pins counts of `SOURCES` or `Target` values. |
 
 ## Files Must NOT Touch
 

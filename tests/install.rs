@@ -656,3 +656,123 @@ fn an_unknown_install_target_is_a_usage_error() {
     }
     assert!(!sb.cfg().exists());
 }
+
+// ---------------------------------------------------------------------------------------------
+// HUN-260 AC 8: `install launcher` / `uninstall launcher`
+// ---------------------------------------------------------------------------------------------
+
+const LAUNCHER: &str = "[Desktop Entry]\nType=Application\nName=easy-note\nComment=Save a one-line note\nExec=easy-note quick\nTerminal=false\nCategories=Utility;\n";
+
+fn launcher_path(sb: &Sb) -> PathBuf {
+    sb.home()
+        .join(".local/share/applications/easy-note.desktop")
+}
+
+fn launcher(sb: &Sb, verb: &str) -> Output {
+    easy(sb, &[verb, "launcher"], Some(&sb.cfg()))
+}
+
+#[test]
+fn ac8_install_launcher_writes_exactly_one_desktop_file() {
+    let sb = Sb::new("launcher");
+    let o = launcher(&sb, "install");
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    let files: Vec<PathBuf> = snapshot(sb.root()).into_iter().map(|(p, _)| p).collect();
+    assert_eq!(files, [launcher_path(&sb)], "no other file anywhere");
+    let body = std::fs::read_to_string(launcher_path(&sb)).unwrap();
+    assert_eq!(body, LAUNCHER);
+    for line in [
+        "Type=Application",
+        "Name=easy-note",
+        "Exec=easy-note quick",
+        "Terminal=false",
+    ] {
+        assert!(body.lines().any(|l| l == line), "{line}");
+    }
+    assert!(
+        text(&o.stdout).contains("easy-note.desktop"),
+        "{}",
+        text(&o.stdout)
+    );
+    assert!(
+        !sb.cfg().exists(),
+        "the Claude Code config dir is not touched"
+    );
+    assert!(!sb.default_cfg().exists());
+}
+
+#[test]
+fn ac8_a_second_install_says_already_installed_and_writes_nothing() {
+    let sb = Sb::new("launcher-twice");
+    launcher(&sb, "install");
+    let before = snapshot(sb.root());
+    let o = launcher(&sb, "install");
+    assert_eq!(o.status.code(), Some(0));
+    assert!(
+        text(&o.stdout).contains("already installed"),
+        "{}",
+        text(&o.stdout)
+    );
+    assert_eq!(snapshot(sb.root()), before);
+}
+
+#[test]
+fn ac8_a_desktop_file_that_is_not_ours_is_kept_and_named() {
+    let sb = Sb::new("launcher-foreign");
+    let path = launcher_path(&sb);
+    write(&path, "[Desktop Entry]\nName=mine\n");
+    let before = snapshot(sb.root());
+    for verb in ["install", "uninstall"] {
+        let o = launcher(&sb, verb);
+        assert_eq!(o.status.code(), Some(0), "{verb}: {}", text(&o.stderr));
+        let said = text(&o.stdout);
+        assert!(said.contains("kept"), "{verb}: {said}");
+        assert!(said.contains(path.to_str().unwrap()), "{verb}: {said}");
+        assert_eq!(snapshot(sb.root()), before, "{verb}");
+    }
+}
+
+#[test]
+fn ac8_uninstall_removes_the_file_only_when_it_is_byte_identical_to_ours() {
+    let sb = Sb::new("launcher-uninstall");
+    launcher(&sb, "install");
+    let o = launcher(&sb, "uninstall");
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    assert!(!launcher_path(&sb).exists());
+    assert!(text(&o.stdout).contains("removed"), "{}", text(&o.stdout));
+    // a file that differs by one byte stays
+    write(&launcher_path(&sb), &format!("{LAUNCHER}\n"));
+    let o = launcher(&sb, "uninstall");
+    assert_eq!(o.status.code(), Some(0));
+    assert!(launcher_path(&sb).exists());
+}
+
+#[test]
+fn ac8_uninstall_with_nothing_installed_says_so_and_creates_nothing() {
+    let sb = Sb::new("launcher-none");
+    let o = launcher(&sb, "uninstall");
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    assert!(
+        text(&o.stdout).contains("not installed"),
+        "{}",
+        text(&o.stdout)
+    );
+    assert!(snapshot(sb.root()).is_empty());
+}
+
+#[test]
+fn ac8_install_launcher_needs_a_home() {
+    let sb = Sb::new("launcher-nohome");
+    let o = Command::new(env!("CARGO_BIN_EXE_easy-note"))
+        .args(["install", "launcher"])
+        .env_remove("HOME")
+        .current_dir(sb.root())
+        .output()
+        .unwrap();
+    assert_eq!(o.status.code(), Some(1));
+    assert!(
+        text(&o.stderr).contains("HOME is not set"),
+        "{}",
+        text(&o.stderr)
+    );
+}

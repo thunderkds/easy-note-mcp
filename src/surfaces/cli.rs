@@ -64,6 +64,8 @@ impl From<FilterArgs> for Filters {
 pub enum Target {
     /// The Claude Code `/note` hook and `commands/note.md` in the Claude Code config dir.
     Claude,
+    /// The `easy-note.desktop` launcher in `~/.local/share/applications`.
+    Launcher,
 }
 
 #[derive(Debug, PartialEq, Eq, Subcommand)]
@@ -150,9 +152,17 @@ pub enum Command {
     Path,
     /// Claude Code `UserPromptSubmit` hook: read the event on stdin, save a `/note ...` prompt.
     HookPrompt,
-    /// Add the Claude Code hook (shows a diff, keeps a backup of settings.json).
+    /// Open a one-line box and save the answer as a note (for a key binding or a click).
+    Quick {
+        /// Take repo, branch and task from this folder (an editor passes its project folder).
+        #[arg(long)]
+        cwd: Option<PathBuf>,
+    },
+    /// Print the commands that bind a key to `easy-note quick` (changes nothing).
+    Hotkey,
+    /// Add the Claude Code hook (shows a diff, keeps a backup of settings.json), or the launcher.
     Install { target: Target },
-    /// Remove what `install` added.
+    /// Remove what `install` added (a file that is not ours stays).
     Uninstall { target: Target },
 }
 
@@ -191,6 +201,8 @@ pub fn starts_mcp(command: &Command) -> bool {
         | Command::Doctor
         | Command::Path
         | Command::HookPrompt
+        | Command::Quick { .. }
+        | Command::Hotkey
         | Command::Install { .. }
         | Command::Uninstall { .. } => false,
     }
@@ -357,6 +369,11 @@ fn dispatch(command: Command) -> Outcome {
             super::hook::run();
             Ok(())
         }
+        Command::Quick { cwd } => super::quick::run(cwd.as_deref()).map_err(Fail::runtime),
+        Command::Hotkey => {
+            let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+            say_raw(&super::quick::hotkey(&desktop))
+        }
         Command::Install { target } => installed(target, super::install::Action::Install),
         Command::Uninstall { target } => installed(target, super::install::Action::Uninstall),
     }
@@ -367,6 +384,7 @@ fn dispatch(command: Command) -> Outcome {
 fn installed(target: Target, action: super::install::Action) -> Outcome {
     let result = match target {
         Target::Claude => super::install::claude(action),
+        Target::Launcher => super::install::launcher(action),
     };
     match result {
         Ok(text) => say_raw(&safe(&text)),
@@ -570,11 +588,19 @@ mod tests {
             Command::Doctor,
             Command::Path,
             Command::HookPrompt,
+            Command::Quick { cwd: None },
+            Command::Hotkey,
             Command::Install {
                 target: Target::Claude,
             },
             Command::Uninstall {
                 target: Target::Claude,
+            },
+            Command::Install {
+                target: Target::Launcher,
+            },
+            Command::Uninstall {
+                target: Target::Launcher,
             },
         ]
     }

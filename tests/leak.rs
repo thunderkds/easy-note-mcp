@@ -736,12 +736,86 @@ fn surface_hook(text: &str) -> Captured {
     got
 }
 
+/// `quick`: the real binary with stub `zenity` and `notify-send` on a stub-only PATH (never a real
+/// dialog or notification). The box text holds the planted text; stdout, stderr and the record
+/// of what `notify-send` was given are captured and grepped. A second run fails to save, so the
+/// error path is covered. The stub logs sit under the temp HOME, so the file grep reads them too.
+fn surface_quick(text: &str) -> Captured {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::{Command, Stdio};
+
+    let home = PathBuf::from(std::env::var("HOME").unwrap());
+    let bin = home.join("stubs");
+    let log = home.join("stub-log");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::create_dir_all(&log).unwrap();
+    for (name, body) in [
+        (
+            "zenity",
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" >> \"$STUB_LOG/zenity.args\"\nprintf '%s\\n' \"$STUB_TEXT\"\n",
+        ),
+        (
+            "notify-send",
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" >> \"$STUB_LOG/notify.args\"\n",
+        ),
+    ] {
+        let path = bin.join(name);
+        std::fs::write(&path, body).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let mut got = Captured {
+        objects: vec![],
+        stdout: String::new(),
+        stderr: String::new(),
+    };
+    let mut run = |tweak: &dyn Fn(&mut Command)| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_easy-note"));
+        cmd.arg("quick")
+            .env_clear()
+            .env("PATH", &bin)
+            .env("HOME", &home)
+            .env("EASY_NOTE_DIR", std::env::var("EASY_NOTE_DIR").unwrap())
+            .env("DISPLAY", ":99")
+            .env("STUB_LOG", &log)
+            .env("STUB_TEXT", text)
+            .current_dir(&home)
+            .stdin(Stdio::null());
+        tweak(&mut cmd);
+        let out = cmd.output().unwrap();
+        let (o, e) = (
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        );
+        let n = got.objects.len();
+        got.objects.push(format!("run {n}\n{o}\n{e}"));
+        got.stdout.push_str(&o);
+        got.stderr.push_str(&e);
+        out.status.code()
+    };
+    assert_eq!(run(&|_| {}), Some(0));
+    // the store cannot write: the error text and its notification must hold no note text
+    let blocker = home.join("blocker");
+    std::fs::write(&blocker, "x").unwrap();
+    assert_eq!(
+        run(&|c| {
+            c.env("EASY_NOTE_DIR", blocker.join("notes"));
+        }),
+        Some(1)
+    );
+    got.objects
+        .push(std::fs::read_to_string(log.join("notify.args")).unwrap());
+    got.objects
+        .push(std::fs::read_to_string(log.join("zenity.args")).unwrap());
+    got
+}
+
 const SURFACES: &[(&str, Surface)] = &[
     ("core", surface_core),
     ("cli", surface_cli),
     ("mcp", surface_mcp),
     ("inbox", surface_inbox),
     ("hook", surface_hook),
+    ("quick", surface_quick),
 ];
 
 fn nothing_leaked(secret: &str, got: &Captured, root: &Path) -> Result<(), String> {
@@ -791,7 +865,7 @@ fn planted_secret_never_leaks() {
 
 #[test]
 fn the_registry_holds_the_core_the_cli_and_the_inbox_surface() {
-    for wanted in ["core", "cli", "inbox", "hook"] {
+    for wanted in ["core", "cli", "inbox", "hook", "quick"] {
         assert!(SURFACES.iter().any(|(name, _)| *name == wanted), "{wanted}");
     }
 }

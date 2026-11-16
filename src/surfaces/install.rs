@@ -1,4 +1,5 @@
-//! `install claude` and `uninstall claude` (FR-019, DDR 0003).
+//! `install claude` and `uninstall claude` (FR-019, DDR 0003), and `install launcher` and
+//! `uninstall launcher` (FR-026).
 //!
 //! Install adds exactly one `UserPromptSubmit` entry (command `easy-note hook-prompt`, timeout 5)
 //! to the user-level `settings.json` and writes `commands/note.md`, both in the Claude Code config
@@ -31,6 +32,16 @@ Call the `note_add` tool of the easy-note MCP server with `text` set to the text
 $ARGUMENTS
 ";
 
+/// The launcher: one file, so the desktop menu and dock list `easy-note quick` (FR-026).
+const LAUNCHER_DESKTOP: &str = "[Desktop Entry]
+Type=Application
+Name=easy-note
+Comment=Save a one-line note
+Exec=easy-note quick
+Terminal=false
+Categories=Utility;
+";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     Install,
@@ -49,7 +60,7 @@ pub fn claude(action: Action) -> Result<String, String> {
     let mut value = state.value.clone();
     let changed =
         edit(&mut value, action).map_err(|why| format!("{}: {why}", settings.display()))?;
-    let md = plan_note_md(&note_md, action)?;
+    let md = plan_own_file(&note_md, action, NOTE_MD)?;
 
     let mut out = String::new();
     if changed {
@@ -83,7 +94,7 @@ pub fn claude(action: Action) -> Result<String, String> {
             }
         });
     }
-    out.push_str(&md.apply(&note_md)?);
+    out.push_str(&md.apply(&note_md, NOTE_MD)?);
     if out.is_empty() {
         out = match action {
             Action::Install => format!("already installed ({})\n", dir.display()),
@@ -91,6 +102,24 @@ pub fn claude(action: Action) -> Result<String, String> {
         };
     }
     Ok(out)
+}
+
+/// Run the action on `$HOME/.local/share/applications/easy-note.desktop`. A file there that is
+/// not byte-identical to ours is never changed or removed.
+pub fn launcher(action: Action) -> Result<String, String> {
+    let home = std::env::var_os("HOME")
+        .filter(|v| !v.is_empty())
+        .ok_or("HOME is not set")?;
+    let path = PathBuf::from(home).join(".local/share/applications/easy-note.desktop");
+    let out = plan_own_file(&path, action, LAUNCHER_DESKTOP)?.apply(&path, LAUNCHER_DESKTOP)?;
+    Ok(if out.is_empty() {
+        match action {
+            Action::Install => format!("already installed ({})\n", path.display()),
+            Action::Uninstall => format!("not installed ({})\n", path.display()),
+        }
+    } else {
+        out
+    })
 }
 
 /// `$CLAUDE_CONFIG_DIR` when set and not empty, else `$HOME/.claude` (DDR 0003 item 7).
@@ -247,8 +276,8 @@ fn remove_entry(root: &mut Map<String, Value>) -> Result<bool, String> {
     Ok(true)
 }
 
-/// What to do with `commands/note.md`.
-enum NoteMd {
+/// What to do with a file that only easy-note writes (`commands/note.md`, the launcher).
+enum OwnFile {
     Nothing,
     Write,
     Remove,
@@ -256,36 +285,36 @@ enum NoteMd {
     Keep,
 }
 
-fn plan_note_md(path: &Path, action: Action) -> Result<NoteMd, String> {
+fn plan_own_file(path: &Path, action: Action, ours: &str) -> Result<OwnFile, String> {
     let current = match fs::read(path) {
         Ok(bytes) => Some(bytes),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => return Err(format!("{}: cannot read the file ({e})", path.display())),
     };
-    let ours = current.as_deref() == Some(NOTE_MD.as_bytes());
+    let ours = current.as_deref() == Some(ours.as_bytes());
     Ok(match (action, current.is_some(), ours) {
-        (Action::Install, false, _) => NoteMd::Write,
-        (Action::Install, true, true) | (Action::Uninstall, false, _) => NoteMd::Nothing,
-        (Action::Install, true, false) | (Action::Uninstall, true, false) => NoteMd::Keep,
-        (Action::Uninstall, true, true) => NoteMd::Remove,
+        (Action::Install, false, _) => OwnFile::Write,
+        (Action::Install, true, true) | (Action::Uninstall, false, _) => OwnFile::Nothing,
+        (Action::Install, true, false) | (Action::Uninstall, true, false) => OwnFile::Keep,
+        (Action::Uninstall, true, true) => OwnFile::Remove,
     })
 }
 
-impl NoteMd {
-    fn apply(&self, path: &Path) -> Result<String, String> {
+impl OwnFile {
+    fn apply(&self, path: &Path, content: &str) -> Result<String, String> {
         match self {
-            NoteMd::Nothing => Ok(String::new()),
-            NoteMd::Keep => Ok(format!(
+            OwnFile::Nothing => Ok(String::new()),
+            OwnFile::Keep => Ok(format!(
                 "kept {}: it is not the file easy-note writes\n",
                 path.display()
             )),
-            NoteMd::Write => {
-                fs::create_dir_all(path.parent().expect("note.md has a parent"))
-                    .and_then(|()| write_atomic(path, NOTE_MD.as_bytes(), 0o644))
+            OwnFile::Write => {
+                fs::create_dir_all(path.parent().expect("an own file has a parent"))
+                    .and_then(|()| write_atomic(path, content.as_bytes(), 0o644))
                     .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
                 Ok(format!("✓ wrote {}\n", path.display()))
             }
-            NoteMd::Remove => {
+            OwnFile::Remove => {
                 fs::remove_file(path)
                     .map_err(|e| format!("cannot remove {}: {e}", path.display()))?;
                 Ok(format!("✓ removed {}\n", path.display()))
