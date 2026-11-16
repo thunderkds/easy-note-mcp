@@ -401,7 +401,7 @@ fn ac6_rm_moves_the_file_to_the_trash_and_restore_puts_it_back() {
     );
     assert!(!path.exists());
     assert_eq!(
-        std::fs::read(sb.trash().join("inbox__20261114-183002.txt")).unwrap(),
+        std::fs::read(sb.trash().join("inbox__1772712000__20261114-183002.txt")).unwrap(),
         bytes
     );
     assert_eq!(ids(&sb.ok(&["ls"])), ["inbox/keep"]);
@@ -412,7 +412,10 @@ fn ac6_rm_moves_the_file_to_the_trash_and_restore_puts_it_back() {
     std::fs::write(&path, b"new file").unwrap();
     sb.fails(&["restore", "inbox/20261114-183002"], 1);
     assert_eq!(std::fs::read(&path).unwrap(), b"new file");
-    assert!(sb.trash().join("inbox__20261114-183002.txt").exists());
+    assert!(sb
+        .trash()
+        .join("inbox__1772712000__20261114-183002.txt")
+        .exists());
     std::fs::remove_file(&path).unwrap();
 
     let said = sb.ok(&["restore", "inbox/20261114-183002"]);
@@ -422,6 +425,65 @@ fn ac6_rm_moves_the_file_to_the_trash_and_restore_puts_it_back() {
     assert_eq!(ids(&sb.ok(&["ls"])).len(), 2);
     sb.fails(&["restore", "inbox/20261114-183002"], 1);
     sb.fails(&["rm", "inbox/nothing-here"], 1);
+}
+
+#[test]
+fn restore_keeps_the_mtime_so_created_of_an_undated_inbox_note_is_unchanged() {
+    let sb = Sandbox::new("ac6-mtime");
+    let path = sb.drop_file("random-thought.md", b"no time in the name\n");
+    let old = 1_790_000_000; // 2026-09-21, long before the rm below
+    set_mtime(&path, old);
+    let bytes = std::fs::read(&path).unwrap();
+    let created = sb.ok(&["show", "inbox/random-thought"]);
+    assert!(created.contains("2026-09-"), "{created}");
+
+    sb.ok(&["rm", "inbox/random-thought"]);
+    // the trash file is as young as the rm, so `trash --empty` counts its age from the rm
+    let trashed = std::fs::read_dir(sb.trash())
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path();
+    assert!(
+        trashed.metadata().unwrap().modified().unwrap()
+            > UNIX_EPOCH + Duration::from_secs(old + 86_400)
+    );
+    sb.ok(&["restore", "inbox/random-thought"]);
+
+    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    assert_eq!(
+        path.metadata().unwrap().modified().unwrap(),
+        UNIX_EPOCH + Duration::from_secs(old)
+    );
+    assert_eq!(sb.ok(&["show", "inbox/random-thought"]), created);
+}
+
+#[test]
+fn rm_and_restore_print_the_id_masked_like_ls_and_trash() {
+    let sb = Sandbox::new("ac6-mask");
+    let token = format!("{}{}", "gh", "p_abcdefghijklmnopqrstuvwxyz0123456789");
+    let id = format!("inbox/{token}");
+    sb.drop_file(&format!("{token}.txt"), b"x\n");
+    let said = sb.ok(&["rm", &id]);
+    assert!(
+        said.starts_with("✓ removed ") && !said.contains(&token),
+        "{said}"
+    );
+    let said = sb.ok(&["restore", &id]);
+    assert!(!said.contains(&token), "{said}");
+}
+
+#[test]
+fn a_trash_name_that_is_not_inbox_digits_name_is_not_an_inbox_note() {
+    let sb = Sandbox::new("ac6-badname");
+    std::fs::create_dir_all(sb.trash()).unwrap();
+    for name in ["inbox__a.txt", "inbox__x1__a.txt", "inbox__12__.hidden.txt"] {
+        std::fs::write(sb.trash().join(name), b"x\n").unwrap();
+    }
+    assert_eq!(sb.ok(&["trash"]), "");
+    sb.fails(&["restore", "inbox/a"], 1);
+    assert!(sb.inbox().read_dir().unwrap().next().is_none());
 }
 
 #[test]
@@ -495,7 +557,7 @@ fn an_md_and_a_txt_with_one_stem_get_ids_with_the_extension() {
     assert!(sb.ok(&["show", "inbox/solo.txt"]).contains("alone"));
     // trash and restore keep the extension
     sb.ok(&["rm", "inbox/same.txt"]);
-    assert!(sb.trash().join("inbox__same.txt").exists());
+    assert!(sb.trash().join("inbox__1772712000__same.txt").exists());
     assert_eq!(sb.ok(&["trash"]), "inbox/same\n");
     sb.ok(&["restore", "inbox/same"]);
     assert!(sb.inbox().join("same.txt").exists());

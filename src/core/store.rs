@@ -29,7 +29,8 @@ pub const CONTEXT_KEYS: [&str; 7] = [
 const MAX_CLASH: u32 = 1000;
 /// An inbox id starts with this; the rest is a file name part (FR-023).
 const INBOX_PREFIX: &str = "inbox/";
-/// The trash name of an inbox file is this plus its file name.
+/// The trash name of an inbox file is this, the unix seconds of its mtime, `__`, and its file
+/// name: `inbox__1790000000__a.txt`.
 const TRASH_INBOX: &str = "inbox__";
 
 #[derive(Debug, thiserror::Error)]
@@ -338,9 +339,26 @@ impl Store {
         if !src.is_file() {
             return Err(StoreError::NotFound(note_id));
         }
-        // The trash name of an inbox file carries its origin: `inbox__<file name>`.
+        // The trash name of an inbox file carries its origin and its mtime, so `restore` can
+        // give the file its mtime back (`created` of an undated inbox note is the mtime).
         let name = match note_id.starts_with(INBOX_PREFIX) {
-            true => format!("{TRASH_INBOX}{}", file_name(&src).to_string_lossy()),
+            true => {
+                let file = file_name(&src).to_string_lossy().into_owned();
+                if self
+                    .trashed_inbox()
+                    .iter()
+                    .any(|(_, _, name)| *name == file)
+                {
+                    return Err(StoreError::Exists(format!(
+                        "{note_id} is already in the trash; nothing moved"
+                    )));
+                }
+                let secs = fs::metadata(&src)?
+                    .modified()?
+                    .duration_since(UNIX_EPOCH)
+                    .map_or(0, |d| d.as_secs());
+                format!("{TRASH_INBOX}{secs}__{file}")
+            }
             false => file_name(&src).to_string_lossy().into_owned(),
         };
         let dst = self.trash_dir().join(name);
@@ -352,15 +370,19 @@ impl Store {
     }
 
     pub fn restore(&self, note_id: &str) -> Result<PathBuf, StoreError> {
+        let mut mtime = None;
         let (src, dst) = match inbox_part(note_id)? {
             Some(part) => {
-                let listed = inbox_ids(self.trashed_inbox_names());
+                let trashed = self.trashed_inbox();
+                let listed = inbox_ids(trashed.iter().map(|(_, _, n)| n.clone()).collect());
                 let name = pick_inbox(&listed, part, note_id)?
                     .ok_or_else(|| StoreError::NotFound(note_id.to_string()))?;
-                (
-                    self.trash_dir().join(format!("{TRASH_INBOX}{name}")),
-                    self.inbox_dir().join(name),
-                )
+                let (path, secs, _) = trashed
+                    .into_iter()
+                    .find(|(_, _, n)| *n == name)
+                    .expect("pick_inbox answers with a listed name");
+                mtime = Some(UNIX_EPOCH + Duration::from_secs(secs));
+                (path, self.inbox_dir().join(name))
             }
             None => {
                 let dst = self.note_path(note_id)?;
@@ -372,6 +394,9 @@ impl Store {
         }
         fs::create_dir_all(dst.parent().expect("a note path has a parent"))?;
         self.move_no_replace(&src, &dst)?;
+        if let Some(mtime) = mtime {
+            fs::File::open(&dst)?.set_modified(mtime)?;
+        }
         Ok(dst)
     }
 
@@ -475,20 +500,32 @@ impl Store {
         ids
     }
 
-    /// File names of the trash files that came from the inbox (without the `inbox__` prefix).
-    fn trashed_inbox_names(&self) -> Vec<String> {
+    /// `(trash path, mtime seconds, inbox file name)` of each trash file that came from the
+    /// inbox, by file name. A trash name that is not `inbox__<digits>__<inbox file name>` is
+    /// not listed.
+    fn trashed_inbox(&self) -> Vec<(PathBuf, u64, String)> {
         let Ok(entries) = fs::read_dir(self.trash_dir()) else {
             return vec![];
         };
-        let mut names: Vec<String> = entries
+        let mut found: Vec<(PathBuf, u64, String)> = entries
             .flatten()
             .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
-            .filter_map(|e| e.file_name().into_string().ok())
-            .filter_map(|name| name.strip_prefix(TRASH_INBOX).map(str::to_string))
-            .filter(|name| is_inbox_file_name(name))
+            .filter_map(|e| {
+                let name = e.file_name().into_string().ok()?;
+                let (secs, file) = split_trash_inbox(&name)?;
+                Some((e.path(), secs, file.to_string()))
+            })
             .collect();
-        names.sort();
-        names
+        found.sort_by(|a, b| a.2.cmp(&b.2));
+        found
+    }
+
+    /// File names of the trash files that came from the inbox, sorted.
+    fn trashed_inbox_names(&self) -> Vec<String> {
+        self.trashed_inbox()
+            .into_iter()
+            .map(|(_, _, name)| name)
+            .collect()
     }
 
     fn inbox_dir(&self) -> PathBuf {
@@ -802,6 +839,17 @@ fn inbox_part(note_id: &str) -> Result<Option<&str>, StoreError> {
     Ok(Some(part))
 }
 
+/// `(mtime seconds, file name)` of a trash name `inbox__<digits>__<inbox file name>`; `None` for
+/// any other name, so a file name taken from it never holds a `/`.
+fn split_trash_inbox(trash_name: &str) -> Option<(u64, &str)> {
+    let (secs, file) = trash_name.strip_prefix(TRASH_INBOX)?.split_once("__")?;
+    let secs = match secs.bytes().all(|b| b.is_ascii_digit()) {
+        true => secs.parse().ok()?,
+        false => return None,
+    };
+    (is_inbox_file_name(file) && !file.contains(['/', '\0'])).then_some((secs, file))
+}
+
 /// A file name that counts as an inbox note: `.md` or `.txt`, not a dot file.
 fn is_inbox_file_name(name: &str) -> bool {
     !name.starts_with('.') && (name.ends_with(".md") || name.ends_with(".txt"))
@@ -858,8 +906,8 @@ fn pick_inbox(
 /// What to call a trash file in a message: its id (`inbox/<stem>` for an inbox file).
 pub fn trash_label(file_name: &str) -> String {
     let stem = |name: &str| name.rsplit_once('.').map_or(name, |(s, _)| s).to_string();
-    match file_name.strip_prefix(TRASH_INBOX) {
-        Some(name) => format!("{INBOX_PREFIX}{}", stem(name)),
+    match split_trash_inbox(file_name) {
+        Some((_, name)) => format!("{INBOX_PREFIX}{}", stem(name)),
         None => stem(file_name),
     }
 }

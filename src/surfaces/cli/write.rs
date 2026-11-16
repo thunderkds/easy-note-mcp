@@ -244,6 +244,7 @@ pub fn tag(id: &str, remove: bool, wanted: &[String]) -> Outcome {
 
 pub fn rm(id: &str) -> Outcome {
     Store::open()?.rm(id)?;
+    let id = safe(id);
     say(&format!(
         "✓ removed {id} (easy-note restore {id} brings it back)"
     ))
@@ -251,7 +252,7 @@ pub fn rm(id: &str) -> Outcome {
 
 pub fn restore(id: &str) -> Outcome {
     Store::open()?.restore(id)?;
-    say(&format!("✓ restored {id}"))
+    say(&format!("✓ restored {}", safe(id)))
 }
 
 /// `30d` is 30 days.
