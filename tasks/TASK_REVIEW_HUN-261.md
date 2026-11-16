@@ -55,6 +55,7 @@ Mode: auto
 Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — pending (agent running); reviews pending; real run pending
 Memory: nothing new (task in progress; the memory pass runs after merge)
 Not done: implementation (Backend-Implementer running in the background); code-review, security-review, auto verify, merge (admin: after the auto verify pass)
+Paused: auto-mode check failed — Risk Medium: decision 1 (`SAFER OPTION`) is a choice — it is flagged ⚠ — so it must be `DEBATED` with exactly 2 Advocates named; Risk Medium: decision 4 (`SAFER OPTION`) is a choice — it is flagged ⚠ — so it must be `DEBATED` with exactly 2 Advocates named; Risk Medium: decision 5 (`SAFER OPTION`) is a choice — it is flagged ⚠ — so it must be `DEBATED` with exactly 2 Advocates named [report 72cdbdd3d1aa]
 
 ## Evidence
 
@@ -80,8 +81,16 @@ Not done: implementation (Backend-Implementer running in the background); code-r
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE**: captured before any implementation commit, on `main` @ 5b05e1a code, temp `HOME` and `EASY_NOTE_DIR` holding `inbox/20261114-183002.txt` with text `phone idea #mobile`, after `cargo build`:
+
+```
+Mon Nov 16 10:15:02 AM UTC 2026   (date -u)
+$ target/debug/easy-note ls
+exit=0                            (no output: the inbox note is not listed)
+$ target/debug/easy-note show inbox/20261114-183002
+easy-note: not a note id: inbox/20261114-183002
+exit=2
+```
 
 **AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
 
