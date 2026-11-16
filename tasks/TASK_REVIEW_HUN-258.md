@@ -68,8 +68,20 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE**: captured 2026-11-16T07:33:42Z on branch `feat/HUN-258-rust-mcp` at bd1e627 (no implementation commit yet), `cargo build`, then `initialize` + `tools/list` sent to `easy-note serve` over stdio (temp HOME and EASY_NOTE_DIR), then `easy-note serve --http`:
+
+```
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"easy-note","version":"0.1.0"}}}
+{"jsonrpc":"2.0","id":2,"result":{"tools":[]}}
+exit=0
+---
+error: unexpected argument '--http' found
+
+Usage: easy-note serve
+
+For more information, try '--help'.
+exit=2
+```
 
 **AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
 
