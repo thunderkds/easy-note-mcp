@@ -84,9 +84,30 @@ exit=2
 $ ls -A $H     # nothing written
 ```
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+**AFTER**: captured 2026-11-16T07:48:49Z on the same branch after the implementation commit, temp HOME `/tmp/tmp.EKUe9AIsNn`, no `EASY_NOTE_DIR`, no config (`/home/.../scratchpad/demo.sh`):
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+```
+$ easy-note add hello '#a'; echo exit=$?
+easy-note: created notes dir /tmp/tmp.EKUe9AIsNn/easy-notes
+✓ noted 20261116-144849-38db
+exit=0
+$ easy-note ls; echo exit=$?
+20261116-144849-38db  hello #a  #a
+exit=0
+$ ./n retry '#flaky' "it's!"; echo exit=$?     # n = symlink to the binary
+✓ noted 20261116-144849-b696
+exit=0
+$ easy-note search flaky
+20261116-144849-b696  retry #flaky it's!  #flaky
+$ easy-note doctor
+notes dir: /tmp/tmp.EKUe9AIsNn/easy-notes
+2 notes checked
+no problems found
+$ printf 'typed at a prompt #tty\n' | script -qec "$H/n" /dev/null     # a real pty
+note> ✓ noted 20261116-144850-ebb4
+```
+
+**DELTA**: a person can now type `n <words>` (or `easy-note add`) in a fresh account with no setup and get a saved, tagged note and the confirmation line, then list, search, show, edit, tag, remove, restore, count and check notes from the terminal.
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/Txxx.jsonl`, never the
 implementing agent alone]
