@@ -492,10 +492,178 @@ fn surface_mcp(text: &str) -> Captured {
     }
 }
 
+/// Inbox notes (FR-023, HUN-261): the planted text is in two files a sync app dropped in
+/// `inbox/` (plain text; and a note with front matter that holds it in the text, a tag and a
+/// context field), then the real binary reads them through every command and tool, trashes and
+/// restores one, is refused an edit, and gets the text where an inbox id should be. The grep
+/// covers every output. The two inbox files hold the raw text by definition (easy-note never
+/// rewrites them), so the surface deletes them at its end, after a dated note is added, so the
+/// file grep still sees the notes dir, the trash and temp files.
+fn surface_inbox(text: &str) -> Captured {
+    use std::io::{BufRead, Read, Write};
+    use std::process::{Command, Stdio};
+
+    let home = PathBuf::from(std::env::var("HOME").unwrap());
+    let inbox = PathBuf::from(std::env::var("EASY_NOTE_DIR").unwrap()).join("inbox");
+    std::fs::create_dir_all(&inbox).unwrap();
+    let plain = inbox.join("20261114-183002.txt");
+    let framed = inbox.join("framed.md");
+    let quoted = serde_json::to_string(text).unwrap(); // a JSON string is a YAML string
+    std::fs::write(&plain, format!("phone note: {text} #leak\n")).unwrap();
+    std::fs::write(
+        &framed,
+        format!(
+            "---\neasy-note: 1\nid: \"x\"\ncreated: \"2026-01-02T03:04:05+00:00\"\nrepo: {quoted}\n\
+             tags: [{quoted}]\nsource: \"inbox\"\n---\nframed note: {text}\n"
+        ),
+    )
+    .unwrap();
+
+    let mut got = Captured {
+        objects: vec![],
+        stdout: String::new(),
+        stderr: String::new(),
+    };
+    let mut run = |args: &[&str], want: i32| {
+        let out = Command::new(env!("CARGO_BIN_EXE_easy-note"))
+            .args(args)
+            .env("EDITOR", "true")
+            .current_dir(&home)
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        let (o, e) = (
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        );
+        assert_eq!(out.status.code(), Some(want), "`{}`: {o}{e}", args[0]);
+        let n = got.objects.len();
+        got.objects.push(format!("run {n} -> {want}\n{o}\n{e}"));
+        got.stdout.push_str(&o);
+        got.stderr.push_str(&e);
+    };
+    run(&["add", "dated note"], 0);
+    run(&["ls"], 0);
+    run(&["search", "note"], 0);
+    run(&["search", text], 0);
+    run(&["show", "inbox/20261114-183002"], 0);
+    run(&["show", "inbox/framed"], 0);
+    run(&["stats"], 0);
+    run(&["stats", "--json"], 0);
+    run(&["doctor"], 0);
+    run(&["rm", "inbox/20261114-183002"], 0);
+    run(&["trash"], 0);
+    run(&["restore", "inbox/20261114-183002"], 0);
+    run(&["edit", "inbox/framed"], 1);
+    run(&["tag", "inbox/framed", "x"], 1);
+    // the text where an inbox id should be: a bad id (2) or no such note (1), either way no echo
+    let id = format!("inbox/{text}");
+    for cmd in ["show", "rm", "restore", "edit", "tag"] {
+        let args: Vec<&str> = if cmd == "tag" {
+            vec![cmd, &id, "x"]
+        } else {
+            vec![cmd, &id]
+        };
+        let out = Command::new(env!("CARGO_BIN_EXE_easy-note"))
+            .args(&args)
+            .env("EDITOR", "true")
+            .current_dir(&home)
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        let (o, e) = (
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        );
+        assert!(
+            matches!(out.status.code(), Some(1 | 2)),
+            "`{cmd}` on a text id: {o}{e}"
+        );
+        got.objects.push(format!("{cmd} on text id\n{o}\n{e}"));
+        got.stdout.push_str(&o);
+        got.stderr.push_str(&e);
+    }
+
+    // The same notes through the MCP read tools.
+    let mut child = Command::new(env!("CARGO_BIN_EXE_easy-note"))
+        .arg("serve")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut lines = std::io::BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut next_id = 0u32;
+    let calls = [
+        ("note_list", serde_json::json!({})),
+        ("note_search", serde_json::json!({"query": text})),
+        ("note_stats", serde_json::json!({})),
+        (
+            "note_read",
+            serde_json::json!({"id": "inbox/20261114-183002"}),
+        ),
+        ("note_read", serde_json::json!({"id": "inbox/framed"})),
+        ("note_read", serde_json::json!({"id": id})),
+    ];
+    let init = [
+        (
+            "initialize",
+            serde_json::json!({"protocolVersion": "2025-03-26", "capabilities": {},
+                "clientInfo": {"name": "leak-test", "version": "0"}}),
+        ),
+        ("notifications/initialized", serde_json::json!({})),
+    ];
+    for (method, params) in init
+        .into_iter()
+        .chain(calls.into_iter().map(|(name, args)| {
+            (
+                "tools/call",
+                serde_json::json!({"name": name, "arguments": args}),
+            )
+        }))
+    {
+        let mut request = serde_json::json!({"jsonrpc": "2.0", "method": method, "params": params});
+        let answered = method != "notifications/initialized";
+        if answered {
+            next_id += 1;
+            request["id"] = next_id.into();
+        }
+        writeln!(stdin, "{request}").unwrap();
+        stdin.flush().unwrap();
+        if answered {
+            let line = lines.next().expect("the server answers").unwrap();
+            got.stdout.push_str(&line);
+            got.stdout.push('\n');
+            let answer: Value = serde_json::from_str(&line).expect("one JSON-RPC line");
+            let mut decoded = vec![];
+            json_strings(&answer, &mut decoded);
+            got.objects.push(line);
+            got.objects.extend(decoded);
+        }
+    }
+    drop(stdin);
+    for line in lines {
+        got.stdout.push_str(&line.unwrap());
+    }
+    child
+        .stderr
+        .take()
+        .unwrap()
+        .read_to_string(&mut got.stderr)
+        .unwrap();
+    assert!(child.wait().unwrap().success());
+
+    std::fs::remove_file(plain).unwrap();
+    std::fs::remove_file(framed).unwrap();
+    got
+}
+
 const SURFACES: &[(&str, Surface)] = &[
     ("core", surface_core),
     ("cli", surface_cli),
     ("mcp", surface_mcp),
+    ("inbox", surface_inbox),
 ];
 
 fn nothing_leaked(secret: &str, got: &Captured, root: &Path) -> Result<(), String> {
@@ -544,8 +712,8 @@ fn planted_secret_never_leaks() {
 }
 
 #[test]
-fn the_registry_holds_the_core_and_the_cli_surface() {
-    for wanted in ["core", "cli"] {
+fn the_registry_holds_the_core_the_cli_and_the_inbox_surface() {
+    for wanted in ["core", "cli", "inbox"] {
         assert!(SURFACES.iter().any(|(name, _)| *name == wanted), "{wanted}");
     }
 }

@@ -92,9 +92,27 @@ easy-note: not a note id: inbox/20261114-183002
 exit=2
 ```
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+**AFTER**: same fixture and commands after the change (`cargo build`, temp `HOME` and `EASY_NOTE_DIR`):
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+```
+Mon Nov 16 10:23:51 AM UTC 2026   (date -u)
+$ target/debug/easy-note ls
+inbox/20261114-183002  phone idea #mobile  #mobile
+exit=0
+$ target/debug/easy-note show inbox/20261114-183002
+---
+easy-note: 1
+id: "inbox/20261114-183002"
+created: "2026-11-14T18:30:02+07:00"
+tags: ["mobile"]
+source: "inbox"
+---
+phone idea #mobile
+exit=0
+inbox file sha256 before and after both: 1771b6cff0b5654a3e9fe23e60acc88e8ea706360b55b8f45f0a9ed28eeea2e1
+```
+
+**DELTA**: A note a phone sync app saved in `inbox/` now shows up in `ls`, `search`, `stats`, `show` and the MCP read tools, and easy-note never rewrites the file.
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/HUN-261.jsonl`, never the
 implementing agent alone]

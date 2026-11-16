@@ -10,7 +10,7 @@ use std::time::Duration;
 use super::scratch::Scratch;
 use super::{confirmation, count, safe, say, Fail, Outcome};
 use crate::core::format::{parse, render, Note, Value};
-use crate::core::store::Store;
+use crate::core::store::{trash_label, Store};
 use crate::core::{config, context, guard, tags};
 
 /// `init [--dir PATH]`: make the dir and save it in the config file (FR-001).
@@ -176,6 +176,7 @@ fn edited_tags(old: &Note, new: &Note, text_changed: bool) -> Result<Option<Vec<
 pub fn edit(id: &str) -> Outcome {
     let store = Store::open()?;
     let note = store.read(id)?;
+    store.ensure_writable(id)?;
     let scratch = Scratch::create(&store, id, &render(&note))?;
     run_editor(&scratch.path)?;
     let edited = fs::read_to_string(&scratch.path)?;
@@ -263,12 +264,6 @@ fn parse_days(text: &str) -> Result<Duration, Fail> {
         .ok_or_else(|| Fail::usage(format!("--older-than must be days, like 30d, not {text}")))
 }
 
-fn stem(path: &Path) -> String {
-    path.file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default()
-}
-
 /// `trash` lists the trash; `trash --empty --older-than 30d` deletes old files for good (FR-009).
 pub fn trash(empty: bool, older_than: Option<&str>) -> Outcome {
     let store = Store::open()?;
@@ -276,25 +271,15 @@ pub fn trash(empty: bool, older_than: Option<&str>) -> Outcome {
         let age = parse_days(older_than.unwrap_or_default())?;
         let gone = store.empty_trash(age)?;
         for path in &gone {
-            say(&format!("deleted {}", safe(&stem(path))))?;
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            say(&format!("deleted {}", safe(&trash_label(&name))))?;
         }
         return say(&format!(
             "✓ deleted {} from the trash",
             count(gone.len(), "note")
         ));
     }
-    // The layout is the store's: `<dir>/.easy-note/trash/<id>.md`.
-    let mut ids: Vec<String> = match fs::read_dir(store.root.join(".easy-note").join("trash")) {
-        Ok(entries) => entries
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "md"))
-            .map(|p| stem(&p))
-            .collect(),
-        Err(_) => vec![],
-    };
-    ids.sort();
-    for id in ids {
+    for id in store.trash_ids() {
         say(&safe(&id))?;
     }
     Ok(())

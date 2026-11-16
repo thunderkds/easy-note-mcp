@@ -11,7 +11,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use chrono::{DateTime, FixedOffset, Local, Offset, SecondsFormat, TimeZone, Utc};
+use chrono::{DateTime, FixedOffset, Local, NaiveDateTime, Offset, SecondsFormat, TimeZone, Utc};
 use saphyr::{LoadableYamlNode, ScalarOwned, YamlOwned};
 use sha2::{Digest, Sha256};
 
@@ -21,11 +21,16 @@ use crate::core::format::{
 };
 use crate::core::fsutil::{create_temp, unlink_quiet, write_all_sync};
 use crate::core::guard;
+use crate::core::tags;
 
 pub const CONTEXT_KEYS: [&str; 7] = [
     "repo", "remote", "branch", "task", "client", "session", "commit",
 ];
 const MAX_CLASH: u32 = 1000;
+/// An inbox id starts with this; the rest is a file name part (FR-023).
+const INBOX_PREFIX: &str = "inbox/";
+/// The trash name of an inbox file is this plus its file name.
+const TRASH_INBOX: &str = "inbox__";
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -40,6 +45,9 @@ pub enum StoreError {
     /// A move or write would replace a file that already exists.
     #[error("{0}")]
     Exists(String),
+    /// An inbox note: a sync app owns the file, so easy-note never writes it.
+    #[error("inbox notes are read-only")]
+    ReadOnly,
     #[error(transparent)]
     Format(#[from] FormatError),
     #[error(transparent)]
@@ -240,7 +248,7 @@ impl Store {
     }
 
     fn read_raw(&self, note_id: &str) -> Result<Note, StoreError> {
-        let path = self.note_path(note_id)?;
+        let (note_id, path) = self.resolve(note_id)?;
         let raw = match fs::read(&path) {
             Ok(raw) => raw,
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
@@ -248,13 +256,27 @@ impl Store {
             }
             Err(e) => return Err(e.into()),
         };
-        match parse_file(&path, &raw) {
+        let item = if note_id.starts_with(INBOX_PREFIX) {
+            self.load_inbox(&note_id, &path, &raw)
+        } else {
+            parse_file(&path, &raw)
+        };
+        match item {
             Item::Note(note) => Ok(note),
             Item::Skipped(skipped) => Err(FormatError {
                 reason: skipped.reason,
             }
             .into()),
         }
+    }
+
+    /// Inbox notes are read-only (FR-023): `Err(ReadOnly)` for an inbox id. Callers that would
+    /// do work first (an editor session) ask before they start.
+    pub fn ensure_writable(&self, note_id: &str) -> Result<(), StoreError> {
+        if note_id.starts_with(INBOX_PREFIX) {
+            return Err(StoreError::ReadOnly);
+        }
+        Ok(())
     }
 
     /// Rewrite one note (`edit` / `tag`, FR-008): unknown keys kept, `updated` set, temp + rename.
@@ -264,6 +286,7 @@ impl Store {
         text: Option<&str>,
         tags: Option<&[String]>,
     ) -> Result<Updated, StoreError> {
+        self.ensure_writable(note_id)?;
         let mut masked = vec![];
         let mut new_body = None;
         if let Some(text) = text {
@@ -311,11 +334,16 @@ impl Store {
 
     /// Move a note to `<dir>/.easy-note/trash/`; its mtime becomes the time it was trashed.
     pub fn rm(&self, note_id: &str) -> Result<PathBuf, StoreError> {
-        let src = self.note_path(note_id)?;
+        let (note_id, src) = self.resolve(note_id)?;
         if !src.is_file() {
-            return Err(StoreError::NotFound(note_id.to_string()));
+            return Err(StoreError::NotFound(note_id));
         }
-        let dst = self.trash_dir().join(file_name(&src));
+        // The trash name of an inbox file carries its origin: `inbox__<file name>`.
+        let name = match note_id.starts_with(INBOX_PREFIX) {
+            true => format!("{TRASH_INBOX}{}", file_name(&src).to_string_lossy()),
+            false => file_name(&src).to_string_lossy().into_owned(),
+        };
+        let dst = self.trash_dir().join(name);
         fs::create_dir_all(self.trash_dir())?;
         self.move_no_replace(&src, &dst)?;
         // Open read-only: a 0444 note was moved already and a write-open would fail on it.
@@ -324,8 +352,21 @@ impl Store {
     }
 
     pub fn restore(&self, note_id: &str) -> Result<PathBuf, StoreError> {
-        let dst = self.note_path(note_id)?;
-        let src = self.trash_dir().join(file_name(&dst));
+        let (src, dst) = match inbox_part(note_id)? {
+            Some(part) => {
+                let listed = inbox_ids(self.trashed_inbox_names());
+                let name = pick_inbox(&listed, part, note_id)?
+                    .ok_or_else(|| StoreError::NotFound(note_id.to_string()))?;
+                (
+                    self.trash_dir().join(format!("{TRASH_INBOX}{name}")),
+                    self.inbox_dir().join(name),
+                )
+            }
+            None => {
+                let dst = self.note_path(note_id)?;
+                (self.trash_dir().join(file_name(&dst)), dst)
+            }
+        };
         if !src.is_file() {
             return Err(StoreError::NotFound(note_id.to_string()));
         }
@@ -376,7 +417,8 @@ impl Store {
             }
         }
         paths.sort();
-        paths.into_iter().map(|path| {
+        let me = self.clone();
+        let dated = paths.into_iter().map(|path| {
             let path = std::path::absolute(&path).unwrap_or(path);
             match fs::read(&path) {
                 Ok(raw) => match parse_file(&path, &raw) {
@@ -391,7 +433,171 @@ impl Store {
                     reason: "cannot read file".to_string(),
                 }),
             }
-        })
+        });
+        // Then the inbox notes, parsed views of files that are never written (FR-023).
+        let inbox = me.inbox_files().into_iter().map(move |(id, path)| {
+            let item = match fs::read(&path) {
+                Ok(raw) => me.load_inbox(&id, &path, &raw),
+                Err(_) => Item::Skipped(Skipped {
+                    path,
+                    reason: "cannot read file".to_string(),
+                }),
+            };
+            match item {
+                Item::Note(mut note) => {
+                    mask_note(&mut note);
+                    Item::Note(note)
+                }
+                skipped => skipped,
+            }
+        });
+        dated.chain(inbox)
+    }
+
+    /// The ids of the notes in the trash that came from the inbox, and the dated ones, sorted;
+    /// an inbox id is `inbox/<stem>` (the file name when two files share a stem).
+    pub fn trash_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = match fs::read_dir(self.trash_dir()) {
+            Ok(entries) => entries
+                .flatten()
+                .filter_map(|e| e.file_name().into_string().ok())
+                .filter(|name| !name.starts_with(TRASH_INBOX))
+                .filter_map(|name| name.strip_suffix(".md").map(str::to_string))
+                .collect(),
+            Err(_) => vec![],
+        };
+        ids.extend(
+            inbox_ids(self.trashed_inbox_names())
+                .into_iter()
+                .map(|(id, _)| id),
+        );
+        ids.sort();
+        ids
+    }
+
+    /// File names of the trash files that came from the inbox (without the `inbox__` prefix).
+    fn trashed_inbox_names(&self) -> Vec<String> {
+        let Ok(entries) = fs::read_dir(self.trash_dir()) else {
+            return vec![];
+        };
+        let mut names: Vec<String> = entries
+            .flatten()
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter_map(|name| name.strip_prefix(TRASH_INBOX).map(str::to_string))
+            .filter(|name| is_inbox_file_name(name))
+            .collect();
+        names.sort();
+        names
+    }
+
+    fn inbox_dir(&self) -> PathBuf {
+        self.root.join("inbox")
+    }
+
+    /// `(id, path)` of each note file directly in `inbox/`, by file name. Only regular files
+    /// with a `.md` or `.txt` name that does not start with `.`: no subfolder, no symlink.
+    fn inbox_files(&self) -> Vec<(String, PathBuf)> {
+        let dir = std::path::absolute(self.inbox_dir()).unwrap_or_else(|_| self.inbox_dir());
+        let Ok(entries) = fs::read_dir(&dir) else {
+            return vec![];
+        };
+        let mut names: Vec<String> = entries
+            .flatten()
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|name| is_inbox_file_name(name))
+            .collect();
+        names.sort();
+        inbox_ids(names)
+            .into_iter()
+            .map(|(id, name)| (id, dir.join(name)))
+            .collect()
+    }
+
+    /// The canonical id and the file of one note. An inbox id is checked before the disk is
+    /// touched, and only a file `inbox_files` listed can be the answer, so the path never leaves
+    /// `inbox/`.
+    fn resolve(&self, note_id: &str) -> Result<(String, PathBuf), StoreError> {
+        let Some(part) = inbox_part(note_id)? else {
+            return Ok((note_id.to_string(), self.note_path(note_id)?));
+        };
+        let files = self.inbox_files();
+        let names: Vec<(String, String)> = files
+            .iter()
+            .map(|(id, path)| (id.clone(), file_name(path).to_string_lossy().into_owned()))
+            .collect();
+        let name = pick_inbox(&names, part, note_id)?
+            .ok_or_else(|| StoreError::NotFound(note_id.to_string()))?;
+        files
+            .into_iter()
+            .find(|(_, path)| file_name(path).to_string_lossy() == name)
+            .ok_or_else(|| StoreError::NotFound(note_id.to_string()))
+    }
+
+    /// One inbox file as a note (unmasked): its own `easy-note: 1` front matter when it has a
+    /// valid one (the id stays the inbox id), else a view made from the name, the mtime and the
+    /// text (NOTE_FORMAT, "Inbox files").
+    fn load_inbox(&self, id: &str, path: &Path, raw: &[u8]) -> Item {
+        let skip = |reason: &str| {
+            Item::Skipped(Skipped {
+                path: path.to_path_buf(),
+                reason: reason.to_string(),
+            })
+        };
+        let Ok(text) = std::str::from_utf8(raw) else {
+            return skip("not UTF-8");
+        };
+        if text.trim().is_empty() {
+            return skip("empty file");
+        }
+        if let Ok(mut note) = parse(text) {
+            note.fields
+                .insert("id".to_string(), Value::Str(id.to_string()));
+            note.path = Some(path.to_path_buf());
+            return Item::Note(note);
+        }
+        let name = file_name(path).to_string_lossy().into_owned();
+        let created = self
+            .name_time(&name)
+            .unwrap_or_else(|| {
+                let mtime = fs::metadata(path).and_then(|m| m.modified()).ok();
+                let ns = mtime
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                    .map_or(0, |d| d.as_nanos());
+                self.local_time(ns)
+            })
+            .to_rfc3339_opts(SecondsFormat::Secs, false);
+        let fields = [
+            ("easy-note", Value::Int(VERSION)),
+            ("id", Value::Str(id.to_string())),
+            ("created", Value::Str(created)),
+            ("tags", Value::List(tags::extract(text))),
+            ("source", Value::Str("inbox".to_string())),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        let mut note = Note::new(fields, text.to_string());
+        note.path = Some(path.to_path_buf());
+        Item::Note(note)
+    }
+
+    /// The local time in a `YYYYMMDD-HHMMSS` file name prefix; `None` when there is none or it
+    /// is not a real date.
+    fn name_time(&self, name: &str) -> Option<DateTime<FixedOffset>> {
+        let prefix = name.get(..15)?;
+        if !prefix.bytes().all(|b| b.is_ascii_digit() || b == b'-') {
+            return None;
+        }
+        let naive = NaiveDateTime::parse_from_str(prefix, "%Y%m%d-%H%M%S").ok()?;
+        // The zone in force at that local time: guess with the UTC reading, then correct once.
+        let guess = naive.and_utc().timestamp();
+        let first = (self.utc_offset)(guess);
+        let second = (self.utc_offset)(guess - i64::from(first));
+        FixedOffset::east_opt(second)?
+            .from_local_datetime(&naive)
+            .single()
     }
 
     fn note_path(&self, note_id: &str) -> Result<PathBuf, StoreError> {
@@ -581,6 +787,80 @@ fn with_newline(text: &str) -> String {
         text.to_string()
     } else {
         format!("{text}\n")
+    }
+}
+
+/// The name part of an inbox id: `Ok(None)` for any other id, `BadId` for an `inbox/...` id whose
+/// name part is empty, holds `/` or NUL, or starts with `.` (so never `.`, `..` or a dot file).
+fn inbox_part(note_id: &str) -> Result<Option<&str>, StoreError> {
+    let Some(part) = note_id.strip_prefix(INBOX_PREFIX) else {
+        return Ok(None);
+    };
+    if part.is_empty() || part.starts_with('.') || part.contains(['/', '\0']) {
+        return Err(StoreError::BadId(note_id.to_string()));
+    }
+    Ok(Some(part))
+}
+
+/// A file name that counts as an inbox note: `.md` or `.txt`, not a dot file.
+fn is_inbox_file_name(name: &str) -> bool {
+    !name.starts_with('.') && (name.ends_with(".md") || name.ends_with(".txt"))
+}
+
+/// `(id, file name)` for sorted inbox file names. The id is `inbox/<stem>`; when two files share
+/// a stem (`a.md`, `a.txt`) both ids keep the extension.
+fn inbox_ids(names: Vec<String>) -> Vec<(String, String)> {
+    let stem = |name: &str| {
+        name.rsplit_once('.')
+            .map_or(name, |(stem, _)| stem)
+            .to_string()
+    };
+    let stems: Vec<String> = names.iter().map(|n| stem(n)).collect();
+    names
+        .into_iter()
+        .zip(&stems)
+        .map(|(name, stem)| {
+            let shared = stems.iter().filter(|s| *s == stem).count() > 1;
+            let id = format!("{INBOX_PREFIX}{}", if shared { &name } else { stem });
+            (id, name)
+        })
+        .collect()
+}
+
+/// The file name an inbox id names among `(id, file name)` pairs: the exact id, else the one file
+/// whose name or stem is `part`. Two such files are an error that names their ids.
+fn pick_inbox(
+    listed: &[(String, String)],
+    part: &str,
+    note_id: &str,
+) -> Result<Option<String>, StoreError> {
+    let exact = format!("{INBOX_PREFIX}{part}");
+    if let Some((_, name)) = listed.iter().find(|(id, _)| *id == exact) {
+        return Ok(Some(name.clone()));
+    }
+    let named: Vec<&(String, String)> = listed
+        .iter()
+        .filter(|(_, name)| name == part || name.rsplit_once('.').is_some_and(|(s, _)| s == part))
+        .collect();
+    match named.as_slice() {
+        [] => Ok(None),
+        [(_, name)] => Ok(Some(name.clone())),
+        many => Err(StoreError::Invalid(format!(
+            "{note_id} names more than one file; use {}",
+            many.iter()
+                .map(|(id, _)| id.as_str())
+                .collect::<Vec<_>>()
+                .join(" or ")
+        ))),
+    }
+}
+
+/// What to call a trash file in a message: its id (`inbox/<stem>` for an inbox file).
+pub fn trash_label(file_name: &str) -> String {
+    let stem = |name: &str| name.rsplit_once('.').map_or(name, |(s, _)| s).to_string();
+    match file_name.strip_prefix(TRASH_INBOX) {
+        Some(name) => format!("{INBOX_PREFIX}{}", stem(name)),
+        None => stem(file_name),
     }
 }
 
