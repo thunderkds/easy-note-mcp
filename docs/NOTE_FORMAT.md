@@ -89,6 +89,7 @@ Whole text (title + body) ≤ 20,000 chars: a longer text is refused on write, t
 
 `easy-note rm <id>` moves the file to `<notes dir>/.easy-note/trash/<id>.md` and sets its mtime to the time of the move.
 `easy-note restore <id>` moves it back with the same bytes; neither move replaces an existing file.
+An inbox note goes to `<notes dir>/.easy-note/trash/inbox__<file name>` (extension kept); `restore inbox/<stem>` moves it back to `inbox/<file name>`.
 `easy-note trash --empty --older-than 30d` deletes trash files whose mtime is older than the cutoff.
 
 ## Inbox files (round 2)
@@ -96,7 +97,7 @@ Whole text (title + body) ≤ 20,000 chars: a longer text is refused on write, t
 Any `.md` or `.txt` file directly in `<notes dir>/inbox/` is a note even without front matter. Readers derive:
 `id` = `inbox/<file stem>`; `created` = a `YYYYMMDD-HHMMSS` prefix of the file name (local time), else the file mtime;
 `source` = `inbox`; `tags` = `#words` in the text; no context fields. If the file has valid `easy-note: 1` front matter,
-its keys win. easy-note never rewrites inbox files. Phone example: an iOS Shortcut "Save File" to
+its keys win, except `id`, which is always the inbox id above (`show`, `rm` and `restore` route by it). easy-note never rewrites inbox files. Phone example: an iOS Shortcut "Save File" to
 `easy-notes/inbox/20261114-183002.txt` through iCloud Drive or Dropbox.
 
 ## AI detail files (round 3, DDR 0004)

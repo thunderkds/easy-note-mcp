@@ -48,10 +48,10 @@ Plan T013: "Tests: `inbox/20261114-183002.txt` → id `inbox/20261114-183002`, c
 
 ### Requirement Fidelity Gate (sign off BEFORE implementation)
 
-- [x] Restated intent confirmed to match the user's request (by Supervisor / user — not the implementing agent) — Supervisor, [admin] auto, 2026-11-16
-- [x] Domain terms align with `PROJECT_SPEC.md` glossary (`grill-with-docs` run if terminology was fuzzy)
-- [x] Every Acceptance Criterion below traces to a line in the Requirement
-- [x] All Requirement Refs exist in `PRD.md` and are fully covered by the Acceptance Criteria above
+- [X] Restated intent confirmed to match the user's request (by Supervisor / user — not the implementing agent) — Supervisor, \[admin\] auto, 2026-11-16
+- [X] Domain terms align with `PROJECT_SPEC.md` glossary (`grill-with-docs` run if terminology was fuzzy)
+- [X] Every Acceptance Criterion below traces to a line in the Requirement
+- [X] All Requirement Refs exist in `PRD.md` and are fully covered by the Acceptance Criteria above
 
 > An agent must NOT start implementing until this gate is checked. If anything here is unclear,
 > STOP and ask the Supervisor (Karpathy: Think Before Coding).
@@ -124,13 +124,14 @@ N/A — pure backend / CLI task; no UI component. The three UI Evidence rows are
 **Cut list**: Watching the folder for changes; Attachments in inbox; a trash sidecar file (the trash name carries the origin instead); disambiguating ids by anything but the file name
 
 Design (Supervisor, auto decisions recorded in TASK_REVIEW):
-- Inbox notes are parsed views, never written. `iter_notes` yields month-folder notes, then inbox notes, all masked by `mask_note`.
-- Id: `inbox/<file stem>`. When an `.md` and a `.txt` share a stem, both ids become `inbox/<file name>` (with extension). Lookup by id: `inbox/<name>` accepts an exact `.md`/`.txt` file name, else `<name>.md` / `<name>.txt`; both present → error naming both ids.
-- Valid inbox name part: non-empty, no `/`, no NUL, does not start with `.`. Anything else is `StoreError::BadId`.
-- Plain file: body = whole text, tags = `tags::extract(text)`, `created` = `YYYYMMDD-HHMMSS` file-name prefix as local time (bad date → mtime), else mtime, `source: inbox`, no context fields.
-- File with valid `easy-note: 1` front matter: its keys win, except `id`, which stays the inbox id (rm/show route by it). Front matter that does not parse as `easy-note: 1` → the whole file is the body.
-- Non-UTF-8 or empty file → `Skipped` with its path (never content).
-- Trash: `rm inbox/<x>` moves the file to `.easy-note/trash/inbox__<file name>`; `restore inbox/<x>` moves it back into `inbox/` (no replace). `trash` lists it as `inbox/<stem>`.
+
+* Inbox notes are parsed views, never written. `iter_notes` yields month-folder notes, then inbox notes, all masked by `mask_note`.
+* Id: `inbox/<file stem>`. When an `.md` and a `.txt` share a stem, both ids become `inbox/<file name>` (with extension). Lookup by id: `inbox/<name>` accepts an exact `.md`/`.txt` file name, else `<name>.md` / `<name>.txt`; both present → error naming both ids.
+* Valid inbox name part: non-empty, no `/`, no NUL, does not start with `.`. Anything else is `StoreError::BadId`.
+* Plain file: body = whole text, tags = `tags::extract(text)`, `created` = `YYYYMMDD-HHMMSS` file-name prefix as local time (bad date → mtime), else mtime, `source: inbox`, no context fields.
+* File with valid `easy-note: 1` front matter: its keys win, except `id`, which stays the inbox id (rm/show route by it). Front matter that does not parse as `easy-note: 1` → the whole file is the body.
+* Non-UTF-8 or empty file → `Skipped` with its path (never content).
+* Trash: `rm inbox/<x>` moves the file to `.easy-note/trash/inbox__<file name>`; `restore inbox/<x>` moves it back into `inbox/` (no replace). `trash` lists it as `inbox/<stem>`.
 
 ---
 
@@ -184,3 +185,9 @@ Fixture inbox dir; hash/mtime snapshot around every read command.
 - [ ] Tests written AND pass — output pasted into `tasks/TASK_REVIEW_<ID>.md`'s Evidence table (Hard-Stop Gate 5)
 - [ ] `Skill({ skill: "verify" })` run — feature confirmed working in the real CLI / client
 - [ ] Supervisor notified: task ready for Stage 4 review
+
+## Questions Log
+
+- 2026-11-16 DEBATE Which tied P1 ticket should a session-tag loop take when another session runs the same loop? → first ready ticket in board order, claim at once, re-read the board; HUN-261 kept as already claimed (Advocate 1: first in board order, claim then re-read, back off; Advocate 2: first in board order, claim then re-read, fixed tie-break) ⚠ decided for you — please review
+- 2026-11-16 DEBATE Does an inbox file's front-matter `id` win over `inbox/<stem>`? → no, id stays `inbox/<stem>`; NOTE_FORMAT Inbox sentence narrowed (Advocate 1: keep code, narrow doc; Advocate 2: keep code, narrow doc) ⚠ decided for you — please review
+- 2026-11-16 DEBATE How does trash record an inbox note's origin? → trash name `inbox__<file name>`; NOTE_FORMAT Trash section documents it (Advocate 1: name prefix; Advocate 2: name prefix) ⚠ decided for you — please review
