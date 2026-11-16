@@ -185,3 +185,7 @@ Recorded event fixtures from T001; temp settings files incl. a symlink and an ea
 - [ ] Tests written AND pass — output pasted into `tasks/TASK_REVIEW_<ID>.md`'s Evidence table (Hard-Stop Gate 5)
 - [ ] `Skill({ skill: "verify" })` run — feature confirmed working in the real CLI / client
 - [ ] Supervisor notified: task ready for Stage 4 review
+
+## Questions Log
+
+- 2026-11-16 DEBATE After a prefix match a save error printed only `reason` with no `decision`; auto verify at 56a7793 showed real Claude Code drops it (the user sees nothing). Which field carries the error? → A: keep no `decision`, keep `reason`, add `systemMessage` with the same masked text, exit 0 (Advocate 1: A — systemMessage + reason, keep the error out of the model's context; Advocate 2: A plus `hookSpecificOutput.additionalContext`) ⚠ decided for you — please review
