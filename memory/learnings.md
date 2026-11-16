@@ -8,6 +8,13 @@
 
 ## Gotchas
 
+### 2026-11-16 — Auto close-out placeholder check; easy-verifier CLI reports dir (HUN-257)
+- **Files**: `.claude/hooks/lib/auto_closeout.py`, `tasks/TASK_REVIEW_HUN-257.md`, `skills/score/SKILL.md`
+- The auto close-out treats any Evidence Notes cell holding an angle-bracketed lower-case word (regex `<[a-z][^<>\n]*>`, e.g. a CLI usage like `-e <text>`) as unfilled, and reports `Gate 5: the tests row is not ☑ pass with pasted output`. Write usage placeholders in capitals (`-e TEXT`).
+- The `Not done:` slot must already read `auto verify: ☑ ...` or the template placeholder for the hook to fill it; a free-text "auto verify: not started" is left alone and the row is not moved.
+- easy-verifier MCP is not registered in Supervisor sessions; rung 2 works with `/home/hungnguyenhuu/workspace/pets/hungnguyen111/easy-verifier-mcp/.venv/bin/python -m easy_verifier.adapters.cli`. `~/.easy-verifier-reports/` is owned by the container uid (10001), so set `EASY_VERIFIER_REPORTS_DIR=~/.easy-verifier-reports-local/<branch>` for the CLI.
+- `stop_auto_verify.py --start` refuses from a linked worktree; run it from the main checkout.
+
 ### 2026-11-15 — easy-verifier scores of early branches (HUN-251, HUN-252)
 - **Files**: `.github/workflows/ci.yml`, `uv.lock`, `scripts/probe_hook.py`, `scripts/probe_server.py`, `tests/test_T001_probes.py`
 - A branch cut from `main` before the skeleton (HUN-252) merges has no pyproject or CI, so easy-verifier test-strategy flags `test_config_and_ci_missing` and overall stays under 80. Merge the skeleton first, then merge `main` into the branch and rescore.

@@ -8,3 +8,4 @@ mod fsutil;
 pub mod guard;
 pub mod query;
 pub mod store;
+pub mod tags;

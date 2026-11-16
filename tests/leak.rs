@@ -244,7 +244,120 @@ fn surface_core(text: &str) -> Captured {
     }
 }
 
-const SURFACES: &[(&str, Surface)] = &[("core", surface_core)];
+/// The CLI: the real binary, every command that takes note text or prints it, and the error
+/// paths that echo an argument. All stdout and stderr are captured and grepped.
+fn surface_cli(text: &str) -> Captured {
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::{Command, Stdio};
+
+    let home = PathBuf::from(std::env::var("HOME").unwrap());
+    // An $EDITOR stub that copies the file it was given into $HOME (so the harness greps what the
+    // editor saw), then appends the planted text from its environment (never from a file).
+    let stub = home.join("append.sh");
+    std::fs::write(
+        &stub,
+        "#!/bin/sh\ncp \"$1\" \"$HOME/seen-$$.txt\"\nprintf '\\nedited %s\\n' \"$PLANT\" >> \"$1\"\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut got = Captured {
+        objects: vec![],
+        stdout: String::new(),
+        stderr: String::new(),
+    };
+    let mut run = |args: &[&str], stdin: Option<&str>| -> (String, Option<i32>) {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_easy-note"))
+            .args(args)
+            .env("PLANT", text)
+            .env("EDITOR", &stub)
+            .current_dir(&home)
+            .stdin(if stdin.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        if let Some(input) = stdin {
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(input.as_bytes())
+                .unwrap();
+        }
+        let out = child.wait_with_output().unwrap();
+        let (o, e) = (
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        );
+        // The arguments are left out: they hold the planted text this test is hiding from the output.
+        let n = got.objects.len();
+        got.objects
+            .push(format!("run {n} -> {:?}\n{o}\n{e}", out.status.code()));
+        got.stdout.push_str(&o);
+        got.stderr.push_str(&e);
+        (o, out.status.code())
+    };
+    // A happy-path run must exit 0: a run that failed early would leave nothing to leak.
+    let mut ok = |args: &[&str], stdin: Option<&str>| -> String {
+        let (out, code) = run(args, stdin);
+        assert_eq!(code, Some(0), "`{}` failed: {out}", args[0]);
+        out
+    };
+    let id_of = |line: &str| {
+        let id = line
+            .split_whitespace()
+            .nth(2)
+            .unwrap_or_default()
+            .to_string();
+        assert!(id.starts_with("20"), "a note id, got {id:?}");
+        id
+    };
+
+    let by_arg = id_of(&ok(&["add", text], None));
+    let by_pipe = id_of(&ok(&["add"], Some(text)));
+    let by_editor = id_of(&ok(&["add", "-e", "start"], None));
+    // the given text goes through the editor file: it must be masked before the editor sees it
+    id_of(&ok(&["add", "-e", text], None));
+    ok(&["ls"], None);
+    ok(&["search", text], None);
+    ok(&["show", &by_arg], None);
+    ok(&["edit", &by_pipe], None);
+    ok(&["show", &by_pipe], None);
+    ok(&["tag", &by_arg, "leak", "again"], None);
+    ok(&["stats"], None);
+    ok(&["stats", "--json"], None);
+    ok(&["doctor"], None);
+    ok(&["rm", &by_editor], None);
+    ok(&["trash"], None);
+    ok(&["restore", &by_editor], None);
+    ok(&["path"], None);
+    // the text where an id, a filter, a tag or a command should be: every error echoes or not
+    for args in [
+        vec!["show", text],
+        vec!["rm", text],
+        vec!["restore", text],
+        vec!["edit", text],
+        vec!["tag", text, "x"],
+        vec!["tag", &by_arg, text],
+        vec!["ls", text],
+        vec!["ls", "--since", text],
+        vec!["ls", "--tag", text],
+        vec!["search", "--bogus", text],
+        vec!["trash", "--empty", "--older-than", text],
+        vec![text],
+    ] {
+        run(&args, None);
+    }
+    got
+}
+
+const SURFACES: &[(&str, Surface)] = &[("core", surface_core), ("cli", surface_cli)];
 
 fn nothing_leaked(secret: &str, got: &Captured, root: &Path) -> Result<(), String> {
     if got.objects.is_empty() {
@@ -292,8 +405,10 @@ fn planted_secret_never_leaks() {
 }
 
 #[test]
-fn the_registry_holds_the_core_surface() {
-    assert!(SURFACES.iter().any(|(name, _)| *name == "core"));
+fn the_registry_holds_the_core_and_the_cli_surface() {
+    for wanted in ["core", "cli"] {
+        assert!(SURFACES.iter().any(|(name, _)| *name == wanted), "{wanted}");
+    }
 }
 
 /// Pin of the harness itself: it must catch a leak, or "finds none" proves nothing.
