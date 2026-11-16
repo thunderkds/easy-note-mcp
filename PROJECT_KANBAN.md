@@ -1,5 +1,5 @@
 # PROJECT_KANBAN.md
-**Last updated**: 2026-11-15
+**Last updated**: 2026-11-16
 
 > Board cache, pulled from the board by `python3 scripts/board_sync.py pull`. Do not edit it by hand:
 > the board is the source of truth, and the next pull overwrites this file.
@@ -9,8 +9,6 @@
 ## Board
 
 ### Todo
-- [ ] **HUN-255** — Secret guard: declared patterns, mask on write and read, leak test suite | Backend-Implementer | C1 | Risk: High | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-255.md`
-- [ ] **HUN-257** — CLI commands: init, add/n, ls, search, show, edit, tag, rm, restore, trash, stats, doctor, path | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-257.md`
 - [ ] **HUN-258** — MCP surface: 5 tools over stdio and streamable HTTP on 127.0.0.1:8769 | Backend-Implementer | C1 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-258.md`
 - [ ] **HUN-259** — Claude Code capture: hook-prompt, install/uninstall claude, note.md fallback | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-259.md`
 - [ ] **HUN-260** — One press / one click: easy-note quick, hotkey helper, install launcher, editor snippets | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-260.md`
@@ -22,6 +20,7 @@
 - [ ] **HUN-266** — Manual run: measure how Cursor starts a stdio MCP server (HUN-251 follow-up) | Owner | C0 | Risk: Low | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-266.md`
 
 ### In Progress
+- [ ] **HUN-257** — CLI commands (Rust): init, add/n, ls, search, show, edit, tag, rm, restore, trash, stats, doctor, path | Backend-Implementer | C1 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-257.md` | Branch: `feat/HUN-257-rust-cli`
 
 ### Ready for Review
 
@@ -39,6 +38,7 @@
 - [x] **HUN-267** — Align context task pattern with PRD FR-005 | ? | ? | Risk: ? | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-267.md`
 
 ### Closed (will not do)
+- [x] **HUN-255** — Secret guard (Python) | Closed 2026-11-16: superseded by HUN-270 (Rust guard, merged 2d023e1); branch 3c5e40f kept as its oracle
 
 ## Blocked
 
