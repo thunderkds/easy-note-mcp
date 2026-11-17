@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
+use crate::core::ai::AiError;
 use crate::core::config::ConfigError;
 use crate::core::guard;
 use crate::core::query::{Filters, QueryError, DEFAULT_LIMIT};
@@ -70,6 +71,13 @@ pub enum Target {
     Tray,
 }
 
+/// What `ai` does with a note's AI detail file.
+#[derive(Debug, PartialEq, Eq, Subcommand)]
+pub enum AiAction {
+    /// Delete the AI detail of a note (the note stays as it is).
+    Rm { id: String },
+}
+
 #[derive(Debug, PartialEq, Eq, Subcommand)]
 pub enum Command {
     /// Run the MCP server over stdio, or over HTTP on 127.0.0.1 with `--http`.
@@ -126,7 +134,10 @@ pub enum Command {
         id: String,
         #[arg(short, long)]
         remove: bool,
-        #[arg(required = true)]
+        /// Add the tags its AI detail suggests.
+        #[arg(long, conflicts_with = "remove")]
+        accept_ai: bool,
+        #[arg(required_unless_present = "accept_ai")]
         tags: Vec<String>,
     },
     /// Move a note to the trash.
@@ -140,6 +151,11 @@ pub enum Command {
         /// Age in days, like 30d.
         #[arg(long, requires = "empty")]
         older_than: Option<String>,
+    },
+    /// Work with the AI detail of a note (`ai rm <id>`).
+    Ai {
+        #[command(subcommand)]
+        action: AiAction,
     },
     /// Count notes by repo, task, tag, source and month.
     Stats {
@@ -202,6 +218,7 @@ pub fn starts_mcp(command: &Command) -> bool {
         | Command::Rm { .. }
         | Command::Restore { .. }
         | Command::Trash { .. }
+        | Command::Ai { .. }
         | Command::Stats { .. }
         | Command::Doctor
         | Command::Path
@@ -263,6 +280,15 @@ impl From<QueryError> for Fail {
         match err {
             QueryError::Store(err) => err.into(),
             other => Fail::usage(other.to_string()),
+        }
+    }
+}
+
+impl From<AiError> for Fail {
+    fn from(err: AiError) -> Fail {
+        match err {
+            AiError::Store(err) => err.into(),
+            refused => Fail::usage(refused.to_string()),
         }
     }
 }
@@ -364,10 +390,18 @@ fn dispatch(command: Command) -> Outcome {
         } => read::search(&words.join(" "), filters.into(), limit),
         Command::Show { id } => read::show(&id),
         Command::Edit { id } => write::edit(&id),
-        Command::Tag { id, remove, tags } => write::tag(&id, remove, &tags),
+        Command::Tag {
+            id,
+            remove,
+            accept_ai,
+            tags,
+        } => write::tag(&id, remove, accept_ai, &tags),
         Command::Rm { id } => write::rm(&id),
         Command::Restore { id } => write::restore(&id),
         Command::Trash { empty, older_than } => write::trash(empty, older_than.as_deref()),
+        Command::Ai {
+            action: AiAction::Rm { id },
+        } => write::ai_rm(&id),
         Command::Stats { json, filters } => read::stats(json, filters.into()),
         Command::Doctor => read::doctor(),
         Command::Path => read::path(),
@@ -581,6 +615,7 @@ mod tests {
             Command::Tag {
                 id: id(),
                 remove: false,
+                accept_ai: false,
                 tags: vec!["x".into()],
             },
             Command::Rm { id: id() },
@@ -588,6 +623,9 @@ mod tests {
             Command::Trash {
                 empty: false,
                 older_than: None,
+            },
+            Command::Ai {
+                action: AiAction::Rm { id: id() },
             },
             Command::Stats {
                 json: false,
