@@ -85,8 +85,9 @@ repo context unless the call passes `cwd`.
 Cursor's start folder is not measured yet, so pass `cwd` when the context matters.
 
 In Codex and Cursor, write `note: <text>` and the model calls `note_add` (one model turn). The MCP
-tools are `note_add`, `note_search`, `note_list`, `note_read` and `note_stats`. No tool edits,
-deletes or moves a note.
+tools are `note_add`, `note_search`, `note_list`, `note_read`, `note_stats`, `note_pending_enrich`
+and `note_enrich`, plus the prompt `enrich_notes`, which has your own Claude add AI detail to your
+notes in separate files (`easy-note ai rm <id>` deletes it). No tool edits, deletes or moves a note.
 
 ## Notes are plain files
 
