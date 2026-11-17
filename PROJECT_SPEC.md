@@ -173,10 +173,10 @@ No Frontend-Implementer in v1: the UI is the one-line OS box and a tray menu (`k
 
 | Tool | Args | Returns | Writes? |
 |---|---|---|---|
-| `note_add` | `text` (req), `tags[]`, `task`, `cwd` | `id`, `path`, `repo`, `branch`, `task`, `tags` | Yes — one new file only |
+| `note_add` | `text` (req), `tags[]`, `task`, `cwd`, `detail` (≤ 600, FR-032) | `id`, `path`, `repo`, `branch`, `task`, `tags`; `detail_saved` when `detail` was given | Yes — one new file, plus one AI file when `detail` is given |
 | `note_search` | `query` (req), `repo`, `task`, `tag`, `source`, `since`, `until`, `limit≤50` | items (FR-016), `total`, `truncated` | No |
 | `note_list` | same filters, `day`, `limit≤50` | items, `total`, `truncated` | No |
-| `note_read` | `id` (req) | full note, secrets masked | No |
+| `note_read` | `id` (req) | full note, secrets masked; `ai` (AI detail, masked, with `stale`) when an AI file exists | No |
 | `note_stats` | filters optional | counts (FR-015), `skipped`, `enriched` | No |
 | `note_pending_enrich` | `limit≤20` | notes needing AI detail (FR-029) | No |
 | `note_enrich` | `id`, `title`, `kind`, `summary`, `tags_suggested`, `model` | `id`, `based_on` | Yes — one AI file only |
