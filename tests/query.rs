@@ -1000,7 +1000,7 @@ fn stats_of_an_empty_dir() {
     std::fs::create_dir_all(sb.notes()).unwrap();
     assert_eq!(
         json(&query::stats_in(&store(&sb.notes()), &f()).unwrap()),
-        r#"{"total":0,"by_repo":{},"by_task":{},"by_tag":{},"by_source":{},"by_month":{},"oldest":null,"newest":null,"skipped":[]}"#
+        r#"{"total":0,"by_repo":{},"by_task":{},"by_tag":{},"by_source":{},"by_month":{},"oldest":null,"newest":null,"skipped":[],"enriched":0}"#
     );
 }
 

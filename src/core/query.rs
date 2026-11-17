@@ -18,6 +18,7 @@ use chrono::{DateTime, FixedOffset, NaiveDate};
 use serde::ser::{SerializeMap, Serializer};
 use serde::Serialize;
 
+use crate::core::ai;
 use crate::core::format::{Note, Value};
 use crate::core::store::{Item, Skipped, Store, StoreError};
 
@@ -63,6 +64,9 @@ pub struct NoteItem {
     pub task: Option<String>,
     pub tags: Vec<String>,
     pub snippet: String,
+    /// `Some("ai")` when the note matched a search only with its AI detail (FR-032).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matched_in: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -122,6 +126,8 @@ pub struct Stats {
     pub oldest: Option<String>,
     pub newest: Option<String>,
     pub skipped: Vec<SkippedFile>,
+    /// Notes with a fresh AI file, the one count that reads AI files (DDR 0004).
+    pub enriched: usize,
 }
 
 /// Notes that pass every filter, newest first.
@@ -135,7 +141,8 @@ pub fn list_notes_in(store: &Store, filters: &Filters, limit: usize) -> Result<P
     Ok(page(&hits, &[], limit))
 }
 
-/// Notes holding every word of `query` (case-insensitive) in title, body or tags.
+/// Notes holding every word of `query` (case-insensitive) in title, body or tags, or with the AI
+/// detail's title, summary and suggested tags (then `matched_in: "ai"`).
 pub fn search(query: &str, filters: &Filters, limit: usize) -> Result<Page, QueryError> {
     search_in(&Store::open()?, query, filters, limit)
 }
@@ -181,6 +188,7 @@ pub fn stats_in(store: &Store, filters: &Filters) -> Result<Stats, QueryError> {
         by_month: Counts::of(months.iter().map(String::as_str)),
         oldest: dates.iter().min().map(NaiveDate::to_string),
         newest: dates.iter().max().map(NaiveDate::to_string),
+        enriched: hits.iter().filter(|h| h.fresh).count(),
         skipped: skipped
             .into_iter()
             .map(|s| SkippedFile {
@@ -194,6 +202,9 @@ pub fn stats_in(store: &Store, filters: &Filters) -> Result<Stats, QueryError> {
 struct Hit {
     stamp: DateTime<FixedOffset>,
     note: Note,
+    /// It has an AI file whose `based_on` is the hash of its body.
+    fresh: bool,
+    matched_in: Option<&'static str>,
 }
 
 fn tags_of(note: &Note) -> &[String] {
@@ -227,7 +238,8 @@ fn select(
     let tag = filters.tag.as_deref().map(fold);
     let mut hits = vec![];
     let mut skipped = vec![];
-    for entry in store.iter_notes() {
+    let details = ai::all(&store.root);
+    for (entry, hash) in store.iter_hashed() {
         let note = match entry {
             Item::Skipped(s) => {
                 skipped.push(s);
@@ -257,13 +269,32 @@ fn select(
         {
             continue;
         }
+        let detail = ai::of(&details, note.id());
+        let mut matched_in = None;
         if !words.is_empty() {
-            let haystack = fold(&format!("{}\n{}", note.body, tags_of(&note).join(" ")));
+            let mut haystack = fold(&format!("{}\n{}", note.body, tags_of(&note).join(" ")));
             if !words.iter().all(|w| haystack.contains(w.as_str())) {
-                continue;
+                let Some(d) = detail else { continue };
+                let extra = format!(
+                    "\n{}\n{}\n{}",
+                    d.title,
+                    d.summary,
+                    d.tags_suggested.join(" ")
+                );
+                haystack.push_str(&fold(&extra));
+                if !words.iter().all(|w| haystack.contains(w.as_str())) {
+                    continue;
+                }
+                matched_in = Some("ai");
             }
         }
-        hits.push(Hit { stamp, note });
+        let fresh = detail.is_some_and(|d| Some(&d.based_on) == hash.as_ref());
+        hits.push(Hit {
+            stamp,
+            note,
+            fresh,
+            matched_in,
+        });
     }
     hits.sort_by(|a, b| {
         b.stamp
@@ -289,13 +320,16 @@ fn check_limit(limit: usize) -> Result<(), QueryError> {
 fn page(hits: &[Hit], words: &[String], limit: usize) -> Page {
     let shown = &hits[..hits.len().min(limit.min(MAX_LIMIT))];
     Page {
-        items: shown.iter().map(|h| item(&h.note, words)).collect(),
+        items: shown
+            .iter()
+            .map(|h| item(&h.note, words, h.matched_in))
+            .collect(),
         total: hits.len(),
         truncated: hits.len() > shown.len(),
     }
 }
 
-fn item(note: &Note, words: &[String]) -> NoteItem {
+fn item(note: &Note, words: &[String], matched_in: Option<&'static str>) -> NoteItem {
     NoteItem {
         id: note.id().to_string(),
         title: note.title(),
@@ -304,6 +338,7 @@ fn item(note: &Note, words: &[String]) -> NoteItem {
         task: note.get_str("task").map(str::to_string),
         tags: tags_of(note).to_vec(),
         snippet: snippet(&note.body, words),
+        matched_in,
     }
 }
 
