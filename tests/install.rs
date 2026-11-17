@@ -776,3 +776,120 @@ fn ac8_install_launcher_needs_a_home() {
         text(&o.stderr)
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// HUN-263 AC 5: `install tray` / `uninstall tray`
+// ---------------------------------------------------------------------------------------------
+
+const TRAY: &str =
+    "[Desktop Entry]\nType=Application\nName=easy-note tray\nExec=easy-note tray\nTerminal=false\n";
+
+fn tray_path(sb: &Sb) -> PathBuf {
+    sb.home().join(".config/autostart/easy-note-tray.desktop")
+}
+
+fn tray(sb: &Sb, verb: &str) -> Output {
+    easy(sb, &[verb, "tray"], Some(&sb.cfg()))
+}
+
+#[cfg(feature = "tray")]
+#[test]
+fn ac5_install_tray_writes_exactly_one_autostart_file() {
+    let sb = Sb::new("tray");
+    let o = tray(&sb, "install");
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    let files: Vec<PathBuf> = snapshot(sb.root()).into_iter().map(|(p, _)| p).collect();
+    assert_eq!(files, [tray_path(&sb)], "no other file anywhere");
+    assert_eq!(std::fs::read_to_string(tray_path(&sb)).unwrap(), TRAY);
+    assert!(
+        text(&o.stdout).contains("easy-note-tray.desktop"),
+        "{}",
+        text(&o.stdout)
+    );
+    assert!(
+        !sb.cfg().exists(),
+        "the Claude Code config dir is not touched"
+    );
+}
+
+#[cfg(feature = "tray")]
+#[test]
+fn ac5_a_second_tray_install_says_already_installed_and_writes_nothing() {
+    let sb = Sb::new("tray-twice");
+    tray(&sb, "install");
+    let before = snapshot(sb.root());
+    let o = tray(&sb, "install");
+    assert_eq!(o.status.code(), Some(0));
+    assert!(
+        text(&o.stdout).contains("already installed"),
+        "{}",
+        text(&o.stdout)
+    );
+    assert_eq!(snapshot(sb.root()), before);
+}
+
+#[cfg(feature = "tray")]
+#[test]
+fn ac5_an_autostart_file_that_is_not_ours_is_kept_and_named() {
+    let sb = Sb::new("tray-foreign");
+    let path = tray_path(&sb);
+    write(&path, "[Desktop Entry]\nName=mine\n");
+    let before = snapshot(sb.root());
+    for verb in ["install", "uninstall"] {
+        let o = tray(&sb, verb);
+        assert_eq!(o.status.code(), Some(0), "{verb}: {}", text(&o.stderr));
+        let said = text(&o.stdout);
+        assert!(said.contains("kept"), "{verb}: {said}");
+        assert!(said.contains(path.to_str().unwrap()), "{verb}: {said}");
+        assert_eq!(snapshot(sb.root()), before, "{verb}");
+    }
+}
+
+#[cfg(feature = "tray")]
+#[test]
+fn ac5_uninstall_removes_the_tray_file_only_when_it_is_byte_identical_to_ours() {
+    let sb = Sb::new("tray-uninstall");
+    tray(&sb, "install");
+    let o = tray(&sb, "uninstall");
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    assert!(!tray_path(&sb).exists());
+    assert!(text(&o.stdout).contains("removed"), "{}", text(&o.stdout));
+    write(&tray_path(&sb), &format!("{TRAY}\n"));
+    let o = tray(&sb, "uninstall");
+    assert_eq!(o.status.code(), Some(0));
+    assert!(tray_path(&sb).exists());
+}
+
+/// A default build never installs a login item that cannot show a tray (and says how to get one).
+#[cfg(not(feature = "tray"))]
+#[test]
+fn ac5_a_default_build_refuses_install_tray_and_writes_nothing() {
+    let sb = Sb::new("tray-refused");
+    let o = tray(&sb, "install");
+    assert_eq!(o.status.code(), Some(1));
+    assert!(
+        text(&o.stderr).contains("cargo install --path . --locked --features tray"),
+        "{}",
+        text(&o.stderr)
+    );
+    assert!(snapshot(sb.root()).is_empty());
+}
+
+/// Either build: with nothing installed, uninstall says so and creates nothing; a file left by
+/// a tray build is still removed by a default build.
+#[test]
+fn ac5_uninstall_tray_works_in_every_build() {
+    let sb = Sb::new("tray-none");
+    let o = tray(&sb, "uninstall");
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    assert!(
+        text(&o.stdout).contains("not installed"),
+        "{}",
+        text(&o.stdout)
+    );
+    assert!(snapshot(sb.root()).is_empty());
+    write(&tray_path(&sb), TRAY);
+    let o = tray(&sb, "uninstall");
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    assert!(!tray_path(&sb).exists());
+}

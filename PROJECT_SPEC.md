@@ -157,7 +157,7 @@ Base team only (no `craft-agent` role needed).
 | Backend-Implementer | Core + CLI + MCP | `Agent({ subagent_type: "backend-developer", prompt: "Task T00x …" })` |
 | QA-Automation-Agent | Spike, leak suite, perf check, Acceptance Criteria evidence | `Agent({ subagent_type: "qa-expert", prompt: "Task T00x …" })` |
 
-No Frontend-Implementer in v1: the UI is the one-line OS box and a tray menu (pystray), both Backend work.
+No Frontend-Implementer in v1: the UI is the one-line OS box and a tray menu (`ksni`, behind the `tray` cargo feature), both Backend work.
 
 ---
 

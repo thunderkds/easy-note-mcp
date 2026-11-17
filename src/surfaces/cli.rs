@@ -66,6 +66,8 @@ pub enum Target {
     Claude,
     /// The `easy-note.desktop` launcher in `~/.local/share/applications`.
     Launcher,
+    /// The tray's login item, `easy-note-tray.desktop` in `~/.config/autostart`.
+    Tray,
 }
 
 #[derive(Debug, PartialEq, Eq, Subcommand)]
@@ -160,7 +162,10 @@ pub enum Command {
     },
     /// Print the commands that bind a key to `easy-note quick` (changes nothing).
     Hotkey,
-    /// Add the Claude Code hook (shows a diff, keeps a backup of settings.json), or the launcher.
+    /// Show an icon in the system tray (needs a build with `--features tray`).
+    Tray,
+    /// Add the Claude Code hook (shows a diff, keeps a backup of settings.json), the launcher, or
+    /// the tray login item.
     Install { target: Target },
     /// Remove what `install` added (a file that is not ours stays).
     Uninstall { target: Target },
@@ -203,6 +208,7 @@ pub fn starts_mcp(command: &Command) -> bool {
         | Command::HookPrompt
         | Command::Quick { .. }
         | Command::Hotkey
+        | Command::Tray
         | Command::Install { .. }
         | Command::Uninstall { .. } => false,
     }
@@ -374,6 +380,7 @@ fn dispatch(command: Command) -> Outcome {
             let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
             say_raw(&super::quick::hotkey(&desktop))
         }
+        Command::Tray => super::tray::run().map_err(Fail::runtime),
         Command::Install { target } => installed(target, super::install::Action::Install),
         Command::Uninstall { target } => installed(target, super::install::Action::Uninstall),
     }
@@ -385,6 +392,7 @@ fn installed(target: Target, action: super::install::Action) -> Outcome {
     let result = match target {
         Target::Claude => super::install::claude(action),
         Target::Launcher => super::install::launcher(action),
+        Target::Tray => super::install::tray(action),
     };
     match result {
         Ok(text) => say_raw(&safe(&text)),
@@ -590,6 +598,7 @@ mod tests {
             Command::HookPrompt,
             Command::Quick { cwd: None },
             Command::Hotkey,
+            Command::Tray,
             Command::Install {
                 target: Target::Claude,
             },
@@ -601,6 +610,12 @@ mod tests {
             },
             Command::Uninstall {
                 target: Target::Launcher,
+            },
+            Command::Install {
+                target: Target::Tray,
+            },
+            Command::Uninstall {
+                target: Target::Tray,
             },
         ]
     }

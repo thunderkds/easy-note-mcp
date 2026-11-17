@@ -244,6 +244,24 @@ fn surface_core(text: &str) -> Captured {
     }
 }
 
+/// The tray menu: labels built from a store holding the planted text. The menu model is pure
+/// (no D-Bus), so the surface is the library call; the labels are what the tray would show.
+fn surface_tray(text: &str) -> Captured {
+    use easy_note_mcp::surfaces::tray;
+
+    let added = store::add(text, SOURCE, &tags(&["leak"]), &[]).unwrap();
+    let store = store::Store::open().unwrap();
+    let recent = tray::recent(&store, tray::RECENT);
+    let mut objects = vec![dbg(&added), dbg(&recent)];
+    objects.push(dbg(&tray::menu(&recent, chrono::Utc::now())));
+    objects.push(dbg(&tray::doctor_line(false)));
+    Captured {
+        objects,
+        stdout: String::new(),
+        stderr: String::new(),
+    }
+}
+
 /// The CLI: the real binary, every command that takes note text or prints it, and the error
 /// paths that echo an argument. All stdout and stderr are captured and grepped.
 fn surface_cli(text: &str) -> Captured {
@@ -816,6 +834,7 @@ const SURFACES: &[(&str, Surface)] = &[
     ("inbox", surface_inbox),
     ("hook", surface_hook),
     ("quick", surface_quick),
+    ("tray", surface_tray),
 ];
 
 fn nothing_leaked(secret: &str, got: &Captured, root: &Path) -> Result<(), String> {
@@ -865,7 +884,7 @@ fn planted_secret_never_leaks() {
 
 #[test]
 fn the_registry_holds_the_core_the_cli_and_the_inbox_surface() {
-    for wanted in ["core", "cli", "inbox", "hook", "quick"] {
+    for wanted in ["core", "cli", "inbox", "hook", "quick", "tray"] {
         assert!(SURFACES.iter().any(|(name, _)| *name == wanted), "{wanted}");
     }
 }
