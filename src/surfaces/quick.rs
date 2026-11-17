@@ -151,6 +151,8 @@ fn last_context(root: &Path, now: DateTime<Local>) -> Option<Context> {
                     remote: field("remote"),
                     branch: field("branch"),
                     task: field("task"),
+                    // A commit belongs to the moment of the old note, not to this one.
+                    commit: None,
                 });
             }
         }

@@ -1,11 +1,12 @@
-//! Context of a new note: repo, remote, branch, task (FR-004, FR-005).
+//! Context of a new note: repo, remote, branch, task, commit (FR-004, FR-005, FR-028).
 //!
 //! `capture` returns only the fields it can state with certainty, for the store. A field that
 //! cannot be read is left out, never guessed. No path is ever returned (FR-004).
 //!
-//! Git is read-only (NFR-001): only `rev-parse`, `branch --show-current` and
-//! `remote get-url origin`, each with a 2 s timeout, no shell, no prompt. A timeout or a missing
-//! `git` drops every git field at once, so a slow repo costs one wait and a note is still written.
+//! Git is read-only (NFR-001): only `rev-parse` (the repo, and `--short HEAD` for the commit),
+//! `branch --show-current` and `remote get-url origin`, each with a 2 s timeout, no shell, no
+//! prompt. A timeout or a missing `git` drops every git field at once, so a slow repo costs one
+//! wait and a note is still written. A repo with no commit yet has no `commit`, only that.
 //!
 //! Working folder, as decided in docs/experiments/T001-client-launch.md: the explicit `cwd`, else
 //! the first MCP root, else the process cwd. The first source that is present is the one used;
@@ -60,6 +61,8 @@ pub struct Context {
     pub remote: Option<String>,
     pub branch: Option<String>,
     pub task: Option<String>,
+    /// Short HEAD sha at capture.
+    pub commit: Option<String>,
 }
 
 impl Context {
@@ -70,6 +73,7 @@ impl Context {
             ("remote", self.remote.as_deref()),
             ("branch", self.branch.as_deref()),
             ("task", self.task.as_deref()),
+            ("commit", self.commit.as_deref()),
         ]
     }
 }
@@ -96,6 +100,7 @@ pub fn capture(task: Option<&str>, cwd: Option<&Path>, roots: &[String]) -> Cont
         context.repo = found.repo;
         context.remote = found.remote;
         context.branch = found.branch;
+        context.commit = found.commit;
         context.task = context.task.or(found.task);
     }
     context
@@ -221,6 +226,9 @@ fn git_fields(folder: &Path) -> Result<Context, GitUnavailable> {
         found.task = task_from_branch(&branch);
         found.branch = Some(branch);
     }
+
+    // Fails in a repo with no commit yet: then only `commit` is absent.
+    found.commit = git(folder, &["rev-parse", "--short", "HEAD"])?.filter(|c| !c.is_empty());
 
     found.remote = git(folder, &["remote", "get-url", "origin"])?
         .as_deref()

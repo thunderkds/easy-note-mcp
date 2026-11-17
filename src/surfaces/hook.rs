@@ -43,7 +43,11 @@ fn answer(input: &[u8]) -> Option<String> {
         return None;
     }
     let cwd = event.get("cwd").and_then(Value::as_str).map(Path::new);
-    let reply = match save(text, cwd) {
+    let session = event
+        .get("session_id")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty());
+    let reply = match save(text, cwd, session) {
         Ok(reason) => json!({"decision": "block", "reason": reason}),
         // The prompt passes, so there is no `decision`. Claude Code drops `reason` without a
         // block, so `systemMessage` carries the same warning to the person.
@@ -55,12 +59,15 @@ fn answer(input: &[u8]) -> Option<String> {
     Some(reply.to_string())
 }
 
-/// Save the note; the reason line is `✓ noted <id> · <repo> · <task>`, with a masked count if any.
-fn save(text: &str, cwd: Option<&Path>) -> Result<String, String> {
+/// Save the note with the event's `session` (FR-028); the reason line is
+/// `✓ noted <id> · <repo> · <task>`, with a masked count if any.
+fn save(text: &str, cwd: Option<&Path>, session: Option<&str>) -> Result<String, String> {
     let store = Store::open().map_err(|e| e.to_string())?;
     let found = context::capture(None, cwd, &[]);
+    let mut fields = found.fields();
+    fields.push(("session", session));
     let added = store
-        .add(text, "hook", &tags::extract(text), &found.fields())
+        .add(text, "hook", &tags::extract(text), &fields)
         .map_err(|e| e.to_string())?;
     Ok(confirmation(
         "noted",

@@ -523,3 +523,45 @@ fn hash_words_in_the_text_become_tags_as_in_the_cli() {
         other => panic!("tags: {other:?}"),
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// HUN-262 AC 1: a hook note carries the event's `session` and the repo's short `commit`
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn hook_note_stores_the_session_id_and_the_short_commit() {
+    let sb = Sandbox::new("session");
+    let (wt, _) = repo_and_worktree(sb.root());
+    let name = "note_prefix_linked_worktree.json";
+    let o = hook(&sb, &event(name, &wt));
+    assert_eq!(o.status.code(), Some(0));
+    let saved = std::fs::read_to_string(&note_files(&sb)[0]).unwrap();
+    let note = easy_note_mcp::core::format::parse(&saved).unwrap();
+    let session = fixture(name)["session_id"].as_str().unwrap().to_string();
+    assert_eq!(note.get_str("session"), Some(session.as_str()));
+    let short = Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .current_dir(&wt)
+        .output()
+        .unwrap();
+    let short = String::from_utf8(short.stdout).unwrap().trim().to_string();
+    assert_eq!(note.get_str("commit"), Some(short.as_str()));
+}
+
+#[test]
+fn hook_event_without_a_string_session_id_saves_the_note_without_session() {
+    for session in [json!(null), json!(42), json!(""), json!(["x"])] {
+        let sb = Sandbox::new("nosession");
+        let mut ev = json!({"prompt": "/note no session", "cwd": sb.home().to_string_lossy()});
+        if !session.is_null() {
+            ev["session_id"] = session.clone();
+        }
+        let o = hook(&sb, &ev.to_string());
+        assert_eq!(o.status.code(), Some(0));
+        let files = note_files(&sb);
+        assert_eq!(files.len(), 1, "{session}");
+        let note = easy_note_mcp::core::format::parse(&std::fs::read_to_string(&files[0]).unwrap())
+            .unwrap();
+        assert_eq!(note.get_str("session"), None, "{session}");
+    }
+}
