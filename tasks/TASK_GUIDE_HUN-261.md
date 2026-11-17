@@ -188,6 +188,6 @@ Fixture inbox dir; hash/mtime snapshot around every read command.
 
 ## Questions Log
 
-- 2026-11-16 DEBATE Which tied P1 ticket should a session-tag loop take when another session runs the same loop? → first ready ticket in board order, claim at once, re-read the board; HUN-261 kept as already claimed (Advocate 1: first in board order, claim then re-read, back off; Advocate 2: first in board order, claim then re-read, fixed tie-break) ⚠ decided for you — please review
-- 2026-11-16 DEBATE Does an inbox file's front-matter `id` win over `inbox/<stem>`? → no, id stays `inbox/<stem>`; NOTE_FORMAT Inbox sentence narrowed (Advocate 1: keep code, narrow doc; Advocate 2: keep code, narrow doc) ⚠ decided for you — please review
-- 2026-11-16 DEBATE How does trash record an inbox note's origin? → trash name `inbox__<file name>`; NOTE_FORMAT Trash section documents it (Advocate 1: name prefix; Advocate 2: name prefix) ⚠ decided for you — please review
+* 2026-11-16 DEBATE Which tied P1 ticket should a session-tag loop take when another session runs the same loop? → first ready ticket in board order, claim at once, re-read the board; HUN-261 kept as already claimed (Advocate 1: first in board order, claim then re-read, back off; Advocate 2: first in board order, claim then re-read, fixed tie-break) ⚠ decided for you — please review
+* 2026-11-16 DEBATE Does an inbox file's front-matter `id` win over `inbox/<stem>`? → no, id stays `inbox/<stem>`; NOTE_FORMAT Inbox sentence narrowed (Advocate 1: keep code, narrow doc; Advocate 2: keep code, narrow doc) ⚠ decided for you — please review
+* 2026-11-16 DEBATE How does trash record an inbox note's origin? → trash name `inbox__<file name>`; NOTE_FORMAT Trash section documents it (Advocate 1: name prefix; Advocate 2: name prefix) ⚠ decided for you — please review

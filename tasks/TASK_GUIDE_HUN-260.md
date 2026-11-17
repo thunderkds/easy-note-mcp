@@ -52,10 +52,10 @@ Plan T012: "`quick` tests with the dialog tool stubbed: text → saved `source: 
 
 ### Requirement Fidelity Gate (sign off BEFORE implementation)
 
-- [x] Restated intent confirmed to match the user's request (Supervisor, auto mode, 2026-11-16 — Linux-only narrowing per DDR 0005)
-- [x] Domain terms align with `PROJECT_SPEC.md` glossary
-- [x] Every Acceptance Criterion below traces to a line in the Requirement
-- [x] All Requirement Refs exist in `PRD.md` and are fully covered by the Acceptance Criteria above (macOS/Windows parts of FR-022/FR-025 dropped by DDR 0005 item 2)
+- [X] Restated intent confirmed to match the user's request (Supervisor, auto mode, 2026-11-16 — Linux-only narrowing per DDR 0005)
+- [X] Domain terms align with `PROJECT_SPEC.md` glossary
+- [X] Every Acceptance Criterion below traces to a line in the Requirement
+- [X] All Requirement Refs exist in `PRD.md` and are fully covered by the Acceptance Criteria above (macOS/Windows parts of FR-022/FR-025 dropped by DDR 0005 item 2)
 
 ---
 
@@ -154,12 +154,13 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 **Vital slice**: `quick` with the native box + last context; `hotkey` and the launcher are small printers/writers.
 
 **Design (binding)**:
-- `quick` finds the last context before it shows the box, so it must not scan the whole store: read only the current and the previous month folders (a note < 2 h old is in one of them), newest first. Inbox files are never a context source.
-- Dialog commands: `zenity --entry --title easy-note --text <label>`; `kdialog --title easy-note --inputbox <label>`. `<label>` is `Note` or `Note — <repo> · <task> (start with - to drop)`. Exit 0 + text = save; any other exit = cancel. Pass arguments as an argv list, never through a shell.
-- The terminal prompt reads one line from stdin when it is a TTY, with the same label.
-- The `-` prefix: only a leading `-` followed by a space or end of text drops the context; `--x` and `-x` are kept as text.
-- `install launcher` / `uninstall launcher` reuse `install.rs` (new `Target::Launcher`); the `.desktop` text is a constant.
-- Tests put stub `zenity`, `kdialog` and `notify-send` scripts on a temp `PATH` that holds nothing else needed from the real system, and set `DISPLAY` to a dummy value; no test may start a real dialog or a real notification.
+
+* `quick` finds the last context before it shows the box, so it must not scan the whole store: read only the current and the previous month folders (a note < 2 h old is in one of them), newest first. Inbox files are never a context source.
+* Dialog commands: `zenity --entry --title easy-note --text <label>`; `kdialog --title easy-note --inputbox <label>`. `<label>` is `Note` or `Note — <repo> · <task> (start with - to drop)`. Exit 0 + text = save; any other exit = cancel. Pass arguments as an argv list, never through a shell.
+* The terminal prompt reads one line from stdin when it is a TTY, with the same label.
+* The `-` prefix: only a leading `-` followed by a space or end of text drops the context; `--x` and `-x` are kept as text.
+* `install launcher` / `uninstall launcher` reuse `install.rs` (new `Target::Launcher`); the `.desktop` text is a constant.
+* Tests put stub `zenity`, `kdialog` and `notify-send` scripts on a temp `PATH` that holds nothing else needed from the real system, and set `DISPLAY` to a dummy value; no test may start a real dialog or a real notification.
 
 **Cut list**: multi-line box (use `add -e`); a Rust GUI window; `XDG_DATA_HOME` support for the launcher (FR-026 names the exact path); macOS/Windows.
 
@@ -189,7 +190,7 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 | `tests/install.rs` | launcher tests |
 | `tests/leak.rs` | `quick` surface in `SURFACES` |
 | `README.md` | "One key press" section |
-| Pre-existing pin tests | `tests/cli.rs` `usage_errors_exit_2_runtime_errors_exit_1_and_help_documents_both` pins that `--help` lists 14 named commands: only adds `quick`/`hotkey`, so it still passes unchanged. `tests/install.rs` `an_unknown_install_target_is_a_usage_error` uses `vim`, not `launcher`: unchanged. `tests/leak.rs` `the_registry_holds_the_core_the_cli_and_the_inbox_surface` extended with `quick` (task edit). `src/surfaces/cli.rs` unit test `every_command` extended with `Quick`, `Hotkey`, `Target::Launcher`. `tests/install.rs` pins of `commands/note.md` text/paths: the shared `OwnFile` code keeps the same messages; all 17 existing tests pass unchanged. No test pins counts of `SOURCES` or `Target` values. |
+| Pre-existing pin tests | List each test in `tests/` that pins text, paths or counts of a file this task edits, and how it is handled |
 
 ## Files Must NOT Touch
 

@@ -47,10 +47,10 @@ Plan T011: "Hook tests with recorded event JSON: prefix → one file, `source: h
 
 ### Requirement Fidelity Gate (sign off BEFORE implementation)
 
-- [x] Restated intent confirmed to match the user's request (by Supervisor / user — not the implementing agent) — Supervisor, [admin] auto, 2026-11-16
-- [x] Domain terms align with `PROJECT_SPEC.md` glossary (`grill-with-docs` run if terminology was fuzzy)
-- [x] Every Acceptance Criterion below traces to a line in the Requirement
-- [x] All Requirement Refs exist in `PRD.md` and are fully covered by the Acceptance Criteria above
+- [X] Restated intent confirmed to match the user's request (by Supervisor / user — not the implementing agent) — Supervisor, \[admin\] auto, 2026-11-16
+- [X] Domain terms align with `PROJECT_SPEC.md` glossary (`grill-with-docs` run if terminology was fuzzy)
+- [X] Every Acceptance Criterion below traces to a line in the Requirement
+- [X] All Requirement Refs exist in `PRD.md` and are fully covered by the Acceptance Criteria above
 
 > An agent must NOT start implementing until this gate is checked. If anything here is unclear,
 > STOP and ask the Supervisor (Karpathy: Think Before Coding).
@@ -125,13 +125,14 @@ N/A — pure backend / CLI task; no UI component. The three UI Evidence rows are
 **Cut list**: Windows settings paths beyond the resolved config dir; Auto-update of an old entry's command string
 
 Design (Supervisor, binding; auto decisions in TASK_REVIEW):
-- `hook-prompt` reads all of stdin, parses JSON with `serde_json`, reads `prompt` (string) and `cwd` (string). The prefix comes from `config.toml` `capture_prefix` only after the prompt could match: read the prefix cheaply (default `/note `); a config read error → default prefix. No store is opened before a prefix match.
-- Match: `prompt.starts_with(prefix)`; the text is the rest, trimmed; empty text → pass (no output, exit 0). `/notes x` never matches `/note `.
-- Save: `Store::add` with `source: "hook"`, context captured from the event `cwd` (same capture as the CLI uses for its cwd). Output one line `{"decision":"block","reason":"✓ noted <id> · <repo> · <task>"}` (omit a missing repo/task part with its ` · `), reason masked by the guard. Exit 0 always.
-- Error after a match (store, config, guard refusal): the prompt passes and the error is the reason (PRD.md:78): stdout one line `{"reason":"easy-note: <masked error> — note not saved"}` with no `decision` key, exit 0. Malformed stdin, or no match → no stdout, exit 0.
-- `install claude` / `uninstall claude`: config dir = `$CLAUDE_CONFIG_DIR` if set and non-empty, else `$HOME/.claude`. Parse `settings.json` (missing → `{}`) with `serde_json` `preserve_order`. Own entry = a `hooks.UserPromptSubmit[]` element whose `hooks[]` holds a command exactly `easy-note hook-prompt`. Install appends `{"hooks":[{"type":"command","command":"easy-note hook-prompt","timeout":5}]}` if absent. Print a unified-style diff with a header naming the resolved file. Backup the old file (if it existed) before writing. Write with temp file + rename on the symlink's resolved target, so a symlink stays a symlink. Other entries are re-serialized with 2-space indent; keep them value-identical (a test compares the parsed values and the raw bytes of an easy-memory entry's object text when the file was 2-space-indented).
-- `commands/note.md`: a short slash-command file saying the hook saves `/note` prompts; written only if absent or byte-identical to ours; uninstall removes it only if byte-identical to ours.
-- New files: `src/surfaces/hook.rs`, `src/surfaces/install.rs`; tests `tests/hook.rs`, `tests/install.rs`.
+
+* `hook-prompt` reads all of stdin, parses JSON with `serde_json`, reads `prompt` (string) and `cwd` (string). The prefix comes from `config.toml` `capture_prefix` only after the prompt could match: read the prefix cheaply (default `/note `); a config read error → default prefix. No store is opened before a prefix match.
+* Match: `prompt.starts_with(prefix)`; the text is the rest, trimmed; empty text → pass (no output, exit 0). `/notes x` never matches `/note `.
+* Save: `Store::add` with `source: "hook"`, context captured from the event `cwd` (same capture as the CLI uses for its cwd). Output one line `{"decision":"block","reason":"✓ noted <id> · <repo> · <task>"}` (omit a missing repo/task part with its `·`), reason masked by the guard. Exit 0 always.
+* Error after a match (store, config, guard refusal): the prompt passes and the error is the reason ([PRD.md:78](<http://PRD.md:78>)): stdout one line `{"reason":"easy-note: <masked error> — note not saved"}` with no `decision` key, exit 0. Malformed stdin, or no match → no stdout, exit 0.
+* `install claude` / `uninstall claude`: config dir = `$CLAUDE_CONFIG_DIR` if set and non-empty, else `$HOME/.claude`. Parse `settings.json` (missing → `{}`) with `serde_json` `preserve_order`. Own entry = a `hooks.UserPromptSubmit[]` element whose `hooks[]` holds a command exactly `easy-note hook-prompt`. Install appends `{"hooks":[{"type":"command","command":"easy-note hook-prompt","timeout":5}]}` if absent. Print a unified-style diff with a header naming the resolved file. Backup the old file (if it existed) before writing. Write with temp file + rename on the symlink's resolved target, so a symlink stays a symlink. Other entries are re-serialized with 2-space indent; keep them value-identical (a test compares the parsed values and the raw bytes of an easy-memory entry's object text when the file was 2-space-indented).
+* `commands/note.md`: a short slash-command file saying the hook saves `/note` prompts; written only if absent or byte-identical to ours; uninstall removes it only if byte-identical to ours.
+* New files: `src/surfaces/hook.rs`, `src/surfaces/install.rs`; tests `tests/hook.rs`, `tests/install.rs`.
 
 ---
 
@@ -188,4 +189,4 @@ Recorded event fixtures from T001; temp settings files incl. a symlink and an ea
 
 ## Questions Log
 
-- 2026-11-16 DEBATE After a prefix match a save error printed only `reason` with no `decision`; auto verify at 56a7793 showed real Claude Code drops it (the user sees nothing). Which field carries the error? → A: keep no `decision`, keep `reason`, add `systemMessage` with the same masked text, exit 0 (Advocate 1: A — systemMessage + reason, keep the error out of the model's context; Advocate 2: A plus `hookSpecificOutput.additionalContext`) ⚠ decided for you — please review
+* 2026-11-16 DEBATE After a prefix match a save error printed only `reason` with no `decision`; auto verify at 56a7793 showed real Claude Code drops it (the user sees nothing). Which field carries the error? → A: keep no `decision`, keep `reason`, add `systemMessage` with the same masked text, exit 0 (Advocate 1: A — systemMessage + reason, keep the error out of the model's context; Advocate 2: A plus `hookSpecificOutput.additionalContext`) ⚠ decided for you — please review
