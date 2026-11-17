@@ -54,7 +54,7 @@ Mode: auto
 5. Timings measured on this WSL2 machine, labelled WSL2 in the Evidence; a native Linux run is left to the owner — SAFER OPTION: report what was measured, never claim native numbers ⚠ decided for you — please review
 Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — all green (perf: 1 passed, 5 ignored); reviews code-review — 0 P0/P1/P2, 2 P3 (`reports/code-review_feat-HUN-265-perf_20261117T103600.html`); real run `cargo test --release --test perf -- --ignored --nocapture --test-threads=1` — printed 5 `perf` lines, all budgets met on WSL2 (auto-checked, not /verify)
 Memory: memory/learnings.md — 2026-11-17 `board_sync.py update --guide` pushes the guide of the checkout the script lives in; memory/MEMORY.md — its index line
-Not done: merge (admin: after the auto verify pass); auto verify: not started; native Linux and cold-cache timings (yours)
+Not done: merge (admin: after the auto verify pass); auto verify: running (T182); native Linux and cold-cache timings (yours)
 
 ## Evidence
 
