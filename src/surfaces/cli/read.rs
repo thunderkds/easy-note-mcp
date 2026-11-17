@@ -9,7 +9,7 @@ use super::scratch;
 use super::{count, safe, say, say_raw, unique_kinds, Fail, Outcome};
 use crate::core::query::{self, Counts, Filters, Page, Stats};
 use crate::core::store::{Item, Store};
-use crate::core::{config, format, guard};
+use crate::core::{ai, config, format, guard};
 #[cfg(feature = "tray")]
 use crate::surfaces::tray;
 
@@ -18,6 +18,9 @@ fn print_page(page: &Page) -> Outcome {
         let mut line = format!("{}  {}", item.id, item.title);
         for tag in &item.tags {
             line.push_str(&format!("  #{tag}"));
+        }
+        if item.matched_in == Some("ai") {
+            line.push_str("  [ai]");
         }
         say(&safe(&line))?;
     }
@@ -40,10 +43,39 @@ pub fn search(words: &str, filters: Filters, limit: usize) -> Outcome {
     print_page(&query::search(words, &filters, limit)?)
 }
 
-/// The note as its file reads, front matter and text, with secrets masked.
+/// The note as its file reads, front matter and text, with secrets masked; then its AI detail,
+/// if any, under its label (FR-032).
 pub fn show(id: &str) -> Outcome {
-    let note = Store::open()?.read(id)?;
-    say_raw(&safe(&format::render(&note)))
+    let store = Store::open()?;
+    let note = store.read(id)?;
+    let mut text = format::render(&note);
+    if let Some((detail, stale)) = ai::read(&store, note.id()) {
+        text.push_str(&ai_block(&detail, stale));
+    }
+    say_raw(&safe(&text))
+}
+
+/// The AI detail block of `show`: label, model and time, `(stale)` when the note changed since.
+fn ai_block(detail: &ai::Detail, stale: bool) -> String {
+    let mut block = format!(
+        "\n--- {} · {} · {}{}\n",
+        ai::LABEL,
+        detail.model,
+        detail.at,
+        if stale { " (stale)" } else { "" }
+    );
+    block.push_str(&format!("title: {}\n", detail.title));
+    block.push_str(&format!("kind: {}\n", detail.kind));
+    block.push_str(&format!("summary: {}\n", detail.summary));
+    if !detail.tags_suggested.is_empty() {
+        let tags: Vec<String> = detail
+            .tags_suggested
+            .iter()
+            .map(|t| format!("#{t}"))
+            .collect();
+        block.push_str(&format!("suggested tags: {}\n", tags.join(" ")));
+    }
+    block
 }
 
 pub fn path() -> Outcome {
@@ -75,6 +107,7 @@ fn stats_text(stats: &Stats) -> String {
         .iter()
         .filter_map(|(label, counts)| counts_line(label, counts)),
     );
+    lines.push(format!("enriched: {}", stats.enriched));
     if !stats.skipped.is_empty() {
         lines.push(format!("skipped: {}", stats.skipped.len()));
         for file in &stats.skipped {

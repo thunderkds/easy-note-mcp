@@ -1,6 +1,8 @@
-//! The MCP server (FR-012): five tools over stdio, or streamable HTTP on `127.0.0.1` only.
-//! Each tool is a thin call into the core (`store`, `query`, `context`, `guard`). Only `note_add`
-//! writes, and it adds one new file; no tool edits, deletes or moves a note.
+//! The MCP server (FR-012): seven tools and one prompt (D37) over stdio, or streamable HTTP on
+//! `127.0.0.1` only. Each tool is a thin call into the core (`store`, `query`, `context`, `guard`,
+//! `ai`). `note_add` adds one new note file (and, with `detail`, one AI file); `note_enrich` writes
+//! one AI file in `.easy-note/ai/`; no tool edits, deletes or moves a note. The prompt
+//! `enrich_notes` is fixed text: easy-note runs no model (DDR 0004).
 //!
 //! The tokio runtime is built here, inside `serve`, so the CLI path never starts it (NFR-010).
 //! Tool output is JSON text; a failure is a tool error whose text went through
@@ -11,18 +13,27 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use rmcp::handler::server::prompt::PromptContext;
 use rmcp::handler::server::tool::ToolCallContext;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolRequestParams, CallToolResponse, ContentBlock};
+use rmcp::model::{
+    CacheScope, CallToolRequestParams, CallToolResponse, ContentBlock, GetPromptRequestParams,
+    GetPromptResponse, Implementation, ListPromptsResult, PaginatedRequestParams, PromptMessage,
+    ProtocolVersion, Role, ServerCapabilities, ServerConfig,
+};
 use rmcp::schemars;
 use rmcp::service::RequestContext;
 use rmcp::transport::stdio;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
-use rmcp::{tool, tool_handler, tool_router, ErrorData, RoleServer, ServerHandler, ServiceExt};
+use rmcp::{
+    prompt, prompt_router, tool, tool_handler, tool_router, ErrorData, RoleServer, ServerHandler,
+    ServiceExt,
+};
 use serde::Deserialize;
 use serde_json::{json, Map, Value as Json};
 
+use crate::core::ai::{self, AiError, MAX_PENDING};
 use crate::core::context;
 use crate::core::format::{Note, Value};
 use crate::core::guard;
@@ -40,6 +51,28 @@ When the person's message starts with `note:` or `/note`, call this at once with
 message as `text`, then reply in one line. \
 Pass `cwd` (the folder you work in) so the note records its repo, branch and task.";
 
+/// The fixed text of the `enrich_notes` prompt (FR-031). The client's model does the work.
+const ENRICH_PROMPT: &str =
+    "Add AI detail to the person's easy-note notes. Use one subagent for the whole run; \
+keep the work out of this conversation.
+
+1. Call note_pending_enrich. It lists the notes with no AI detail or stale detail, each with \
+id, text, created and, when known, repo, task and session.
+2. For each note, find what the person was doing when they wrote it:
+   - If the note has a session and that Claude Code session's transcript file exists \
+(projects/*/<session>.jsonl in the Claude Code config dir), read only the entries from the \
+10 minutes before created, at most 40 entries.
+   - If there is no session but there is a repo, use a Claude Code transcript of that repo \
+only if exactly one transcript has entries in those 10 minutes; read it the same way.
+   - Otherwise, or if the transcript file is gone, enrich from the note text, repo, branch and \
+task only (note_read gives the branch), with no context claim.
+3. Write a title (at most 120 chars), a kind (bug, idea, question, todo or other), a summary \
+(at most 600 chars) and at most 5 suggested tags (a-z, 0-9, _, / and -). Explain in your own \
+words; never quote the transcript or the note, and never copy a secret.
+4. Call note_enrich once per note with id, title, kind, summary, tags_suggested and model \
+(your model name). It writes only the AI detail file; the note itself never changes.
+5. Reply with one line: how many notes got detail.";
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddArgs {
     /// The note text. Secrets are masked before it is written.
@@ -50,6 +83,32 @@ pub struct AddArgs {
     task: Option<String>,
     /// The folder you work in. Default: the client's roots, then the server's folder.
     cwd: Option<String>,
+    /// Optional detail you already know (at most 600 chars), saved apart from the note as AI
+    /// detail with model `capture`. Never the person's words.
+    detail: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PendingArgs {
+    /// At most 20. Default 20.
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EnrichArgs {
+    /// The note id from note_pending_enrich.
+    id: String,
+    /// At most 120 chars.
+    title: String,
+    /// One of `bug`, `idea`, `question`, `todo`, `other`.
+    kind: String,
+    /// At most 600 chars, in your own words.
+    summary: String,
+    /// At most 5 tags (a-z, 0-9, _, / and -), without the leading `#`.
+    #[serde(default)]
+    tags_suggested: Vec<String>,
+    /// Your model name.
+    model: String,
 }
 
 /// Filters shared by `note_search`, `note_list` and `note_stats`.
@@ -107,6 +166,23 @@ fn filters(args: FilterArgs, day: Option<String>) -> Filters {
 /// The text of a tool error: masked, never the raw message.
 fn fail(error: impl std::fmt::Display) -> String {
     guard::mask_for_output(&error.to_string())
+}
+
+/// The text of a store error on an id the caller sent: a bad id is quoted (and escaped) by the
+/// store, so it is not shown; an unknown id is shown masked.
+fn id_error(error: StoreError) -> String {
+    match error {
+        StoreError::BadId(_) => "not a note id".to_string(),
+        StoreError::NotFound(id) => format!("no note with id {}", masked_id(&id)),
+        other => fail(other),
+    }
+}
+
+fn ai_error(error: AiError) -> String {
+    match error {
+        AiError::Store(error) => id_error(error),
+        refused => fail(refused),
+    }
 }
 
 /// The text of a protocol error from the router. For a wrongly typed argument serde quotes the
@@ -214,6 +290,11 @@ impl EasyNote {
             .map(|info| info.name)
             .filter(|name| !name.is_empty());
         let cwd = args.cwd.filter(|cwd| !cwd.trim().is_empty());
+        let detail = args.detail.filter(|d| !d.trim().is_empty());
+        // Checked before anything is written; the cap is on the masked text, as stored.
+        if let Some(detail) = &detail {
+            ai::check_len("detail", &guard::mask(detail).0, ai::MAX_SUMMARY).map_err(fail)?;
+        }
         let roots = if cwd.is_none() {
             client_roots(&context).await
         } else {
@@ -228,7 +309,10 @@ impl EasyNote {
             let added = store.add(&args.text, "mcp", &tags, &fields).map_err(fail)?;
             // Report what was written (masked), not what was asked for.
             let note = store.read(&added.id).map_err(fail)?;
-            json_text(&json!({
+            // The note is kept whatever happens to its AI file.
+            let detail_saved =
+                detail.map(|detail| ai::capture(&store, &added.id, &note.title(), &detail).is_ok());
+            let mut answer = json!({
                 "id": added.id,
                 "path": added.path,
                 "repo": note.get_str("repo"),
@@ -238,7 +322,11 @@ impl EasyNote {
                     Value::List(list) => list.clone(),
                     _ => vec![],
                 }).unwrap_or_default(),
-            }))
+            });
+            if let Some(saved) = detail_saved {
+                answer["detail_saved"] = json!(saved);
+            }
+            json_text(&answer)
         })
         .await
     }
@@ -294,7 +382,20 @@ impl EasyNote {
                 StoreError::BadId(_) => "not a note id".to_string(),
                 other => fail(other),
             })?;
-            json_text(&note_json(&note))
+            let mut out = note_json(&note);
+            if let Some((detail, stale)) = ai::read(&store, note.id()) {
+                out["ai"] = json!({
+                    "label": ai::LABEL,
+                    "stale": stale,
+                    "title": detail.title,
+                    "kind": detail.kind,
+                    "summary": detail.summary,
+                    "tags_suggested": detail.tags_suggested,
+                    "model": detail.model,
+                    "at": detail.at,
+                });
+            }
+            json_text(&out)
         })
         .await
     }
@@ -314,13 +415,110 @@ impl EasyNote {
         })
         .await
     }
+
+    #[tool(
+        description = "List the person's notes that have no AI detail yet, or stale detail, newest first: id, text, created, and repo, task and session when known. At most 20 (`limit`). Read-only. Used by the enrich_notes prompt.",
+        annotations(read_only_hint = true)
+    )]
+    async fn note_pending_enrich(
+        &self,
+        Parameters(args): Parameters<PendingArgs>,
+    ) -> Result<String, String> {
+        let store = self.store()?;
+        blocking(move || {
+            let limit = args.limit.unwrap_or(MAX_PENDING);
+            let mut page = ai::pending(&store, limit).map_err(ai_error)?;
+            for item in &mut page.items {
+                item.id = masked_id(&item.id);
+            }
+            json_text(&page)
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Save AI detail for one note, from the enrich_notes prompt: title (at most 120 chars), kind (bug, idea, question, todo or other), summary (at most 600 chars), at most 5 suggested tags, and your model name. Writes only the note's AI detail file, labelled as not the person's words, replacing older detail; the note itself never changes. Returns id and based_on."
+    )]
+    async fn note_enrich(
+        &self,
+        Parameters(args): Parameters<EnrichArgs>,
+    ) -> Result<String, String> {
+        let store = self.store()?;
+        blocking(move || {
+            let input = ai::Input {
+                title: &args.title,
+                kind: &args.kind,
+                summary: &args.summary,
+                tags_suggested: &args.tags_suggested,
+                model: &args.model,
+            };
+            let detail = ai::enrich(&store, &args.id, &input).map_err(ai_error)?;
+            json_text(&json!({"id": masked_id(&detail.id), "based_on": detail.based_on}))
+        })
+        .await
+    }
 }
 
-#[tool_handler(
-    name = "easy-note",
-    instructions = "The person's notes. Call note_add only when the person asks to note something; the other tools only read."
-)]
+#[prompt_router]
+impl EasyNote {
+    #[prompt(
+        name = "enrich_notes",
+        description = "Add AI detail (title, kind, summary, suggested tags) to the person's notes that have none, in one subagent. The notes never change."
+    )]
+    async fn enrich_notes(&self) -> Vec<PromptMessage> {
+        vec![PromptMessage::new_text(Role::User, ENRICH_PROMPT)]
+    }
+}
+
+const INSTRUCTIONS: &str = "The person's notes. Call note_add only when the person asks to note something. note_enrich writes only AI detail files, when the person runs the enrich_notes prompt; the other tools only read.";
+
+/// The prompt methods are written here, not by `#[prompt_handler]`: that macro replaces any
+/// `get_prompt` in the block, and `get_prompt` must mask its error (an unknown name is quoted).
+#[tool_handler]
 impl ServerHandler for EasyNote {
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_prompts()
+                .build(),
+        )
+        .with_server_info(Implementation::new("easy-note", env!("CARGO_PKG_VERSION")))
+        .with_instructions(INSTRUCTIONS.to_string())
+    }
+
+    async fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, ErrorData> {
+        let mut result = ListPromptsResult::with_all_items(Self::prompt_router().list_all());
+        if context
+            .protocol_version()
+            .is_some_and(|version| version >= ProtocolVersion::V_2026_07_28)
+        {
+            result = result.with_ttl_ms(0).with_cache_scope(CacheScope::Public);
+        }
+        Ok(result)
+    }
+
+    /// As `call_tool`: the SDK quotes an unknown prompt name in its error, which may be a secret.
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResponse, ErrorData> {
+        let prompt = PromptContext::new(self, request.name, request.arguments, context);
+        Self::prompt_router()
+            .get_prompt(prompt)
+            .await
+            .map_err(|mut error| {
+                error.message = argument_error(&error.message).into();
+                error.data = None;
+                error
+            })
+    }
+
     /// The router answers; every error text then passes the guard. A wrongly typed argument makes
     /// the SDK quote the value it could not read, which may be a secret.
     async fn call_tool(

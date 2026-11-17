@@ -1,5 +1,6 @@
-//! HUN-258 oracle: the MCP surface. Five tools, no write on the read tools, FR-016 bounds,
-//! cwd order, `127.0.0.1` only, and a smoke run of the real binary over stdio.
+//! HUN-258 oracle: the MCP surface. Seven tools and one prompt (HUN-262, D37), no write on the
+//! read tools, FR-016 bounds, cwd order, `127.0.0.1` only, and a smoke run of the real binary over
+//! stdio.
 //!
 //! Tool logic runs in process (an `rmcp` client and the server over a duplex pipe, the store
 //! injected, so no env var is touched). The binary tests spawn `easy-note serve` with a temp HOME
@@ -32,13 +33,16 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 const BIN: &str = env!("CARGO_BIN_EXE_easy-note");
-const TOOLS: [&str; 5] = [
+const TOOLS: [&str; 7] = [
     "note_add",
+    "note_enrich",
     "note_list",
+    "note_pending_enrich",
     "note_read",
     "note_search",
     "note_stats",
 ];
+const PROMPTS: [&str; 1] = ["enrich_notes"];
 const GITHUB: &str = concat!("gh", "p_EXAMPLEexampleEXAMPLEexampleEXAMPLE123456");
 
 // ---------------------------------------------------------------------------------------------
@@ -214,7 +218,7 @@ fn seed(sb: &Sandbox, texts: &[&str]) -> Vec<String> {
 // ---------------------------------------------------------------------------------------------
 
 #[tokio::test]
-async fn exactly_the_five_tools_are_registered() {
+async fn exactly_the_seven_tools_and_one_prompt_are_registered() {
     let sb = Sandbox::new("list");
     let client = connect(&sb, TestClient::plain("t")).await;
     let mut names: Vec<String> = client
@@ -226,6 +230,14 @@ async fn exactly_the_five_tools_are_registered() {
         .collect();
     names.sort();
     assert_eq!(names, TOOLS);
+    let prompts: Vec<String> = client
+        .list_all_prompts()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|p| p.name.to_string())
+        .collect();
+    assert_eq!(prompts, PROMPTS);
 }
 
 #[tokio::test]
@@ -237,7 +249,11 @@ async fn note_add_description_carries_the_consent_and_note_prefix_rules() {
     let text = add.description.as_deref().unwrap_or("");
     assert!(text.contains("only when the person asks"), "{text}");
     assert!(text.contains("note:") && text.contains("/note"), "{text}");
-    for tool in tools.iter().filter(|t| t.name != "note_add") {
+    // note_enrich writes one AI file: it is not marked read-only either.
+    for tool in tools
+        .iter()
+        .filter(|t| t.name != "note_add" && t.name != "note_enrich")
+    {
         let read_only = tool.annotations.as_ref().and_then(|a| a.read_only_hint);
         assert_eq!(
             read_only,
@@ -246,6 +262,9 @@ async fn note_add_description_carries_the_consent_and_note_prefix_rules() {
             tool.name
         );
     }
+    let enrich = tools.iter().find(|t| t.name == "note_enrich").unwrap();
+    let read_only = enrich.annotations.as_ref().and_then(|a| a.read_only_hint);
+    assert_ne!(read_only, Some(true));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -755,6 +774,14 @@ async fn smoke_real_binary_over_stdio_calls_every_tool() {
         .collect();
     names.sort();
     assert_eq!(names, TOOLS);
+    let prompts: Vec<String> = client
+        .list_all_prompts()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|p| p.name.to_string())
+        .collect();
+    assert_eq!(prompts, PROMPTS);
 
     let added = call(
         &client,
@@ -780,6 +807,17 @@ async fn smoke_real_binary_over_stdio_calls_every_tool() {
     let stats: Value = serde_json::from_str(&stats.1).unwrap();
     assert_eq!(stats["total"], 1);
     assert_eq!(stats["by_source"]["mcp"], 1);
+    let pending = call(&client, "note_pending_enrich", json!({})).await;
+    assert!(!pending.0 && pending.1.contains(id), "{}", pending.1);
+    let enrich = call(
+        &client,
+        "note_enrich",
+        json!({"id": id, "title": "Smoke", "kind": "other", "summary": "A smoke note.",
+            "tags_suggested": ["smoke"], "model": "smoke-model"}),
+    )
+    .await;
+    assert!(!enrich.0, "{}", enrich.1);
+    assert_eq!(note_files(&sb.notes).len(), 1);
 
     let written = std::fs::read_to_string(&note_files(&sb.notes)[0]).unwrap();
     assert_eq!(

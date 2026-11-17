@@ -1,4 +1,5 @@
-//! The commands that change the notes dir: `init`, `add`, `edit`, `tag`, `rm`, `restore`, `trash`.
+//! The commands that change the notes dir: `init`, `add`, `edit`, `tag`, `rm`, `restore`, `trash`,
+//! `ai rm`.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -10,8 +11,8 @@ use std::time::Duration;
 use super::scratch::Scratch;
 use super::{confirmation, count, safe, say, Fail, Outcome};
 use crate::core::format::{parse, render, Note, Value};
-use crate::core::store::{trash_label, Store};
-use crate::core::{config, context, guard, tags};
+use crate::core::store::{trash_label, AiCarry, Store};
+use crate::core::{ai, config, context, guard, tags};
 
 /// `init [--dir PATH]`: make the dir and save it in the config file (FR-001).
 pub fn init(dir: Option<PathBuf>) -> Outcome {
@@ -205,9 +206,10 @@ pub fn edit(id: &str) -> Outcome {
     say(&confirmation("edited", id, &[], &updated.masked))
 }
 
-/// `tag <id> <tags...>`, or `--remove`.
-pub fn tag(id: &str, remove: bool, wanted: &[String]) -> Outcome {
-    let wanted: Vec<String> = wanted
+/// `tag <id> <tags...>`, or `--remove`; `--accept-ai` adds the tags the AI detail suggests, the
+/// only way AI text reaches a note, by the person (DDR 0004).
+pub fn tag(id: &str, remove: bool, accept_ai: bool, wanted: &[String]) -> Outcome {
+    let mut wanted: Vec<String> = wanted
         .iter()
         .map(|t| {
             tags::normalize(t)
@@ -215,7 +217,20 @@ pub fn tag(id: &str, remove: bool, wanted: &[String]) -> Outcome {
         })
         .collect::<Result<_, _>>()?;
     let store = Store::open()?;
-    let mut now = tags_of(&store.read(id)?);
+    let note = store.read(id)?;
+    if accept_ai {
+        store.ensure_writable(note.id())?;
+        let (detail, _) = ai::read(&store, note.id())
+            .ok_or_else(|| Fail::runtime(format!("no AI detail for {id}")))?;
+        // A masked tag is not a tag: only valid ones are taken.
+        wanted.extend(
+            detail
+                .tags_suggested
+                .iter()
+                .filter_map(|t| tags::normalize(t)),
+        );
+    }
+    let mut now = tags_of(&note);
     if remove {
         now.retain(|t| !wanted.contains(t));
     } else {
@@ -243,7 +258,11 @@ pub fn tag(id: &str, remove: bool, wanted: &[String]) -> Outcome {
 }
 
 pub fn rm(id: &str) -> Outcome {
-    Store::open()?.rm(id)?;
+    match Store::open()?.rm_with_ai(id)?.1 {
+        AiCarry::Done => {}
+        AiCarry::InTheWay => eprintln!("easy-note: its AI detail stays in .easy-note/ai/: a file of that name is already in .easy-note/trash/ai/"),
+        AiCarry::Failed => eprintln!("easy-note: its AI detail could not be moved to the trash; it stays in .easy-note/ai/"),
+    }
     let id = safe(id);
     say(&format!(
         "✓ removed {id} (easy-note restore {id} brings it back)"
@@ -251,8 +270,22 @@ pub fn rm(id: &str) -> Outcome {
 }
 
 pub fn restore(id: &str) -> Outcome {
-    Store::open()?.restore(id)?;
+    // Either way the trashed copy has no note in the trash now: the next empty deletes it.
+    match Store::open()?.restore_with_ai(id)?.1 {
+        AiCarry::Done => {}
+        AiCarry::InTheWay => eprintln!("easy-note: its AI detail in .easy-note/ai/ is kept; the trashed AI detail stays in .easy-note/trash/ai/ and is deleted at the next `trash --empty`"),
+        AiCarry::Failed => eprintln!("easy-note: its trashed AI detail could not be moved back; it stays in .easy-note/trash/ai/ and is deleted at the next `trash --empty`"),
+    }
     say(&format!("✓ restored {}", safe(id)))
+}
+
+/// `ai rm <id>`: delete the note's AI detail file only (exit 1 when it has none).
+pub fn ai_rm(id: &str) -> Outcome {
+    let store = Store::open()?;
+    if !ai::remove(&store, id)? {
+        return Err(Fail::runtime(format!("no AI detail for {id}")));
+    }
+    say(&format!("✓ removed AI detail of {}", safe(id)))
 }
 
 /// `30d` is 30 days.

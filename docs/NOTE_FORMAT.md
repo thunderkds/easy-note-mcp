@@ -92,6 +92,13 @@ Whole text (title + body) ≤ 20,000 chars: a longer text is refused on write, t
 An inbox note goes to `<notes dir>/.easy-note/trash/inbox__<mtime>__<file name>` (`<mtime>` = the file's original mtime in Unix seconds; extension kept); `restore inbox/<stem>` moves it back to `inbox/<file name>` and sets that mtime back.
 `easy-note trash --empty --older-than 30d` deletes trash files whose mtime is older than the cutoff.
 
+A trashed note's AI detail file (below) moves with it to `<notes dir>/.easy-note/trash/ai/<note trash file name>.json`
+(`<id>.md.json`; `inbox__<mtime>__<file name>.json` for an inbox note) and back on `restore`; neither move replaces a file.
+When a file of that name is in the way on `rm`, the AI file stays in `.easy-note/ai/`. When one is in the way on
+`restore`, the live AI file is kept and the trashed copy stays in `trash/ai/` only until the next `trash --empty`.
+`trash --empty` deletes a trashed AI file with its note, decided by the note's mtime only, and deletes any `trash/ai/`
+file whose note is no longer in the trash.
+
 ## Inbox files (round 2)
 
 Any `.md` or `.txt` file directly in `<notes dir>/inbox/` is a note even without front matter. Readers derive:
@@ -110,8 +117,20 @@ its keys win, except `id`, which is always the inbox id above (`show`, `rm` and 
  "based_on": "sha256:…", "model": "claude-…", "at": "2026-11-15T09:00:00+07:00"}
 ```
 
-`kind` ∈ `bug`, `idea`, `question`, `todo`, `other`. Stale when `based_on` ≠ sha256 of the note text. Readers that
-must not hold note text (easy-personal) must not read AI files either.
+`kind` ∈ `bug`, `idea`, `question`, `todo`, `other`; `title` ≤ 120 chars, `summary` ≤ 600 chars, at most 5
+`tags_suggested`, each a valid tag. `based_on` is `sha256:<hex>` of the note body exactly as stored (the text after
+the closing `---`; the whole file for an inbox note without front matter); `based_on` and `at` are set by easy-note.
+Stale when `based_on` ≠ that hash. Unknown keys are ignored. A file that is not valid JSON, has a wrong type or is over
+a cap is treated as no AI file. easy-note writes it to a temp file in `.easy-note/ai/` and renames it over the old one.
+
+An inbox note's AI file is keyed by its id, so when a second inbox file with the same stem appears (`a.md` next to
+`a.txt`) the ids become `inbox/a.md` and `inbox/a.txt`, the old `inbox__a.json` no longer matches, and the note shows as
+pending again.
+
+A file written by `note_add(detail)` has `model: "capture"`, `kind: "other"`, `tags_suggested: []`, `title` = the
+note's title and `summary` = the detail; it counts as enriched until the note changes.
+
+Readers that must not hold note text (easy-personal) must not read AI files either.
 
 ## Reader rules
 

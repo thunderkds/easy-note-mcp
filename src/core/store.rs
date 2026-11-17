@@ -15,6 +15,7 @@ use chrono::{DateTime, FixedOffset, Local, NaiveDateTime, Offset, SecondsFormat,
 use saphyr::{LoadableYamlNode, ScalarOwned, YamlOwned};
 use sha2::{Digest, Sha256};
 
+use crate::core::ai;
 use crate::core::config::{self, ConfigError};
 use crate::core::format::{
     check_text, parse, quote, render, FormatError, Note, TextTooLong, Value, SOURCES, VERSION,
@@ -92,6 +93,17 @@ pub enum Item {
 }
 
 type FileOp = fn(&Path, &Path) -> io::Result<()>;
+
+/// What happened to a note's AI file when `rm` / `restore` moved the note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AiCarry {
+    /// It moved with the note, or the note had none.
+    Done,
+    /// A file of that name was in the way: nothing was replaced, it stayed where it was.
+    InTheWay,
+    /// The move failed: it stayed where it was.
+    Failed,
+}
 
 /// One notes dir. `Store::system` is the real thing; the other fields are seams that tests replace
 /// (frozen clock, hostname and zone; a filesystem without hard links; a failing rename).
@@ -248,6 +260,28 @@ impl Store {
         Ok(note)
     }
 
+    /// The canonical id of a note and its body exactly as stored, unmasked: only for
+    /// `ai::based_on`, whose hash is the one thing derived from it that leaves the core.
+    pub(crate) fn raw_body(&self, note_id: &str) -> Result<(String, String), StoreError> {
+        let note = self.read_raw(note_id)?;
+        Ok((note.id().to_string(), note.body))
+    }
+
+    /// The canonical id of a live note (an inbox id as listed); `NotFound` when there is none.
+    pub(crate) fn canonical_id(&self, note_id: &str) -> Result<String, StoreError> {
+        let (id, path) = self.resolve(note_id)?;
+        if !path.is_file() {
+            return Err(StoreError::NotFound(id));
+        }
+        Ok(id)
+    }
+
+    /// Now, local time to the second, ISO 8601 with offset (the AI file's `at`).
+    pub(crate) fn now_stamp(&self) -> String {
+        self.local_time((self.now_ns)())
+            .to_rfc3339_opts(SecondsFormat::Secs, false)
+    }
+
     fn read_raw(&self, note_id: &str) -> Result<Note, StoreError> {
         let (note_id, path) = self.resolve(note_id)?;
         let raw = match fs::read(&path) {
@@ -335,6 +369,12 @@ impl Store {
 
     /// Move a note to `<dir>/.easy-note/trash/`; its mtime becomes the time it was trashed.
     pub fn rm(&self, note_id: &str) -> Result<PathBuf, StoreError> {
+        self.rm_with_ai(note_id).map(|(path, _)| path)
+    }
+
+    /// `rm`; the note's AI file follows it to `trash/ai/<note trash file name>.json`. When it
+    /// cannot (`AiCarry`), it stays in `.easy-note/ai/` and the note move still stands.
+    pub fn rm_with_ai(&self, note_id: &str) -> Result<(PathBuf, AiCarry), StoreError> {
         let (note_id, src) = self.resolve(note_id)?;
         if !src.is_file() {
             return Err(StoreError::NotFound(note_id));
@@ -361,15 +401,26 @@ impl Store {
             }
             false => file_name(&src).to_string_lossy().into_owned(),
         };
-        let dst = self.trash_dir().join(name);
+        let dst = self.trash_dir().join(&name);
         fs::create_dir_all(self.trash_dir())?;
         self.move_no_replace(&src, &dst)?;
         // Open read-only: a 0444 note was moved already and a write-open would fail on it.
         fs::File::open(&dst)?.set_modified(SystemTime::now())?;
-        Ok(dst)
+        let moved = self.carry_ai(
+            &ai::path(&self.root, &note_id),
+            &ai::trash_path(&self.root, &name),
+        );
+        Ok((dst, moved))
     }
 
     pub fn restore(&self, note_id: &str) -> Result<PathBuf, StoreError> {
+        self.restore_with_ai(note_id).map(|(path, _)| path)
+    }
+
+    /// `restore`; the note's AI file comes back from `trash/ai/` too. When it cannot (`AiCarry`),
+    /// the trashed copy stays in `trash/ai/`, where the next `empty_trash` deletes it (its note is
+    /// no longer in the trash); a live AI file in the way is never replaced.
+    pub fn restore_with_ai(&self, note_id: &str) -> Result<(PathBuf, AiCarry), StoreError> {
         let mut mtime = None;
         let (src, dst) = match inbox_part(note_id)? {
             Some(part) => {
@@ -397,10 +448,43 @@ impl Store {
         if let Some(mtime) = mtime {
             fs::File::open(&dst)?.set_modified(mtime)?;
         }
-        Ok(dst)
+        // The live id of the restored file names its AI file (an inbox id as listed now).
+        let trashed = ai::trash_path(&self.root, &file_name(&src).to_string_lossy());
+        let live_id = match mtime {
+            Some(_) => self
+                .inbox_files()
+                .into_iter()
+                .find(|(_, path)| file_name(path) == file_name(&dst))
+                .map(|(id, _)| id),
+            None => Some(note_id.to_string()),
+        };
+        let moved = match live_id {
+            Some(id) => self.carry_ai(&trashed, &ai::path(&self.root, &id)),
+            None if trashed.is_file() => AiCarry::Failed,
+            None => AiCarry::Done,
+        };
+        Ok((dst, moved))
     }
 
-    /// Delete trash files trashed more than `older_than` ago; return them, sorted.
+    /// Move an AI file with its note, never replacing a file. `Done` when there was none to move.
+    fn carry_ai(&self, src: &Path, dst: &Path) -> AiCarry {
+        if !src.is_file() {
+            return AiCarry::Done;
+        }
+        let made = dst.parent().map_or(Ok(()), fs::create_dir_all);
+        match made
+            .map_err(StoreError::from)
+            .and_then(|()| self.move_no_replace(src, dst))
+        {
+            Ok(()) => AiCarry::Done,
+            Err(StoreError::Exists(_)) => AiCarry::InTheWay,
+            Err(_) => AiCarry::Failed,
+        }
+    }
+
+    /// Delete trash files trashed more than `older_than` ago; return them, sorted. A note's AI file
+    /// goes with it, by the note's mtime only (a move keeps the AI file's old mtime), and so does
+    /// any AI file in `trash/ai/` whose note is no longer in the trash.
     pub fn empty_trash(&self, older_than: Duration) -> Result<Vec<PathBuf>, StoreError> {
         let Ok(entries) = fs::read_dir(self.trash_dir()) else {
             return Ok(vec![]);
@@ -419,6 +503,22 @@ impl Store {
         gone.sort();
         for path in &gone {
             fs::remove_file(path)?;
+            let ai_file = ai::trash_path(&self.root, &file_name(path).to_string_lossy());
+            match fs::remove_file(ai_file) {
+                Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e.into()),
+                _ => {}
+            }
+        }
+        if let Ok(entries) = fs::read_dir(self.trash_dir().join("ai")) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let orphan = name
+                    .strip_suffix(".json")
+                    .is_some_and(|note| !note.is_empty() && !self.trash_dir().join(note).exists());
+                if orphan && entry.file_type().is_ok_and(|t| t.is_file()) {
+                    fs::remove_file(entry.path())?;
+                }
+            }
         }
         Ok(gone)
     }
@@ -426,6 +526,15 @@ impl Store {
     /// Every `<dir>/YYYY/MM/*.md`, in path order: a note, or Skipped with its path and reason
     /// (FR-017). Files are read one by one as the iterator advances.
     pub fn iter_notes(&self) -> impl Iterator<Item = Item> {
+        self.items(false).map(|(item, _)| item)
+    }
+
+    /// `iter_notes`, each note with `ai::based_on` of its body as stored (before the mask).
+    pub(crate) fn iter_hashed(&self) -> impl Iterator<Item = (Item, Option<String>)> {
+        self.items(true)
+    }
+
+    fn items(&self, hash: bool) -> impl Iterator<Item = (Item, Option<String>)> {
         let mut paths: Vec<PathBuf> = vec![];
         for year in digit_dirs(&self.root, 4) {
             for month in digit_dirs(&year, 2) {
@@ -443,21 +552,16 @@ impl Store {
         }
         paths.sort();
         let me = self.clone();
-        let dated = paths.into_iter().map(|path| {
+        let dated = paths.into_iter().map(move |path| {
             let path = std::path::absolute(&path).unwrap_or(path);
-            match fs::read(&path) {
-                Ok(raw) => match parse_file(&path, &raw) {
-                    Item::Note(mut note) => {
-                        mask_note(&mut note);
-                        Item::Note(note)
-                    }
-                    skipped => skipped,
-                },
+            let item = match fs::read(&path) {
+                Ok(raw) => parse_file(&path, &raw),
                 Err(_) => Item::Skipped(Skipped {
                     path,
                     reason: "cannot read file".to_string(),
                 }),
-            }
+            };
+            finish(item, hash)
         });
         // Then the inbox notes, parsed views of files that are never written (FR-023).
         let inbox = me.inbox_files().into_iter().map(move |(id, path)| {
@@ -468,13 +572,7 @@ impl Store {
                     reason: "cannot read file".to_string(),
                 }),
             };
-            match item {
-                Item::Note(mut note) => {
-                    mask_note(&mut note);
-                    Item::Note(note)
-                }
-                skipped => skipped,
-            }
+            finish(item, hash)
         });
         dated.chain(inbox)
     }
@@ -727,6 +825,18 @@ impl Store {
                 Ok(())
             }
         }
+    }
+}
+
+/// A note masked for output; with `hash`, first the hash of its body as stored.
+fn finish(item: Item, hash: bool) -> (Item, Option<String>) {
+    match item {
+        Item::Note(mut note) => {
+            let based_on = hash.then(|| ai::based_on(&note.body));
+            mask_note(&mut note);
+            (Item::Note(note), based_on)
+        }
+        skipped => (skipped, None),
     }
 }
 

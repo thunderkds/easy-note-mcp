@@ -139,11 +139,16 @@ fn ctx(
         remote: own(remote),
         branch: own(branch),
         task: own(task),
+        ..Context::default()
     }
 }
 
+/// The context at `cwd` with `commit` cleared: the commit has its own tests (HUN-262).
 fn at(cwd: &Path) -> Context {
-    capture(None, Some(cwd), &[])
+    Context {
+        commit: None,
+        ..capture(None, Some(cwd), &[])
+    }
 }
 
 fn uri(path: &Path) -> String {
@@ -253,6 +258,49 @@ fn bare_repo_drops_the_dot_git_suffix() {
         &["init", "-q", "--bare", bare.to_str().unwrap()],
     );
     assert_eq!(at(&bare).repo.as_deref(), Some("central"));
+}
+
+// HUN-262 AC 1: the short HEAD sha
+
+#[test]
+fn commit_is_the_short_head_sha() {
+    let env = Env::new();
+    let repo = make_repo(env.path(), "proj", None, "main");
+    let out = Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    let short = String::from_utf8(out.stdout).unwrap().trim().to_string();
+    let got = capture(None, Some(&repo), &[]);
+    assert_eq!(got.commit.as_deref(), Some(short.as_str()));
+    assert!(got.fields().contains(&("commit", Some(short.as_str()))));
+    let path = store::add("a note", "cli", &[], &got.fields())
+        .unwrap()
+        .path;
+    let meta = front_matter(&path);
+    assert_eq!(meta.get_str("commit"), Some(short.as_str()));
+}
+
+#[test]
+fn a_repo_with_no_commit_keeps_repo_and_branch_but_has_no_commit() {
+    let env = Env::new();
+    let repo = env.path().join("fresh");
+    fs::create_dir(&repo).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    let got = capture(None, Some(&repo), &[]);
+    assert_eq!(got.repo.as_deref(), Some("fresh"));
+    assert_eq!(got.branch.as_deref(), Some("main"));
+    assert_eq!(got.commit, None);
+    assert!(add_note(&repo).is_file());
+}
+
+#[test]
+fn outside_a_repo_there_is_no_commit() {
+    let env = Env::new();
+    let plain = env.path().join("plain");
+    fs::create_dir(&plain).unwrap();
+    assert_eq!(capture(None, Some(&plain), &[]), Context::default());
 }
 
 // AC 2
@@ -568,7 +616,9 @@ fn only_read_only_git_subcommands_run() {
         subcommands.push(words[0]);
     }
     subcommands.sort_unstable();
-    assert_eq!(subcommands, ["branch", "remote", "rev-parse"]);
+    // rev-parse twice: the repo, then the short HEAD sha (HUN-262)
+    assert_eq!(subcommands, ["branch", "remote", "rev-parse", "rev-parse"]);
+    assert!(calls.contains("rev-parse --short HEAD"), "{calls}");
 }
 
 #[test]
