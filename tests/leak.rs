@@ -827,6 +827,222 @@ fn surface_quick(text: &str) -> Captured {
     got
 }
 
+/// The planted text as a JSON string whose every UTF-16 unit is a `\uXXXX` escape: the file holds
+/// no raw secret, the decoded text does (memory: mask decoded text, not only raw).
+fn json_escaped(text: &str) -> String {
+    let units: String = text.encode_utf16().map(|u| format!("\\u{u:04x}")).collect();
+    format!("\"{units}\"")
+}
+
+/// AI detail (HUN-262): the real `easy-note serve` over stdio. The planted text goes in every
+/// `note_enrich` string argument (one call each, so a refusal of one field does not hide another),
+/// in `note_add`'s `detail`, and in a wrongly typed `tags_suggested` (a protocol-level error that
+/// would quote it). Then two hand-written AI files hold it (raw, and as `\u` escapes) and the
+/// server and the CLI read them back: `note_read`, `note_search`, `note_pending_enrich`,
+/// `note_stats`, `show`, `search`, `stats`, `tag --accept-ai`, `ai rm`. The raw hand-written file
+/// holds the text by definition, so it is deleted at the end, after the reads.
+fn surface_ai(text: &str) -> Captured {
+    use std::io::{BufRead, Read, Write};
+    use std::process::{Command, Stdio};
+
+    let home = PathBuf::from(std::env::var("HOME").unwrap());
+    let notes = PathBuf::from(std::env::var("EASY_NOTE_DIR").unwrap());
+    let mut got = Captured {
+        objects: vec![],
+        stdout: String::new(),
+        stderr: String::new(),
+    };
+    let mut child = Command::new(env!("CARGO_BIN_EXE_easy-note"))
+        .arg("serve")
+        .current_dir(&home)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut lines = std::io::BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut next_id = 0u32;
+    // The tool answer text of each call (the first content block), for ids.
+    let mut send = |got: &mut Captured, method: &str, params: Value, answer: bool| -> String {
+        next_id += 1;
+        let mut request = serde_json::json!({"jsonrpc": "2.0", "method": method, "params": params});
+        if answer {
+            request["id"] = next_id.into();
+        }
+        writeln!(stdin, "{request}").unwrap();
+        stdin.flush().unwrap();
+        if !answer {
+            return String::new();
+        }
+        let line = lines.next().expect("the server answers").unwrap();
+        got.stdout.push_str(&line);
+        got.stdout.push('\n');
+        let value: Value = serde_json::from_str(&line).expect("one JSON-RPC line");
+        assert_eq!(value["id"], next_id, "{line}");
+        got.objects.push(line.clone());
+        let mut decoded = vec![];
+        json_strings(&value, &mut decoded);
+        got.objects.extend(decoded);
+        value["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or("")
+            .to_string()
+    };
+    let call = |name: &str, args: Value| serde_json::json!({"name": name, "arguments": args});
+    let id_of = |answer: &str| {
+        serde_json::from_str::<Value>(answer).expect("note_add answers JSON")["id"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+
+    send(
+        &mut got,
+        "initialize",
+        serde_json::json!({"protocolVersion": "2025-03-26", "capabilities": {},
+            "clientInfo": {"name": "leak-ai", "version": "0"}}),
+        true,
+    );
+    send(
+        &mut got,
+        "notifications/initialized",
+        serde_json::json!({}),
+        false,
+    );
+    let cwd = home.to_string_lossy().into_owned();
+    let add =
+        |got: &mut Captured,
+         send: &mut dyn FnMut(&mut Captured, &str, Value, bool) -> String,
+         args: Value| { id_of(&send(got, "tools/call", call("note_add", args), true)) };
+    let base = add(
+        &mut got,
+        &mut send,
+        serde_json::json!({"text": "ai leak base #leak", "cwd": cwd}),
+    );
+    let raw_file = add(
+        &mut got,
+        &mut send,
+        serde_json::json!({"text": "ai leak raw", "cwd": cwd}),
+    );
+    let escaped_file = add(
+        &mut got,
+        &mut send,
+        serde_json::json!({"text": "ai leak escaped", "cwd": cwd}),
+    );
+    add(
+        &mut got,
+        &mut send,
+        serde_json::json!({"text": "ai leak detail", "cwd": cwd, "detail": text}),
+    );
+    let good = serde_json::json!({"id": base, "title": "t", "kind": "bug", "summary": "s",
+        "tags_suggested": ["leak"], "model": "m"});
+    for field in ["id", "title", "kind", "summary", "model"] {
+        let mut args = good.clone();
+        args[field] = text.into();
+        send(&mut got, "tools/call", call("note_enrich", args), true);
+    }
+    let mut args = good.clone();
+    args["tags_suggested"] = serde_json::json!([text]);
+    send(&mut got, "tools/call", call("note_enrich", args), true);
+    let mut args = good.clone();
+    args["tags_suggested"] = text.into();
+    send(&mut got, "tools/call", call("note_enrich", args), true);
+
+    // Hand-written AI files: the text in the summary and the model (a tag would make the file
+    // invalid, so it would never be shown).
+    let ai_dir = notes.join(".easy-note/ai");
+    std::fs::create_dir_all(&ai_dir).unwrap();
+    let hand = |summary: &str| {
+        format!(
+            r#"{{"easy-note-ai": 1, "id": "x", "title": "hand", "kind": "idea", "summary": {summary},
+            "tags_suggested": ["leak"], "based_on": "sha256:0", "model": {summary}, "at": "2026-11-15T09:00:00+07:00"}}"#
+        )
+    };
+    let raw_path = ai_dir.join(format!("{raw_file}.json"));
+    std::fs::write(&raw_path, hand(&serde_json::to_string(text).unwrap())).unwrap();
+    std::fs::write(
+        ai_dir.join(format!("{escaped_file}.json")),
+        hand(&json_escaped(text)),
+    )
+    .unwrap();
+    for id in [&base, &raw_file, &escaped_file] {
+        send(
+            &mut got,
+            "tools/call",
+            call("note_read", serde_json::json!({"id": id})),
+            true,
+        );
+    }
+    for query in ["leak", "hand", text] {
+        send(
+            &mut got,
+            "tools/call",
+            call("note_search", serde_json::json!({"query": query})),
+            true,
+        );
+    }
+    send(
+        &mut got,
+        "tools/call",
+        call("note_pending_enrich", serde_json::json!({})),
+        true,
+    );
+    send(
+        &mut got,
+        "tools/call",
+        call("note_stats", serde_json::json!({})),
+        true,
+    );
+    drop(stdin);
+    for line in lines {
+        let line = line.unwrap();
+        got.stdout.push_str(&line);
+        got.stdout.push('\n');
+    }
+    let mut stderr = String::new();
+    child
+        .stderr
+        .take()
+        .unwrap()
+        .read_to_string(&mut stderr)
+        .unwrap();
+    got.stderr.push_str(&stderr);
+    assert!(child.wait().unwrap().success());
+
+    let mut cli = |args: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_easy-note"))
+            .args(args)
+            .current_dir(&home)
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        let (o, e) = (
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        );
+        let n = got.objects.len();
+        got.objects
+            .push(format!("cli {n} -> {:?}\n{o}\n{e}", out.status.code()));
+        got.stdout.push_str(&o);
+        got.stderr.push_str(&e);
+    };
+    for id in [&base, &raw_file, &escaped_file] {
+        cli(&["show", id]);
+        cli(&["tag", id, "--accept-ai"]);
+    }
+    cli(&["search", "hand"]);
+    cli(&["search", text]);
+    cli(&["stats"]);
+    cli(&["stats", "--json"]);
+    cli(&["ai", "rm", &escaped_file]);
+    cli(&["ai", "rm", text]);
+    cli(&["rm", &base]);
+    cli(&["restore", &base]);
+    std::fs::remove_file(&raw_path).unwrap();
+    got
+}
+
 const SURFACES: &[(&str, Surface)] = &[
     ("core", surface_core),
     ("cli", surface_cli),
@@ -835,6 +1051,7 @@ const SURFACES: &[(&str, Surface)] = &[
     ("hook", surface_hook),
     ("quick", surface_quick),
     ("tray", surface_tray),
+    ("ai", surface_ai),
 ];
 
 fn nothing_leaked(secret: &str, got: &Captured, root: &Path) -> Result<(), String> {
@@ -884,7 +1101,7 @@ fn planted_secret_never_leaks() {
 
 #[test]
 fn the_registry_holds_the_core_the_cli_and_the_inbox_surface() {
-    for wanted in ["core", "cli", "inbox", "hook", "quick", "tray"] {
+    for wanted in ["core", "cli", "inbox", "hook", "quick", "tray", "ai"] {
         assert!(SURFACES.iter().any(|(name, _)| *name == wanted), "{wanted}");
     }
 }
