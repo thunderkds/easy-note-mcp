@@ -52,21 +52,21 @@ Mode: auto
 3. Python generator/bench scripts dropped; the fixture is a test helper only — FACT: docs/ddr/0005-rust-single-binary.md:31 "4. **All Python is removed** in the first Rust task"
 4. Warm disk cache only; a cold-cache search run is left to the owner (needs root) — SAFER OPTION: no root command in an auto run, Risk Low (decide and log, no Advocates) ⚠ decided for you — please review
 5. Timings measured on this WSL2 machine, labelled WSL2 in the Evidence; a native Linux run is left to the owner — SAFER OPTION: report what was measured, never claim native numbers ⚠ decided for you — please review
-Checks: pending
-Memory: pending
+Checks: tests `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` — all green (perf: 1 passed, 5 ignored); reviews code-review — 0 P0/P1/P2, 2 P3 (`reports/code-review_feat-HUN-265-perf_20261117T103600.html`); real run `cargo test --release --test perf -- --ignored --nocapture --test-threads=1` — printed 5 `perf` lines, all budgets met on WSL2 (auto-checked, not /verify)
+Memory: memory/learnings.md — 2026-11-17 `board_sync.py update --guide` pushes the guide of the checkout the script lives in; memory/MEMORY.md — its index line
 Not done: merge (admin: after the auto verify pass); auto verify: not started; native Linux and cold-cache timings (yours)
 
 ## Evidence
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/perf.rs`: AC 1 `fixture_has_10000_valid_notes` (in `cargo test`: `test result: ok. 1 passed; 0 failed; 5 ignored`); AC 2–8 `perf_search`, `perf_note_add`, `perf_hook_pass`, `perf_hook_save`, `perf_n_cold_start` (ignored, `--release`): `test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 11.51s`; AC 9 this table and the Demonstration |
+| Verification command run | ☑ pass | Supervisor rerun 2026-11-17T03:34:31Z, WSL2 (`6.18.58.1-microsoft-standard-WSL2`, AMD Ryzen 7 5700X 8-Core, 16 threads, 15 GiB RAM; power state not readable on WSL2): `perf hook_pass: n=30 first 1.8 ms p50 1.3 ms p95 1.5 ms max 1.6 ms` · `perf hook_save: n=30 first 15.6 ms p50 14.1 ms p95 16.0 ms max 16.0 ms` · `perf n_cold_start: n=30 first 15.1 ms p50 14.1 ms p95 15.0 ms max 15.6 ms` · `perf note_add: n=30 first 13.7 ms p50 5.0 ms p95 5.3 ms max 5.4 ms` · `perf search: n=30 first 176.8 ms p50 168.6 ms p95 173.1 ms max 180.5 ms`. NFR-004 met (173 < 500; 5.3 < 150), NFR-009 met (1.5 < 50; 16.0 < 150), NFR-010 met (15.0 < 150); fmt and clippy `-D warnings` exit 0 |
+| Negative cases hold | ☑ pass | Mutation `BUDGET_SEARCH_MS` 500 → 1 (`git diff --stat`: `tests/perf.rs \| 2 +-`): `perf search: n=30 first 180.6 ms p50 176.6 ms p95 216.5 ms max 255.8 ms` then `panicked at tests/perf.rs:206:5: search: p95 216.5 ms is over the 1 ms budget`, `test result: FAILED. 0 passed; 1 failed` — the line prints before the assert (AC 8); mutation reverted (`git checkout tests/perf.rs`) |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
-| **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Reviewed `tests/perf.rs` (the only code file) against `tests/hook.rs`, `tests/quick.rs`, `tests/query.rs`, `tests/mcp.rs` patterns and the hook fixtures it reads; `src/` skipped (unchanged) |
+| Full smoke suite still green (no regression) | ☑ pass | `cargo test`: lib 27, cli 43, context 29, format 13, guard 37, hook 14, hotkey 4, inbox 19, install 23, leak 46, mcp 20, perf 1 (+5 ignored), query 45, quick 26, readme 3, store 30 — all `0 failed` |
+| **Companion score (easy-verifier)** | ☑ N/A | Not run: a test-only change (one measurement file); no companion tool run in this auto run |
 | **UI: Visual regression (diff or verdict pasted)** | ☑ N/A | No UI: the task adds one test file (`tests/perf.rs`) and no screen |
 | **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ N/A | No UI: the task adds one test file (`tests/perf.rs`) and no screen |
 | **UI: Responsiveness at target viewports** | ☑ N/A | No UI: the task adds one test file (`tests/perf.rs`) and no screen |
@@ -96,9 +96,17 @@ $ git rev-parse --short HEAD
 1836e22
 ```
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+**AFTER**: at e50f039 (2026-11-17T03:34:31Z), `cargo test --release --test perf -- --ignored --nocapture --test-threads=1`:
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+```
+perf hook_pass: n=30 first 1.8 ms p50 1.3 ms p95 1.5 ms max 1.6 ms
+perf hook_save: n=30 first 15.6 ms p50 14.1 ms p95 16.0 ms max 16.0 ms
+perf n_cold_start: n=30 first 15.1 ms p50 14.1 ms p95 15.0 ms max 15.6 ms
+perf note_add: n=30 first 13.7 ms p50 5.0 ms p95 5.3 ms max 5.4 ms
+perf search: n=30 first 176.8 ms p50 168.6 ms p95 173.1 ms max 180.5 ms
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 11.51s
+```
 
-**WITNESS**: [who ran it and when — derived from `memory/event-trace/HUN-265.jsonl`, never the
-implementing agent alone]
+**DELTA**: The owner can now measure the five speed budgets over 10,000 notes with one command, and NFR-004/009/010 are confirmed in `PRD.md` with measured numbers instead of provisional targets.
+
+**WITNESS**: the Supervisor (session e61f3928), rerun in the HUN-265 worktree at 2026-11-17T03:34:31Z, separately from the implementing agent's run at 03:31:29Z; trace `memory/event-trace/HUN-265.jsonl`
