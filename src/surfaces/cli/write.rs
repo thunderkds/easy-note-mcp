@@ -11,7 +11,7 @@ use std::time::Duration;
 use super::scratch::Scratch;
 use super::{confirmation, count, safe, say, Fail, Outcome};
 use crate::core::format::{parse, render, Note, Value};
-use crate::core::store::{trash_label, Store};
+use crate::core::store::{trash_label, AiCarry, Store};
 use crate::core::{ai, config, context, guard, tags};
 
 /// `init [--dir PATH]`: make the dir and save it in the config file (FR-001).
@@ -258,9 +258,10 @@ pub fn tag(id: &str, remove: bool, accept_ai: bool, wanted: &[String]) -> Outcom
 }
 
 pub fn rm(id: &str) -> Outcome {
-    let (_, ai_moved) = Store::open()?.rm_with_ai(id)?;
-    if !ai_moved {
-        eprintln!("easy-note: its AI detail stays in .easy-note/ai/: a file of that name is already in .easy-note/trash/ai/");
+    match Store::open()?.rm_with_ai(id)?.1 {
+        AiCarry::Done => {}
+        AiCarry::InTheWay => eprintln!("easy-note: its AI detail stays in .easy-note/ai/: a file of that name is already in .easy-note/trash/ai/"),
+        AiCarry::Failed => eprintln!("easy-note: its AI detail could not be moved to the trash; it stays in .easy-note/ai/"),
     }
     let id = safe(id);
     say(&format!(
@@ -269,9 +270,11 @@ pub fn rm(id: &str) -> Outcome {
 }
 
 pub fn restore(id: &str) -> Outcome {
-    let (_, ai_moved) = Store::open()?.restore_with_ai(id)?;
-    if !ai_moved {
-        eprintln!("easy-note: its AI detail stays in .easy-note/trash/ai/: a file of that name is already in .easy-note/ai/");
+    // Either way the trashed copy has no note in the trash now: the next empty deletes it.
+    match Store::open()?.restore_with_ai(id)?.1 {
+        AiCarry::Done => {}
+        AiCarry::InTheWay => eprintln!("easy-note: its AI detail in .easy-note/ai/ is kept; the trashed AI detail stays in .easy-note/trash/ai/ and is deleted at the next `trash --empty`"),
+        AiCarry::Failed => eprintln!("easy-note: its trashed AI detail could not be moved back; it stays in .easy-note/trash/ai/ and is deleted at the next `trash --empty`"),
     }
     say(&format!("✓ restored {}", safe(id)))
 }

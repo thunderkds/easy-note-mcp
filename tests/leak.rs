@@ -393,8 +393,9 @@ fn json_strings(value: &Value, out: &mut Vec<String>) {
 
 /// The real `easy-note serve` over stdio, driven line by line: add, read, a read of an id that
 /// is the secret (a tool error), an add with a wrongly typed argument (a protocol-level error
-/// that quotes the value), search, list, stats. Every answer line, its decoded strings, the whole
-/// of stdout and stderr are captured. The child inherits the temp HOME and EASY_NOTE_DIR.
+/// that quotes the value), search, list, stats, and a `prompts/get` whose name is the text. Every
+/// answer line, its decoded strings, the whole of stdout and stderr are captured. The child
+/// inherits the temp HOME and EASY_NOTE_DIR.
 fn surface_mcp(text: &str) -> Captured {
     use std::io::{BufRead, Read, Write};
     use std::process::{Command, Stdio};
@@ -488,6 +489,8 @@ fn surface_mcp(text: &str) -> Captured {
         call("note_stats", serde_json::json!({})),
         true,
     );
+    // An unknown prompt name: the SDK quotes the name in its error (HUN-262).
+    send("prompts/get", serde_json::json!({"name": text}), true);
     drop(stdin);
 
     for line in lines {

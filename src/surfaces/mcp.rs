@@ -13,17 +13,22 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use rmcp::handler::server::prompt::PromptContext;
 use rmcp::handler::server::tool::ToolCallContext;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolRequestParams, CallToolResponse, ContentBlock, PromptMessage, Role};
+use rmcp::model::{
+    CacheScope, CallToolRequestParams, CallToolResponse, ContentBlock, GetPromptRequestParams,
+    GetPromptResponse, Implementation, ListPromptsResult, PaginatedRequestParams, PromptMessage,
+    ProtocolVersion, Role, ServerCapabilities, ServerConfig,
+};
 use rmcp::schemars;
 use rmcp::service::RequestContext;
 use rmcp::transport::stdio;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use rmcp::{
-    prompt, prompt_handler, prompt_router, tool, tool_handler, tool_router, ErrorData, RoleServer,
-    ServerHandler, ServiceExt,
+    prompt, prompt_router, tool, tool_handler, tool_router, ErrorData, RoleServer, ServerHandler,
+    ServiceExt,
 };
 use serde::Deserialize;
 use serde_json::{json, Map, Value as Json};
@@ -465,12 +470,55 @@ impl EasyNote {
     }
 }
 
-#[tool_handler(
-    name = "easy-note",
-    instructions = "The person's notes. Call note_add only when the person asks to note something. note_enrich writes only AI detail files, when the person runs the enrich_notes prompt; the other tools only read."
-)]
-#[prompt_handler]
+const INSTRUCTIONS: &str = "The person's notes. Call note_add only when the person asks to note something. note_enrich writes only AI detail files, when the person runs the enrich_notes prompt; the other tools only read.";
+
+/// The prompt methods are written here, not by `#[prompt_handler]`: that macro replaces any
+/// `get_prompt` in the block, and `get_prompt` must mask its error (an unknown name is quoted).
+#[tool_handler]
 impl ServerHandler for EasyNote {
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_prompts()
+                .build(),
+        )
+        .with_server_info(Implementation::new("easy-note", env!("CARGO_PKG_VERSION")))
+        .with_instructions(INSTRUCTIONS.to_string())
+    }
+
+    async fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, ErrorData> {
+        let mut result = ListPromptsResult::with_all_items(Self::prompt_router().list_all());
+        if context
+            .protocol_version()
+            .is_some_and(|version| version >= ProtocolVersion::V_2026_07_28)
+        {
+            result = result.with_ttl_ms(0).with_cache_scope(CacheScope::Public);
+        }
+        Ok(result)
+    }
+
+    /// As `call_tool`: the SDK quotes an unknown prompt name in its error, which may be a secret.
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResponse, ErrorData> {
+        let prompt = PromptContext::new(self, request.name, request.arguments, context);
+        Self::prompt_router()
+            .get_prompt(prompt)
+            .await
+            .map_err(|mut error| {
+                error.message = argument_error(&error.message).into();
+                error.data = None;
+                error
+            })
+    }
+
     /// The router answers; every error text then passes the guard. A wrongly typed argument makes
     /// the SDK quote the value it could not read, which may be a secret.
     async fn call_tool(

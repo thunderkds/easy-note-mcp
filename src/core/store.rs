@@ -94,6 +94,17 @@ pub enum Item {
 
 type FileOp = fn(&Path, &Path) -> io::Result<()>;
 
+/// What happened to a note's AI file when `rm` / `restore` moved the note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AiCarry {
+    /// It moved with the note, or the note had none.
+    Done,
+    /// A file of that name was in the way: nothing was replaced, it stayed where it was.
+    InTheWay,
+    /// The move failed: it stayed where it was.
+    Failed,
+}
+
 /// One notes dir. `Store::system` is the real thing; the other fields are seams that tests replace
 /// (frozen clock, hostname and zone; a filesystem without hard links; a failing rename).
 #[derive(Clone)]
@@ -361,10 +372,9 @@ impl Store {
         self.rm_with_ai(note_id).map(|(path, _)| path)
     }
 
-    /// `rm`; the note's AI file follows it to `trash/ai/<note trash file name>.json`. The bool is
-    /// `false` when it could not (a file of that name is in the way): both files stay where they
-    /// are and the note move still stands.
-    pub fn rm_with_ai(&self, note_id: &str) -> Result<(PathBuf, bool), StoreError> {
+    /// `rm`; the note's AI file follows it to `trash/ai/<note trash file name>.json`. When it
+    /// cannot (`AiCarry`), it stays in `.easy-note/ai/` and the note move still stands.
+    pub fn rm_with_ai(&self, note_id: &str) -> Result<(PathBuf, AiCarry), StoreError> {
         let (note_id, src) = self.resolve(note_id)?;
         if !src.is_file() {
             return Err(StoreError::NotFound(note_id));
@@ -407,9 +417,10 @@ impl Store {
         self.restore_with_ai(note_id).map(|(path, _)| path)
     }
 
-    /// `restore`; the note's AI file comes back from `trash/ai/` too. The bool is `false` when it
-    /// could not (a file of that name is in `.easy-note/ai/`): both files are kept.
-    pub fn restore_with_ai(&self, note_id: &str) -> Result<(PathBuf, bool), StoreError> {
+    /// `restore`; the note's AI file comes back from `trash/ai/` too. When it cannot (`AiCarry`),
+    /// the trashed copy stays in `trash/ai/`, where the next `empty_trash` deletes it (its note is
+    /// no longer in the trash); a live AI file in the way is never replaced.
+    pub fn restore_with_ai(&self, note_id: &str) -> Result<(PathBuf, AiCarry), StoreError> {
         let mut mtime = None;
         let (src, dst) = match inbox_part(note_id)? {
             Some(part) => {
@@ -438,6 +449,7 @@ impl Store {
             fs::File::open(&dst)?.set_modified(mtime)?;
         }
         // The live id of the restored file names its AI file (an inbox id as listed now).
+        let trashed = ai::trash_path(&self.root, &file_name(&src).to_string_lossy());
         let live_id = match mtime {
             Some(_) => self
                 .inbox_files()
@@ -447,22 +459,27 @@ impl Store {
             None => Some(note_id.to_string()),
         };
         let moved = match live_id {
-            Some(id) => self.carry_ai(
-                &ai::trash_path(&self.root, &file_name(&src).to_string_lossy()),
-                &ai::path(&self.root, &id),
-            ),
-            None => false,
+            Some(id) => self.carry_ai(&trashed, &ai::path(&self.root, &id)),
+            None if trashed.is_file() => AiCarry::Failed,
+            None => AiCarry::Done,
         };
         Ok((dst, moved))
     }
 
-    /// Move an AI file with its note, never replacing a file. `true` when there was none to move.
-    fn carry_ai(&self, src: &Path, dst: &Path) -> bool {
+    /// Move an AI file with its note, never replacing a file. `Done` when there was none to move.
+    fn carry_ai(&self, src: &Path, dst: &Path) -> AiCarry {
         if !src.is_file() {
-            return true;
+            return AiCarry::Done;
         }
         let made = dst.parent().map_or(Ok(()), fs::create_dir_all);
-        made.is_ok() && self.move_no_replace(src, dst).is_ok()
+        match made
+            .map_err(StoreError::from)
+            .and_then(|()| self.move_no_replace(src, dst))
+        {
+            Ok(()) => AiCarry::Done,
+            Err(StoreError::Exists(_)) => AiCarry::InTheWay,
+            Err(_) => AiCarry::Failed,
+        }
     }
 
     /// Delete trash files trashed more than `older_than` ago; return them, sorted. A note's AI file

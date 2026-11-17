@@ -1075,3 +1075,112 @@ fn outside_a_repo_or_before_the_first_commit_there_is_no_commit() {
     }
     assert_eq!(repos, 1, "the empty repo keeps its repo field");
 }
+
+// ---------------------------------------------------------------------------------------------
+// Stage 4 fixes: restore clash, trash --empty never touches live AI files, inbox pairs
+// ---------------------------------------------------------------------------------------------
+
+#[tokio::test]
+async fn restore_keeps_a_live_ai_file_and_warns_the_trashed_copy_goes_at_the_next_empty() {
+    let sb = Sandbox::new("restore-clash");
+    let id = sb.add("a note");
+    let client = connect(&sb).await;
+    ok(&client, "note_enrich", enrich_args(&id)).await;
+    ok_cli(&sb, &["rm", &id]);
+    let live = sb.ai_dir().join(format!("{id}.json"));
+    std::fs::write(&live, "{\"hand\": true}").unwrap();
+    let live_before = std::fs::read(&live).unwrap();
+
+    let out = cli(&sb, &["restore", &id]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    assert!(sb.note_path(&id).is_file(), "the note is restored");
+    assert_eq!(std::fs::read(&live).unwrap(), live_before);
+    assert_eq!(json_names(&sb.trash_ai()), [format!("{id}.md.json")]);
+    let warning = text(&out.stderr);
+    assert!(warning.contains("next `trash --empty`"), "{warning}");
+
+    // the trashed copy is an orphan now: the next empty deletes it, the live file stays
+    ok_cli(&sb, &["trash", "--empty", "--older-than", "30d"]);
+    assert!(json_names(&sb.trash_ai()).is_empty());
+    assert_eq!(std::fs::read(&live).unwrap(), live_before);
+}
+
+#[tokio::test]
+async fn restore_of_a_note_without_ai_detail_warns_nothing() {
+    let sb = Sandbox::new("restore-plain");
+    let id = sb.add("a note");
+    ok_cli(&sb, &["rm", &id]);
+    let out = cli(&sb, &["restore", &id]);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(text(&out.stderr), "");
+}
+
+/// Every file under `.easy-note/ai/`, by name, with its bytes.
+fn ai_files(sb: &Sandbox) -> BTreeMap<PathBuf, Vec<u8>> {
+    walkdir(&sb.ai_dir())
+        .into_iter()
+        .map(|p| (p.clone(), std::fs::read(&p).unwrap()))
+        .collect()
+}
+
+#[tokio::test]
+async fn trash_empty_leaves_every_live_ai_file_byte_identical() {
+    let sb = Sandbox::new("empty-live");
+    let live = sb.add("live note");
+    let gone = sb.add("old note");
+    let client = connect(&sb).await;
+    ok(&client, "note_enrich", enrich_args(&live)).await;
+    ok(&client, "note_enrich", enrich_args(&gone)).await;
+    ok_cli(&sb, &["rm", &gone]);
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(90 * 86_400);
+    let trashed = sb.notes().join(format!(".easy-note/trash/{gone}.md"));
+    std::fs::File::open(&trashed)
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    let before = ai_files(&sb);
+    assert_eq!(before.len(), 1);
+
+    let out = ok_cli(&sb, &["trash", "--empty", "--older-than", "30d"]);
+    assert!(out.contains(&format!("deleted {gone}")), "{out}");
+    assert!(!trashed.exists() && json_names(&sb.trash_ai()).is_empty());
+    assert_eq!(ai_files(&sb), before);
+}
+
+#[tokio::test]
+async fn an_old_trashed_inbox_pair_is_emptied_together_and_restore_empties_trash_ai() {
+    let sb = Sandbox::new("inbox-pair");
+    std::fs::create_dir_all(sb.notes().join("inbox")).unwrap();
+    std::fs::write(sb.notes().join("inbox/keep.txt"), "kept\n").unwrap();
+    std::fs::write(sb.notes().join("inbox/gone.txt"), "gone\n").unwrap();
+    let client = connect(&sb).await;
+    ok(&client, "note_enrich", enrich_args("inbox/keep")).await;
+    ok(&client, "note_enrich", enrich_args("inbox/gone")).await;
+
+    // restore: the AI file comes back and trash/ai/ is empty again
+    ok_cli(&sb, &["rm", "inbox/keep"]);
+    assert_eq!(json_names(&sb.trash_ai()).len(), 1);
+    ok_cli(&sb, &["restore", "inbox/keep"]);
+    assert!(json_names(&sb.trash_ai()).is_empty());
+    assert!(json_names(&sb.ai_dir()).contains(&"inbox__keep.json".to_string()));
+
+    // an old trashed pair: both the inbox__<mtime>__<file> and its .json go
+    ok_cli(&sb, &["rm", "inbox/gone"]);
+    let trash = sb.notes().join(".easy-note/trash");
+    let name = std::fs::read_dir(&trash)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .find(|n| n.starts_with("inbox__"))
+        .unwrap();
+    assert_eq!(json_names(&sb.trash_ai()), [format!("{name}.json")]);
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(90 * 86_400);
+    std::fs::File::open(trash.join(&name))
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    ok_cli(&sb, &["trash", "--empty", "--older-than", "30d"]);
+    assert!(!trash.join(&name).exists());
+    assert!(json_names(&sb.trash_ai()).is_empty());
+    assert_eq!(json_names(&sb.ai_dir()), ["inbox__keep.json"]);
+}
