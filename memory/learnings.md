@@ -51,3 +51,9 @@
 - **Pattern**: `scripts/pull_moment.py spawn <ID>` run from a task worktree rewrites that worktree's `PROJECT_KANBAN.md` and the `tasks/TASK_GUIDE_*.md` copies from the board. Restore them (`git restore <files>`) before review, so the task branch carries only its own work.
 - **Pattern**: Two Supervisor sessions can run in parallel when their tasks share only small hunks: HUN-258 ran beside HUN-257 and touched `src/surfaces/cli.rs` (`Command::Serve` flags, `run_serve`) and one `tests/leak.rs` `SURFACES` entry. The second branch to merge resolves the conflict.
 **Files**: src/surfaces/mcp.rs, tests/leak.rs, scripts/pull_moment.py
+
+### 2026-11-17 — `board_sync.py update --guide` pushes the guide of the checkout the script lives in (HUN-265)
+- **Pattern**: `scripts/board_sync.py` sets `ROOT = script_project_root()` (`scripts/board_sync.py:85`), so `python3 scripts/board_sync.py update --guide <ID>` run from the main checkout pushes main's `tasks/TASK_GUIDE_<ID>.md`, not the re-planned copy in the task worktree. Run it as `cd <worktree> && python3 scripts/board_sync.py update --guide <ID>`. A board round trip also rewrites list markers (`- [x]` → `- [X]`, `-` → `*`): content is the same, so `git restore` the cache in the worktree.
+- **Pattern**: Under `[admin]` the Stop hook's auto-mode check fires while background implementers are still running, and its second fire writes a `Paused: auto-mode check failed` line into the worktree's `TASK_REVIEW_<ID>.md`. Replace that line when the report is filled; it is not the agent's.
+**Files**: scripts/board_sync.py, tasks/TASK_REVIEW_HUN-265.md
+

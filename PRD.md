@@ -102,15 +102,15 @@ search and read notes; only the person edits or deletes them. Everything stays o
 | NFR-001 | No traffic leaves the machine; HTTP mode binds `127.0.0.1` only. Subprocesses: read-only `git` (`rev-parse`, `branch --show-current`, `remote get-url`), in `quick` only, the OS input/notification tool (`osascript`, `zenity`, `kdialog`, `notify-send`), and in `tray` only, the OS opener (`xdg-open`, `open`). | Security |
 | NFR-002 | No secret appears in any note file written by the tool, any response, or any log (fixture with planted secrets proves it). Logs never contain note text. | Security / Privacy |
 | NFR-003 | Writes only inside the notes dir, the config file, the one hook entry + command file owned by `install claude`, the launcher file owned by `install launcher` and the autostart file owned by `install tray` (DDR 0001, DDR 0003). Nothing in any code repo is ever written. | Safety |
-| NFR-004 | Search p95 < 500 ms and `note_add` p95 < 150 ms over 10,000 notes on a laptop (provisional until T010). | Performance |
+| NFR-004 | Search p95 < 500 ms and `note_add` p95 < 150 ms over 10,000 notes on a laptop. Confirmed by HUN-265 (2026-11-17, release build, WSL2, warm cache): search p95 173 ms, `note_add` p95 5.3 ms. | Performance |
 | NFR-005 | Safe under a sync tool: two machines adding notes at the same time never lose a note (per-file writes, unique IDs). | Reliability |
 | NFR-006 | One Rust binary (`easy-note`, with `n` as a link to it), installed with `cargo install`; Linux (x86_64) only in v1 (DDR 0005). | Portability |
 | NFR-007 | Deterministic: same files + same query → same output order; no LLM in the server. | Correctness |
 | NFR-008 | Works with no kernel installed, and with no other plug-in installed. | Microkernel |
-| NFR-009 | *(round 2)* Hook pass path (prompt without the prefix) p95 < 50 ms, no interpreter start (native binary, DDR 0005); hook save path p95 < 150 ms. | Performance |
+| NFR-009 | *(round 2)* Hook pass path (prompt without the prefix) p95 < 50 ms, no interpreter start (native binary, DDR 0005); hook save path p95 < 150 ms. Confirmed by HUN-265 (2026-11-17, WSL2): pass p95 1.5 ms, save p95 16.0 ms. | Performance |
 | NFR-011 | *(round 3)* `quick` box visible p95 < 300 ms after the key press. | Performance |
 | NFR-012 | *(round 3)* AI detail never changes a note file and never feeds a count other than `enriched`. | Correctness |
-| NFR-010 | *(round 2)* `n` / `easy-note add` cold start to confirmation p95 < 150 ms; the CLI never imports the MCP SDK. | Performance |
+| NFR-010 | *(round 2)* `n` / `easy-note add` cold start to confirmation p95 < 150 ms; the CLI never imports the MCP SDK. Confirmed by HUN-265 (2026-11-17, WSL2): `n` p95 15.0 ms. | Performance |
 
 ---
 
@@ -153,7 +153,7 @@ search and read notes; only the person edits or deletes them. Everything stays o
 | 1 | Assumed: Claude Code, Codex and Cursor start stdio servers with a cwd or roots that point at the project. Verify per client. | Supervisor | T001, before T004 |
 | 2 | Default notes dir `~/easy-notes` (D13) | thunderkds | before T002 |
 | 3 | Repo name `easy-note-mcp`, server id `easy-note` (D1) | thunderkds | before repo creation |
-| 4 | NFR-004 targets are provisional | Supervisor | T010 |
+| 4 | NFR-004 targets are provisional — closed: confirmed by HUN-265 on WSL2 (`tests/perf.rs`); a native Linux and a cold-cache run stay with the owner | Supervisor | T010 |
 | 6 | Owner approves the MCP surface growing from 5 to 7 tools + 1 prompt (D37) | thunderkds | before T008 |
 | 7 | Token cost per enriched note (estimate 1–3k) | Supervisor | T014 |
 | 5 | Does the `UserPromptSubmit` hook see `/note ...` raw, can it block, and does it run for a prompt queued while the agent works? | Supervisor | T001, before T011 |
