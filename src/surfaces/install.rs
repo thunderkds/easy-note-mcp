@@ -1,5 +1,5 @@
-//! `install claude` and `uninstall claude` (FR-019, DDR 0003), and `install launcher` and
-//! `uninstall launcher` (FR-026).
+//! `install claude` and `uninstall claude` (FR-019, DDR 0003), `install launcher` and
+//! `uninstall launcher` (FR-026), and `install tray` and `uninstall tray` (FR-033).
 //!
 //! Install adds exactly one `UserPromptSubmit` entry (command `easy-note hook-prompt`, timeout 5)
 //! to the user-level `settings.json` and writes `commands/note.md`, both in the Claude Code config
@@ -40,6 +40,14 @@ Comment=Save a one-line note
 Exec=easy-note quick
 Terminal=false
 Categories=Utility;
+";
+
+/// The tray's login item: one file, so the tray starts with the session (FR-033).
+const TRAY_DESKTOP: &str = "[Desktop Entry]
+Type=Application
+Name=easy-note tray
+Exec=easy-note tray
+Terminal=false
 ";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,11 +115,33 @@ pub fn claude(action: Action) -> Result<String, String> {
 /// Run the action on `$HOME/.local/share/applications/easy-note.desktop`. A file there that is
 /// not byte-identical to ours is never changed or removed.
 pub fn launcher(action: Action) -> Result<String, String> {
+    own_desktop_file(
+        ".local/share/applications/easy-note.desktop",
+        LAUNCHER_DESKTOP,
+        action,
+    )
+}
+
+/// Run the action on `$HOME/.config/autostart/easy-note-tray.desktop`, like `launcher`. A build
+/// without the tray feature does not install it: the login item would fail at every login.
+pub fn tray(action: Action) -> Result<String, String> {
+    if action == Action::Install && !cfg!(feature = "tray") {
+        return Err(super::tray::NEEDS_FEATURE.to_string());
+    }
+    own_desktop_file(
+        ".config/autostart/easy-note-tray.desktop",
+        TRAY_DESKTOP,
+        action,
+    )
+}
+
+/// `content` at `$HOME/<rel>`, installed or removed only when the file is missing or ours.
+fn own_desktop_file(rel: &str, content: &str, action: Action) -> Result<String, String> {
     let home = std::env::var_os("HOME")
         .filter(|v| !v.is_empty())
         .ok_or("HOME is not set")?;
-    let path = PathBuf::from(home).join(".local/share/applications/easy-note.desktop");
-    let out = plan_own_file(&path, action, LAUNCHER_DESKTOP)?.apply(&path, LAUNCHER_DESKTOP)?;
+    let path = PathBuf::from(home).join(rel);
+    let out = plan_own_file(&path, action, content)?.apply(&path, content)?;
     Ok(if out.is_empty() {
         match action {
             Action::Install => format!("already installed ({})\n", path.display()),
@@ -276,7 +306,8 @@ fn remove_entry(root: &mut Map<String, Value>) -> Result<bool, String> {
     Ok(true)
 }
 
-/// What to do with a file that only easy-note writes (`commands/note.md`, the launcher).
+/// What to do with a file that only easy-note writes (`commands/note.md`, the launcher, the tray
+/// login item).
 enum OwnFile {
     Nothing,
     Write,

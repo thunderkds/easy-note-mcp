@@ -10,6 +10,8 @@ use super::{count, safe, say, say_raw, unique_kinds, Fail, Outcome};
 use crate::core::query::{self, Counts, Filters, Page, Stats};
 use crate::core::store::{Item, Store};
 use crate::core::{config, format, guard};
+#[cfg(feature = "tray")]
+use crate::surfaces::tray;
 
 fn print_page(page: &Page) -> Outcome {
     for item in &page.items {
@@ -166,8 +168,14 @@ pub fn doctor() -> Outcome {
     }
     say(&format!("{} checked", count(notes, "note")))?;
     if lines.is_empty() {
-        say("no problems found")
+        say("no problems found")?;
     } else {
-        say(&format!("{} found", count(lines.len(), "problem")))
+        say(&format!("{} found", count(lines.len(), "problem")))?;
     }
+    // Only a tray build has a tray to miss, and a missing host is no problem with the notes.
+    #[cfg(feature = "tray")]
+    if let Some(line) = tray::doctor_line(tray::host_present()) {
+        say(&safe(&line))?;
+    }
+    Ok(())
 }

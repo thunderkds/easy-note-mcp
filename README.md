@@ -140,6 +140,28 @@ For a click instead of a key, add the launcher. It writes one file,
 easy-note install launcher
 ```
 
+### System tray
+
+An optional icon in the system tray puts "New note" two clicks away. It is not in the default
+build, so the default `easy-note` links no tray code. Install a build that has it:
+
+```
+cargo install --path . --locked --features tray
+```
+
+Then run `easy-note tray`. The menu holds New note (opens the quick box with the last context), your
+5 newest notes (click one to open it), Open notes folder and Quit. It needs a desktop with a
+StatusNotifier host: KDE has one; GNOME needs the AppIndicator extension. Without a host,
+`easy-note tray` exits with 1 and prints the hotkey hint, and `easy-note doctor` says
+`tray: no tray host`. Only one tray runs at a time.
+
+To start it at login, `easy-note install tray` writes one file,
+`~/.config/autostart/easy-note-tray.desktop`, and `easy-note uninstall tray` removes it. Nothing
+starts at login unless you run `install tray`. If your session does not find `easy-note` (for
+example it sits in `~/.cargo/bin`), edit the `Exec=` line to the full path from `command -v easy-note`.
+
+If you also use easy-personal's tray, keep one tray: use that one and do not run `easy-note tray`.
+
 ### VS Code
 
 Add a task, in the workspace `.vscode/tasks.json` or in your user tasks:

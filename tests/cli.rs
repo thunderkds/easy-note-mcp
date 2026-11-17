@@ -1219,3 +1219,79 @@ fn serve_answers_initialize_then_exits_on_eof() {
     assert!(reply["result"].is_object(), "reply: {first}");
     assert_eq!(reply["result"]["serverInfo"]["name"], "easy-note");
 }
+
+// ---------------------------------------------------------------------------------------------
+// HUN-263: `tray`
+// ---------------------------------------------------------------------------------------------
+
+/// AC 4: a default build has no tray; it says how to install one, exits 1 and writes nothing.
+#[cfg(not(feature = "tray"))]
+#[test]
+fn ac4_tray_in_a_default_build_prints_the_install_command_and_writes_nothing() {
+    let home = sandbox("tray-default");
+    let before = snapshot(&home);
+    let out = easy(&home, &["tray"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stderr).contains("cargo install --path . --locked --features tray"),
+        "{}",
+        text(&out.stderr)
+    );
+    assert_eq!(snapshot(&home), before, "nothing is written");
+}
+
+/// AC 5: no other command writes the autostart file.
+#[test]
+fn ac5_no_other_command_writes_an_autostart_file() {
+    let home = sandbox("tray-autostart");
+    let id = add(&home, &["first", "#t"]);
+    for args in [
+        vec!["ls"],
+        vec!["search", "first"],
+        vec!["show", &id],
+        vec!["stats"],
+        vec!["doctor"],
+        vec!["path"],
+        vec!["hotkey"],
+        vec!["tag", &id, "more"],
+        vec!["rm", &id],
+        vec!["restore", &id],
+        vec!["trash"],
+        vec!["init"],
+        vec!["install", "claude"],
+        vec!["uninstall", "claude"],
+        vec!["install", "launcher"],
+        vec!["uninstall", "launcher"],
+        vec!["uninstall", "tray"],
+    ] {
+        let out = exec(&home, &bin(), &args, None, |c| {
+            c.env("CLAUDE_CONFIG_DIR", home.join("claude"));
+        });
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{args:?}: {}",
+            text(&out.stderr)
+        );
+        assert!(
+            !home.join(".config/autostart").exists(),
+            "{args:?} wrote an autostart file"
+        );
+    }
+}
+
+/// AC 6: the source of `tray.rs` names `ksni` and `zbus` paths only inside the feature-gated module.
+#[test]
+fn ac6_tray_source_uses_ksni_and_zbus_only_under_the_feature() {
+    let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/surfaces/tray.rs"))
+        .unwrap();
+    let gate = src
+        .find("#[cfg(feature = \"tray\")]\nmod icon {")
+        .expect("the gated module");
+    let before: Vec<&str> = src[..gate]
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .filter(|l| l.contains("ksni") || l.contains("zbus"))
+        .collect();
+    assert!(before.is_empty(), "outside the gate: {before:?}");
+}
