@@ -54,24 +54,24 @@ Mode: auto
 5. `install tray` refuses in a default build (exit 1, writes nothing), so no autostart file can start a binary that has no tray — SAFER OPTION: never install a login item that fails at every login ⚠ decided for you — please review
 6. Theme icon `accessories-text-editor` until the `DESIGN_PROMPT.md` §3 icons exist; `doctor` reports the tray host only in a tray build — RULE: `AGENTS.md` § Karpathy Engineering Principles (Simplicity First) ⚠ decided for you — please review
 7. GNOME/KDE screenshots (AC 1b) and idle RSS (AC 7) left to the owner: Xvfb has no tray host, and no tray is ever opened on the owner's live desktop during an auto run — SAFER OPTION: same rule as HUN-260 decision 6 ⚠ decided for you — please review
-Checks: pending
-Memory: pending
-Not done: merge (admin: after the auto verify pass); auto verify: not started; AC 1b and AC 7 (yours); CI step for `--features tray` (follow-up)
+Checks: tests `cargo fmt --check`, `cargo clippy --all-targets --locked [--features tray] -- -D warnings`, `cargo test --locked [--features tray]` — 392 passed / 0 failed (default), 397 / 0 (tray), `cargo tree -e normal -i ksni` finds nothing in a default build; reviews code-review — 0 P0/P1, 1 P2 (UX not checked: no tray host headless), 2 P3 (`reports/code-review_feat-HUN-263-tray_20261117T104306.html`); real run `easy-note tray` / `install tray` on the default build — refuse with the install command, exit 1, write nothing (auto-checked, not /verify)
+Memory: nothing new (this run's learning, `board_sync.py update --guide` pushes its own checkout's guide, is written once on HUN-265's branch)
+Not done: merge (admin: after the auto verify pass); auto verify: running (T182); AC 1b and AC 7 (yours); CI step for `--features tray` (follow-up)
 
 ## Evidence
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | AC 2 `src/surfaces/tray.rs` tests `the_menu_lists_the_five_newest_notes_between_the_fixed_items`, `an_empty_store_shows_one_disabled_item`, `a_long_title_is_cut_to_forty_characters_and_a_secret_stays_masked`, `relative_time_steps`, `each_action_is_an_argv_list`, `recent_reads_the_newest_notes_with_their_paths_and_skips_unreadable_files`; AC 3 `tests/tray.rs` (dead bus → exit 1 + hint; doctor line) and `the_doctor_line_names_a_missing_host_only`; AC 4 `tests/cli.rs` default-build `tray`; AC 5 `tests/install.rs` tray install/uninstall + `ac5_a_default_build_refuses_install_tray_and_writes_nothing` + no-autostart-from-other-commands in `tests/cli.rs`; AC 6 `cargo tree` check + source pin in `tests/cli.rs`; AC 8 `a_second_lock_on_the_same_notes_dir_is_refused_until_the_first_ends`; AC 9 `tests/leak.rs` `tray` surface. Default: 392 passed, 0 failed; `--features tray`: 397 passed, 0 failed |
+| Verification command run | ☑ pass | Supervisor rerun 2026-11-17T03:40:19Z: `FMT_OK`; clippy default `Finished dev profile` (no warnings); clippy `--features tray` `Finished dev profile` (no warnings); `default: passed 392 failed 0`; `tray: passed 397 failed 0`; `cargo tree -e normal -i ksni` → `error: package ID specification ksni did not match any packages` (no ksni in a default build) |
+| Negative cases hold | ☑ pass | Mutation in `install::tray` (`if false && action == Action::Install && !cfg!(feature = "tray")`, `git diff --stat`: `src/surfaces/install.rs \| 2 +-`): `test ac5_a_default_build_refuses_install_tray_and_writes_nothing ... FAILED`, `test result: FAILED. 24 passed; 1 failed`; reverted. Also in the suite: dead bus → exit 1, second lock refused, shell-looking path stays one argv item |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
-| **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Reviewed `tray.rs`, the `install.rs`, `cli.rs`, `cli/read.rs` and `Cargo.toml` diffs and their tests; callers of `launcher` (now via `own_desktop_file`) checked through `tests/install.rs`; `Cargo.lock` read as a crate list only; `src/core/` skipped (unchanged) |
+| Full smoke suite still green (no regression) | ☑ pass | Whole `cargo test --locked`, default and `--features tray`: 0 failed (incl. `tests/leak.rs`, `tests/install.rs` launcher tests, doctor tests) |
+| **Companion score (easy-verifier)** | ☑ N/A | Not run in this auto run (no companion tool session); the merge gate blocks on ☑ fail only |
+| **UI: Visual regression (diff or verdict pasted)** | ☑ N/A | Not checkable here: the tray menu is drawn by the desktop's StatusNotifier host, and Xvfb has none, so no tray was ever shown (no tray is opened on the owner's live desktop in an auto run). The menu model is checked by unit tests (order, labels, 40-char cut, masking). Owner screenshots on GNOME + AppIndicator and KDE are AC 1b (yours) |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ N/A | Not checkable here: the tray menu is drawn by the desktop's StatusNotifier host, and Xvfb has none, so no tray was ever shown (no tray is opened on the owner's live desktop in an auto run). The menu model is checked by unit tests (order, labels, 40-char cut, masking). Owner screenshots on GNOME + AppIndicator and KDE are AC 1b (yours) |
+| **UI: Responsiveness at target viewports** | ☑ N/A | Not checkable here: the tray menu is drawn by the desktop's StatusNotifier host, and Xvfb has none, so no tray was ever shown (no tray is opened on the owner's live desktop in an auto run). The menu model is checked by unit tests (order, labels, 40-char cut, masking). Owner screenshots on GNOME + AppIndicator and KDE are AC 1b (yours) |
 
 ---
 
@@ -111,9 +111,51 @@ exit=2
 files under temp HOME: 0
 ```
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+**AFTER**: the same commands on the branch, default build, then a `--features tray` build with a dead session bus:
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+```
+Tue Nov 17 03:43:45 UTC 2026
+binary: debug build of feat/HUN-263-tray a4dab39 (default features), temp HOME and EASY_NOTE_DIR
+$ easy-note tray
+easy-note: this build has no tray; install one with: cargo install --path . --locked --features tray
+exit=1
+$ easy-note install tray
+easy-note: this build has no tray; install one with: cargo install --path . --locked --features tray
+exit=1
+$ easy-note uninstall tray
+not installed (/tmp/tmp.dRXsQHCeL7/.config/autostart/easy-note-tray.desktop)
+exit=0
+files under temp HOME: 0
+```
 
-**WITNESS**: [who ran it and when — derived from `memory/event-trace/HUN-263.jsonl`, never the
-implementing agent alone]
+```
+Tue Nov 17 03:43:59 UTC 2026
+binary: debug build of feat/HUN-263-tray a4dab39 --features tray, temp HOME and EASY_NOTE_DIR, DBUS_SESSION_BUS_ADDRESS=unix:path=<temp>/none
+$ easy-note add first note
+easy-note: created notes dir /tmp/tmp.B7WzEVL21M/notes
+✓ noted 20261117-104359-90fd · easy-note-mcp · HUN-263
+exit=0
+$ easy-note tray
+easy-note: no tray host (D-Bus connection error: Failed to connect to address `unix:path=/tmp/tmp.B7WzEVL21M/none`: No such file or directory (os error 2)); GNOME needs the AppIndicator extension; the one-press path is a hotkey: run easy-note hotkey
+exit=1
+$ easy-note install tray
+✓ wrote /tmp/tmp.B7WzEVL21M/.config/autostart/easy-note-tray.desktop
+exit=0
+--- /tmp/tmp.B7WzEVL21M/.config/autostart/easy-note-tray.desktop
+[Desktop Entry]
+Type=Application
+Name=easy-note tray
+Exec=easy-note tray
+Terminal=false
+$ easy-note install tray
+already installed (/tmp/tmp.B7WzEVL21M/.config/autostart/easy-note-tray.desktop)
+exit=0
+$ easy-note uninstall tray
+✓ removed /tmp/tmp.B7WzEVL21M/.config/autostart/easy-note-tray.desktop
+exit=0
+files under temp HOME/.config: 0
+```
+
+**DELTA**: With a `--features tray` build a person can run `easy-note tray` for a menu of New note, the 5 newest notes and the notes folder, and `install tray` makes it start at login; a default build says how to get one and installs nothing.
+
+**WITNESS**: the Supervisor (session e61f3928), in the HUN-263 worktree at 2026-11-17T03:43:45Z and 03:43:59Z, separately from the implementing agent's runs; trace `memory/event-trace/HUN-263.jsonl`
