@@ -111,7 +111,7 @@
     none.hidden = shown.length > 0 || !state.board;
     var q = state.query.trim();
     $('no-results-text').textContent = !notes.length
-      ? 'No notes yet. Save one with easy-note add, or /note in Claude Code.'
+      ? 'No notes yet. Your first one appears here.'
       : q ? 'No note matches “' + state.query + '”.' : 'No note matches.';
     none.querySelector('.empty-hint').hidden = !q;
     $('clear-search').hidden = !q;
@@ -221,7 +221,7 @@
   // ---- data ----
   function showError(msg) {
     var e = $('error');
-    e.textContent = msg ? 'Could not load notes: ' + msg + '. Check the notes dir, then switch back to this window to try again.' : '';
+    e.textContent = msg ? 'Could not load notes: ' + msg : '';
     e.hidden = !msg;
   }
 
