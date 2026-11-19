@@ -14,7 +14,7 @@ Mode: auto
 5. `install launcher` exits 1 on a foreign file (the old test pinned exit 0) — RULE: `tasks/TASK_GUIDE_HUN-276.md` § Acceptance Criteria AC 2 ("a file that is not ours is kept and named (exit 1, nothing else written)")
 6. README names "opens the dashboard" without the command until HUN-273 merges; the Supervisor adds `easy-note dashboard` at merge — RULE: `tests/readme.rs` (a README command must exist)
 Checks: tests `cargo fmt --check && cargo clippy … -D warnings && cargo test --locked` + `--features tray` + `! cargo tree -e normal -i ksni` — exit 0, 40 `test result: ok`, 0 failed; reviews code-review — 0 P0/P1, 2 P3 (badge month folder from UTC not local; edit/tag also start the badge); real run `install launcher` in a temp HOME — 5 files, `desktop-file-validate` clean, second run `already installed` (auto-checked, not /verify)
-Memory: pending (Stage 5)
+Memory: nothing new for HUN-276 alone; the round-4 memory pass runs after the last merge
 Not done: merge (admin: after the auto verify pass); auto verify: running (T182); owner GNOME screenshots: app grid icon, tray outline + 3 s badge (yours); html-report for code-review (not rendered this run)
 
 ## Evidence
