@@ -1184,3 +1184,196 @@ async fn an_old_trashed_inbox_pair_is_emptied_together_and_restore_empties_trash
     assert!(json_names(&sb.trash_ai()).is_empty());
     assert_eq!(json_names(&sb.ai_dir()), ["inbox__keep.json"]);
 }
+
+// ---------------------------------------------------------------------------------------------
+// HUN-274: Obsidian views `<notes dir>/ai/<id>.md` (FR-036)
+// ---------------------------------------------------------------------------------------------
+
+/// Make the sandbox a vault: `.obsidian/` in the parent of the notes dir.
+fn make_vault(sb: &Sandbox) {
+    std::fs::create_dir_all(sb.root().join(".obsidian")).unwrap();
+}
+
+fn view(sb: &Sandbox, id: &str) -> PathBuf {
+    sb.notes().join("ai").join(format!("{id}.md"))
+}
+
+#[tokio::test]
+async fn a_vault_gets_a_labelled_view_on_enrich_and_capture() {
+    let sb = Sandbox::new("view");
+    make_vault(&sb);
+    let id = sb.add("retry bug");
+    let client = connect(&sb).await;
+    ok(&client, "note_enrich", enrich_args(&id)).await;
+    let page = std::fs::read_to_string(view(&sb, &id)).unwrap();
+    assert!(page.starts_with("---\neasy-note-ai-view: 1\n"), "{page}");
+    assert!(page.contains(&format!("note: \"[[{id}]]\"\n")), "{page}");
+    assert!(page.contains("model: \"claude-test\"\n"), "{page}");
+    assert!(page.contains("kind: \"bug\"\nstale: false\n"), "{page}");
+    assert!(
+        page.contains("tags_suggested: [\"firefox\", \"flaky\"]\n"),
+        "{page}"
+    );
+    assert!(page.contains("# AI detail (not your words)\n"), "{page}");
+    assert!(page.contains("Suggested tags: #firefox #flaky\n"), "{page}");
+    assert!(
+        page.contains(&format!("Accept with: easy-note tag {id} --accept-ai\n")),
+        "{page}"
+    );
+
+    // note_add(detail) writes a view too
+    let added = ok(
+        &client,
+        "note_add",
+        json!({"text": "second", "detail": "why"}),
+    )
+    .await;
+    let second = added["id"].as_str().unwrap();
+    let page = std::fs::read_to_string(view(&sb, second)).unwrap();
+    assert!(page.contains("model: \"capture\""), "{page}");
+}
+
+#[tokio::test]
+async fn outside_a_vault_nothing_is_written_under_ai() {
+    let sb = Sandbox::new("noview");
+    let id = sb.add("retry bug");
+    let client = connect(&sb).await;
+    ok(&client, "note_enrich", enrich_args(&id)).await;
+    assert!(!sb.notes().join("ai").exists());
+    let out = cli(&sb, &["ai", "render"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        text(&out.stderr).contains("not in an Obsidian vault (no .obsidian folder found)"),
+        "{}",
+        text(&out.stderr)
+    );
+    assert!(!sb.notes().join("ai").exists());
+}
+
+#[tokio::test]
+async fn a_view_is_not_a_note_and_the_store_ignores_it() {
+    let sb = Sandbox::new("notnote");
+    make_vault(&sb);
+    let id = sb.add("retry bug");
+    let before = ok_cli(&sb, &["stats", "--json"]);
+    let client = connect(&sb).await;
+    ok(&client, "note_enrich", enrich_args(&id)).await;
+    assert!(view(&sb, &id).is_file());
+    let after = ok_cli(&sb, &["stats", "--json"]);
+    let skipped = |s: &str| serde_json::from_str::<Value>(s).unwrap()["skipped"].clone();
+    assert_eq!(skipped(&before), skipped(&after));
+    let ls = ok_cli(&sb, &["ls"]);
+    assert_eq!(ls.lines().filter(|l| l.contains(&id)).count(), 1, "{ls}");
+    let found = ok_cli(&sb, &["search", "AI detail"]);
+    assert!(!found.contains("ai/"), "{found}");
+}
+
+#[tokio::test]
+async fn edit_and_tag_refresh_the_view_and_edit_makes_it_stale() {
+    let sb = Sandbox::new("viewstale");
+    make_vault(&sb);
+    let id = sb.add("retry bug");
+    let client = connect(&sb).await;
+    ok(&client, "note_enrich", enrich_args(&id)).await;
+    let editor = append_editor(&sb);
+    let out = cli_command(&sb, &["edit", &id])
+        .env("EDITOR", &editor)
+        .env_remove("VISUAL")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let page = std::fs::read_to_string(view(&sb, &id)).unwrap();
+    assert!(page.contains("stale: true\n"), "{page}");
+}
+
+#[tokio::test]
+async fn rm_restore_and_empty_remove_and_bring_back_the_view() {
+    let sb = Sandbox::new("viewtrash");
+    make_vault(&sb);
+    let id = sb.add("a note");
+    let client = connect(&sb).await;
+    ok(&client, "note_enrich", enrich_args(&id)).await;
+    assert!(view(&sb, &id).is_file());
+    ok_cli(&sb, &["rm", &id]);
+    assert!(!view(&sb, &id).exists());
+    ok_cli(&sb, &["restore", &id]);
+    assert!(view(&sb, &id).is_file());
+    ok_cli(&sb, &["ai", "rm", &id]);
+    assert!(!view(&sb, &id).exists());
+    ok(&client, "note_enrich", enrich_args(&id)).await;
+    ok_cli(&sb, &["rm", &id]);
+    ok_cli(&sb, &["trash", "--empty", "--older-than", "0d"]);
+    assert!(!view(&sb, &id).exists());
+}
+
+#[tokio::test]
+async fn an_inbox_note_view_has_a_safe_name_and_survives_rm_restore() {
+    let sb = Sandbox::new("viewinbox");
+    make_vault(&sb);
+    std::fs::create_dir_all(sb.notes().join("inbox")).unwrap();
+    std::fs::write(sb.notes().join("inbox/phone.md"), "from the phone\n").unwrap();
+    let client = connect(&sb).await;
+    ok(&client, "note_enrich", enrich_args("inbox/phone")).await;
+    let name = sb.notes().join("ai/inbox__phone.md");
+    assert!(name.is_file());
+    ok_cli(&sb, &["rm", "inbox/phone"]);
+    assert!(!name.exists());
+    ok_cli(&sb, &["restore", "inbox/phone"]);
+    assert!(name.is_file());
+}
+
+#[tokio::test]
+async fn ai_render_backfills_every_view_and_keeps_other_files_in_ai() {
+    let sb = Sandbox::new("render");
+    let a = sb.add("one");
+    let b = sb.add("two");
+    let client = connect(&sb).await;
+    ok(&client, "note_enrich", enrich_args(&a)).await;
+    ok(&client, "note_enrich", enrich_args(&b)).await;
+    make_vault(&sb);
+    std::fs::create_dir_all(sb.notes().join("ai")).unwrap();
+    let mine = sb.notes().join("ai/my-own.md");
+    std::fs::write(&mine, "mine\n").unwrap();
+    let clash = view(&sb, &a);
+    std::fs::write(&clash, "a person's file\n").unwrap();
+    let out = ok_cli(&sb, &["ai", "render"]);
+    assert!(out.contains("2 views written"), "{out}");
+    assert_eq!(std::fs::read_to_string(&mine).unwrap(), "mine\n");
+    assert_eq!(
+        std::fs::read_to_string(&clash).unwrap(),
+        "a person's file\n"
+    );
+    assert!(view(&sb, &b).is_file());
+}
+
+#[tokio::test]
+async fn note_files_stay_byte_identical_around_every_view_operation() {
+    let sb = Sandbox::new("viewbytes");
+    make_vault(&sb);
+    let id = sb.add("one");
+    let tree = || {
+        note_tree(&sb.notes())
+            .into_iter()
+            .filter(|(p, _)| !p.starts_with("ai"))
+            .collect::<BTreeMap<_, _>>()
+    };
+    let before = tree();
+    let client = connect(&sb).await;
+    ok(&client, "note_enrich", enrich_args(&id)).await;
+    ok_cli(&sb, &["ai", "render"]);
+    ok_cli(&sb, &["ai", "rm", &id]);
+    ok(&client, "note_enrich", enrich_args(&id)).await;
+    assert_eq!(tree(), before);
+}
+
+#[tokio::test]
+async fn a_view_write_error_never_fails_the_ai_write() {
+    let sb = Sandbox::new("viewfail");
+    make_vault(&sb);
+    let id = sb.add("one");
+    // a file named `ai` makes the view folder impossible
+    std::fs::write(sb.notes().join("ai"), "in the way").unwrap();
+    let client = connect(&sb).await;
+    ok(&client, "note_enrich", enrich_args(&id)).await;
+    assert_eq!(json_names(&sb.ai_dir()), [format!("{id}.json")]);
+}

@@ -89,6 +89,12 @@ tools are `note_add`, `note_search`, `note_list`, `note_read`, `note_stats`, `no
 and `note_enrich`, plus the prompt `enrich_notes`, which has your own Claude add AI detail to your
 notes in separate files (`easy-note ai rm <id>` deletes it). No tool edits, deletes or moves a note.
 
+## AI detail in Obsidian
+
+If your notes folder is inside an Obsidian vault (a `.obsidian` folder in it or above it), each note's AI detail also
+shows in Obsidian as a separate page, `ai/<id>.md`, labelled "AI detail (not your words)" and linked to the note. Your
+note files are never changed. Run `easy-note ai render` once to write the pages for detail you already have.
+
 ## Notes are plain files
 
 Each note is one Markdown file, `<notes dir>/YYYY/MM/<id>.md`: a short front matter block

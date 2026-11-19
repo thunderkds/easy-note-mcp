@@ -14,17 +14,18 @@ Mode: auto
 Checks: pending (Stage 4)
 Memory: pending (Stage 5)
 Not done: merge (admin: after the auto verify pass); auto verify: not started
+Paused: auto-mode check failed — no test run in memory/event-trace/HUN-274.jsonl — write /home/thunderkds/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d/$CLAUDE_CODE_SESSION_ID with the task ID (minimal-track step 1): `mkdir -p /home/thunderkds/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d && printf '%s\n%s\n' "HUN-274" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /home/thunderkds/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d/$CLAUDE_CODE_SESSION_ID`, then rerun the task's tests so the trace records them under the task, then stop; Risk Medium: decision 3 (`FACT`) is a choice — its FACT has no Citation (`path:line "quoted text"`) — so it must be `DEBATED` with exactly 2 Advocates named; extended track, but the trace has no `code-review` Skill call (Stage 4 runs in auto mode); Risk Medium, but the trace has no `security-review` Skill call [report fe125eb56fdd]
 
 ## Evidence
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/ai.rs` (8 new `view` tests, AC 2-8, 10), `tests/leak.rs` (`ai_view` surface, AC 9), unit tests in `src/core/ai_view.rs` (AC 1, 3). `cargo test --locked --test ai`: `test result: ok. 38 passed; 0 failed` |
+| Verification command run | ☑ pass | fmt, clippy (both feature sets) clean; `cargo test --locked` and `--features tray` every `test result: ok`, e.g. `ok. 38 passed; 0 failed` (tests/ai.rs), `exit=0` |
+| Negative cases hold | ☑ pass | Mutation: `ai::enrich` view call commented out (`git diff --stat src/core/ai.rs`: `1 file changed, 5 insertions(+), 1 deletion(-)`), then `cargo test --test ai view`: `4 failed` (e.g. `a_vault_gets_a_labelled_view_on_enrich_and_capture --- FAILED`); mutation reverted. Tests were written after the code, not before. |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
+| Full smoke suite still green (no regression) | ☑ pass | whole `cargo test --locked` run, both feature sets, exit=0 |
 | **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
 | **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
 | **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
@@ -39,12 +40,28 @@ Not done: merge (admin: after the auto verify pass); auto verify: not started
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE** (captured 2026-11-19, `date -u` = Thu Nov 19 05:09:23 UTC 2026, before any implementation commit; temp vault with `.obsidian/`, one note, one hand-written AI file):
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+```
+vault/notes/.easy-note/ai/20261119-120923-8eb2.json
+vault/notes/2026/11/20261119-120923-8eb2.md
+(no ai/ folder; nothing visible to Obsidian)
+$ easy-note ai render
+error: unrecognized subcommand 'render'
+Usage: easy-note ai <COMMAND>
+exit=2
+```
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+**AFTER** (same temp vault, after the change):
+
+```
+$ easy-note ai render
+1 view written
+exit=0
+(<notes dir>/ai/<id>.md now exists; outside a vault: "not in an Obsidian vault (no .obsidian folder found)", exit 1)
+```
+
+**DELTA**: In an Obsidian vault the person now sees each note's AI detail as a labelled, linked, read-only page under `ai/`, and can backfill with `easy-note ai render`.
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/Txxx.jsonl`, never the
 implementing agent alone]

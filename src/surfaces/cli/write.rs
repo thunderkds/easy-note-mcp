@@ -12,7 +12,7 @@ use super::scratch::Scratch;
 use super::{confirmation, count, safe, say, Fail, Outcome};
 use crate::core::format::{parse, render, Note, Value};
 use crate::core::store::{trash_label, AiCarry, Store};
-use crate::core::{ai, config, context, guard, tags};
+use crate::core::{ai, ai_view, config, context, guard, tags};
 
 /// `init [--dir PATH]`: make the dir and save it in the config file (FR-001).
 pub fn init(dir: Option<PathBuf>) -> Outcome {
@@ -203,6 +203,7 @@ pub fn edit(id: &str) -> Outcome {
         return Ok(());
     }
     let updated = store.update(id, text, tags.as_deref())?;
+    ai_view::sync(&store, id);
     say(&confirmation("edited", id, &[], &updated.masked))
 }
 
@@ -241,6 +242,7 @@ pub fn tag(id: &str, remove: bool, accept_ai: bool, wanted: &[String]) -> Outcom
         }
     }
     let updated = store.update(id, None, Some(&now))?;
+    ai_view::sync(&store, id);
     let shown = if now.is_empty() {
         "no tags".to_string()
     } else {
@@ -258,7 +260,13 @@ pub fn tag(id: &str, remove: bool, accept_ai: bool, wanted: &[String]) -> Outcom
 }
 
 pub fn rm(id: &str) -> Outcome {
-    match Store::open()?.rm_with_ai(id)?.1 {
+    let store = Store::open()?;
+    let live = store.canonical_id(id).ok();
+    let carried = store.rm_with_ai(id)?.1;
+    if let Some(live) = live {
+        ai_view::sync_remove(&store, &live);
+    }
+    match carried {
         AiCarry::Done => {}
         AiCarry::InTheWay => eprintln!("easy-note: its AI detail stays in .easy-note/ai/: a file of that name is already in .easy-note/trash/ai/"),
         AiCarry::Failed => eprintln!("easy-note: its AI detail could not be moved to the trash; it stays in .easy-note/ai/"),
@@ -271,7 +279,12 @@ pub fn rm(id: &str) -> Outcome {
 
 pub fn restore(id: &str) -> Outcome {
     // Either way the trashed copy has no note in the trash now: the next empty deletes it.
-    match Store::open()?.restore_with_ai(id)?.1 {
+    let store = Store::open()?;
+    let carried = store.restore_with_ai(id)?.1;
+    if let Ok(live) = store.canonical_id(id) {
+        ai_view::sync(&store, &live);
+    }
+    match carried {
         AiCarry::Done => {}
         AiCarry::InTheWay => eprintln!("easy-note: its AI detail in .easy-note/ai/ is kept; the trashed AI detail stays in .easy-note/trash/ai/ and is deleted at the next `trash --empty`"),
         AiCarry::Failed => eprintln!("easy-note: its trashed AI detail could not be moved back; it stays in .easy-note/trash/ai/ and is deleted at the next `trash --empty`"),
@@ -286,6 +299,17 @@ pub fn ai_rm(id: &str) -> Outcome {
         return Err(Fail::runtime(format!("no AI detail for {id}")));
     }
     say(&format!("✓ removed AI detail of {}", safe(id)))
+}
+
+/// `ai render`: rewrite every Obsidian view from the AI files (FR-036).
+pub fn ai_render() -> Outcome {
+    let store = Store::open()?;
+    match ai_view::render_all(&store)? {
+        Some(n) => say(&format!("{} written", count(n, "view"))),
+        None => Err(Fail::runtime(
+            "not in an Obsidian vault (no .obsidian folder found)",
+        )),
+    }
 }
 
 /// `30d` is 30 days.
