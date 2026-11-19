@@ -12,10 +12,10 @@
 - [ ] **HUN-266** — Manual run: measure how Cursor starts a stdio MCP server (HUN-251 follow-up) | Owner | C0 | Risk: Low | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-266.md`
 
 ### In Progress
-- [ ] **HUN-274** — AI detail visible in Obsidian: <notes dir>/ai/<id>.md views + easy-note ai render | Backend-Implementer | C1 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-274.md`
 
 ### Ready for Review
 - [ ] **HUN-273** — Obsidian dashboard: easy-note dashboard + install/uninstall obsidian (easy-note.base) | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-273.md`
+- [ ] **HUN-274** — AI detail visible in Obsidian: <notes dir>/ai/<id>.md views + easy-note ai render | Backend-Implementer | C1 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-274.md`
 - [ ] **HUN-275** — AI detail from the local claude CLI: easy-note ai enrich (claude -p) + [ai] settings section | Backend-Implementer | C2 | Risk: High | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-275.md`
 - [ ] **HUN-276** — Icons from the design: app icon, launcher opens the dashboard, tray Open dashboard + saved badge | Backend-Implementer | C2 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-276.md`
 
