@@ -13,7 +13,7 @@ Mode: auto
 4. Stage 4 P1 fixes applied by the Supervisor: Bases filter `/(^|\/)\d{4}\/\d{2}$/.matches(file.folder)` AND `file.hasProperty("easy-note")`; Today view `file.name.startsWith(today().format("YYYYMMDD"))`; sort by `file.name` DESC — FACT: obsidian.md/help/bases/functions "The String type has no matches() function … `/abc/.matches("abcde")`"; "The date string should be in the format YYYY-MM-DD HH:mm:ss"
 Checks: tests `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` + the same with `--features tray` — exit 0, 0 failed (commit d649e8d); reviews code-review — 2 P1 fixed, 1 P2 (sort key undocumented, kept), 1 P3 (install::obsidian reads the "kept " prefix); real run `easy-note dashboard` with stub xdg tools — opened `obsidian://open?path=…easy-note.base` (auto-checked, not /verify)
 Memory: pending (Stage 5)
-Not done: merge (admin: after the auto verify pass); auto verify: running (T182); owner screenshot of the real Obsidian dashboard (yours); html-report for code-review (not rendered this run)
+Not done: merged by the Supervisor ([admin], 2026-11-19), task branch pushed; push of `main` (yours: the gate refuses a `main` that carries more than one merge); auto verify: running (T182); owner screenshot of the real Obsidian dashboard (yours); html-report for code-review (not rendered this run)
 Paused: done not moved — report incomplete: auto verify slot
 
 ## Evidence

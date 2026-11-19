@@ -15,7 +15,7 @@ Mode: auto
 6. README names "opens the dashboard" without the command until HUN-273 merges; the Supervisor adds `easy-note dashboard` at merge — RULE: `tests/readme.rs` (a README command must exist)
 Checks: tests `cargo fmt --check && cargo clippy … -D warnings && cargo test --locked` + `--features tray` + `! cargo tree -e normal -i ksni` — exit 0, 40 `test result: ok`, 0 failed; reviews code-review — 0 P0/P1, 2 P3 (badge month folder from UTC not local; edit/tag also start the badge); real run `install launcher` in a temp HOME — 5 files, `desktop-file-validate` clean, second run `already installed` (auto-checked, not /verify)
 Memory: nothing new for HUN-276 alone; the round-4 memory pass runs after the last merge
-Not done: merge (admin: after the auto verify pass); auto verify: ☑ pass (session d211dbbb-13a5-4a3c-986f-7cf631f649ab, commit 25e6109304904c081bd98fbf61d94a0d453063e7, log .claude/verify-runs/HUN-276-25e610930490.log); owner GNOME screenshots: app grid icon, tray outline + 3 s badge (yours); html-report for code-review (not rendered this run)
+Not done: merged by the Supervisor ([admin], 2026-11-19), task branch pushed; push of `main` (yours: the gate refuses a `main` that carries more than one merge); auto verify: ☑ pass (session d211dbbb-13a5-4a3c-986f-7cf631f649ab, commit 25e6109304904c081bd98fbf61d94a0d453063e7, log .claude/verify-runs/HUN-276-25e610930490.log); owner GNOME screenshots: app grid icon, tray outline + 3 s badge (yours); html-report for code-review (not rendered this run)
 Closed: row moved to Done 2026-11-19 — auto verify pass (session d211dbbb-13a5-4a3c-986f-7cf631f649ab, commit 25e6109304904c081bd98fbf61d94a0d453063e7); Gates 5 and 6 checked
 
 ## Evidence
