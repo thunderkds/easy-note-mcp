@@ -1,63 +1,51 @@
-# TASK_REVIEW — T[NNN]: [Short Title]
+# TASK_REVIEW — HUN-277: easy-note setup: launcher, tray and the Obsidian vault in one command
 
-> Sibling of `tasks/TASK_GUIDE_T[NNN].md`. Everything here is **filled by the reviewer at Stage
-> 4/5** — it is deliberately NOT in the guide, because the implementing agent re-reads the guide on
-> every turn and never fills these two sections.
->
-> Consumers resolve each section **guide first, this file second** (`.claude/hooks/lib/guide_sections.py`):
-> a legacy guide that still carries these sections inline keeps working unchanged, and a stray
-> review file can never override an inline section.
+> Sibling of `tasks/TASK_GUIDE_HUN-277.md`. Filled by the reviewer at Stage 4/5.
 
 ---
-
-<!-- Optional: the final report, only for a task run in auto mode (the user's `[auto]` or `[admin]` tag; with `[admin]`, the `Not done:` line names `merge (admin: after the auto verify pass)`,
-`docs/claude-md/tracks.md` `## Auto mode`). To use it, copy the block below out of this comment, to this
-place, and replace every <...>. Keep `Mode: auto` as its first line, exactly as written: T182's hook reads
-it. Write it to this file before the run ends; the chat message is a copy, not the report. The same
-block is the Supervisor's final chat message. It is not the `delivery-report` page and not
-Evidence. A taste decision (what the user wants) also ends with the flag. Write `DEBATED` only when ≥2
-Advocate `Agent` calls ran for that question, naming each Advocate's option. A decision with no Advocates is
-labelled `RULE`, `FACT` or `SAFER OPTION`, never `DEBATED`. A decision flagged `⚠ decided for you` is a choice, and is never labelled `FACT`. A
-safety action a rule requires (for example the backup before a delete) is `RULE` without the flag.
-At Risk Medium or High, a `RULE:` counts only when it names a written rule (`path:line`,
-`path § <heading>`, or `docs/claude-md/tracks.md` `### <section>`), and a `FACT:` needs a Citation
-(`path:line "quoted text"`); without one it is a choice and must be `DEBATED`. Good: `2. backed up the CSV
-— RULE: `docs/claude-md/tracks.md` `### Stops that stay``. Bad: `1. kept recurring.csv — RULE: Surgical Changes`.
-`Memory:` records the diff-driven memory pass you run before you stop: each entry written, or `nothing new`.
-After an auto verify pass the hook, never you, adds `Closed: row moved to Done <date> — …` and moves the row,
-or adds `Paused: done not moved — <reason>`. It moves the row only when this block holds `Mode: auto`, a
-numbered decision, `Checks:`, `Memory:`, the `Not done:` auto verify slot with its result, and `Not done:`
-naming the merge — no `<...>` left (`docs/claude-md/tracks.md` `### Auto close-out`).
-With `/verify (yours)`, your pass goes in the `verify` row below: Result `☑ pass`, Notes `/verify by the user, session <id>, commit <sha>`.
 
 ## Auto decisions
 
 Mode: auto
-1. <what was decided> — RULE: <the rule>
-2. <what was decided> — FACT: <path>:<line> "<quoted text>"
-3. <what was decided> — DEBATED: <option> (Advocate 1: <its proposal>; Advocate 2: <its proposal>) ⚠ decided for you — please review
-4. <what was decided> — SAFER OPTION: <why> ⚠ decided for you — please review
-Paused: <only when a stop that stays paused the task: which one, and why>
-Checks: tests `<command>` — <result>; reviews <skill — result>; real run `<command>` — printed `<what it printed>` (auto-checked, not /verify)
-Memory: <each entry the memory pass wrote, as `file — entry` | nothing new>
-Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | /verify (yours), with [admin] only after the one retry also ended blocked>
-
--->
+1. Obsidian open → write nothing and ask to close it; `setup` runs launcher, obsidian, tray and never `install claude` — RULE: `docs/ddr/0008-register-the-obsidian-vault.md` § Decision
+2. Kept the `dashboard` hint "run easy-note install obsidian" for a missing `.base` file (not changed to `setup`) — FACT: PRD.md:96 "When `<notes dir>/easy-note.base` is missing it says to run `easy-note install obsidian`, exit 1"
+3. One P3 left as a suggestion (`setup` picks each step by matching its name string) — RULE: `.claude/skills/code-review/SKILL.md` § Phase 4 "Present P2/P3 fixes as suggestions only."
+4. Companion score not run (N/A row) — FACT: `templates/TASK_REVIEW_template.md` Evidence row "the merge gate blocks on ☑ fail only, never on an absent or N/A row" ⚠ decided for you — please review
+5. Merge HUN-277 although the owner now wants easy-note's own dashboard window — RULE: owner's answer in chat 2026-11-19 ("Merge it now"); the window is a new task that supersedes DDR 0006
+Checks: tests `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked && cargo clippy --all-targets --locked --features tray -- -D warnings && cargo test --locked --features tray` — exit 0, 0 failed (code at 2bd1447); reviews code-review — 0 P0/P1/P2, 1 P3 kept; security-review — no findings (10 candidates rejected, all confidence ≤2); real run `easy-note setup` on the owner's machine via the try script — vault `/home/hungnguyenhuu/easy-notes` added, `easy-note dashboard` opened `easy-note.base` in Obsidian's Bases view (checked in `~/easy-notes/.obsidian/workspace.json`)
+Memory: memory/decisions.md — 2026-11-19 owner wants easy-note's own dashboard window (the design's Main board), superseding DDR 0006; HUN-277 kept
+Not done: merge (admin: after the auto verify pass); auto verify: running (T182); the own dashboard window (new task, to be planned)
 
 ## Evidence
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
-| verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
-| **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/setup.rs` (19 tests, AC 2–8, 10, 11), `tests/dashboard.rs` (AC 9 hint), `tests/install.rs` (pin updates), `src/surfaces/install.rs` unit tests (AC 1 path, AC 3 cover by components, AC 4 running check, random id), `src/surfaces/cli.rs` `every_command` (AC 10). All pass in the run below |
+| Verification command run | ☑ pass | fmt, clippy (both feature sets), test (both): exit 0 at 2bd1447. Tail:
+```
+test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.16s
+test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 123.69s
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s
+test result: ok. 1 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 2.05s
+test result_does_not_depend_on_the_reader_zone ... ok
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.97s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.00s
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.81s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+EXIT 0
+```
+|
+| Negative cases hold | ☑ pass | Red run before the code: `tests/setup.rs` 1 passed, 18 failed (`ac2_install_adds_one_vault…`, `ac4_when_obsidian_runs_nothing_is_written…`, `ac6_a_bad_vault_list_is_left_as_it_is_and_named`, `ac8_a_failing_step_does_not_stop_the_next_and_setup_exits_1` …); BEFORE capture below: `setup` → "unrecognized subcommand", exit 2 |
+| verify | ☐ pass / ☐ fail / ☐ N/A | |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Reviewed: `src/surfaces/install.rs` (`obsidian`, `register_vault`, `Settings::read_with`, `write_backup`), `cli.rs` (`setup`, `installed`), `dashboard.rs` (`run`, `handler`), tests, README. Callers of `install::obsidian` (cli only) checked. Skipped: `src/core/*`, `tray.rs` (untouched). Lane: `C2, 10 files, 1288 lines, EXCEEDS (lines 1288 > 500)` — tests and plan docs; warn only |
+| Full smoke suite still green (no regression) | ☑ pass | full `cargo test --locked` and `--features tray`: every `test result: ok`, 0 failed |
+| **Companion score (easy-verifier)** | ☑ N/A | not run for HUN-277 (see Auto decision 4) |
+| **UI: Visual regression (diff or verdict pasted)** | ☑ N/A | no UI of ours: terminal output only; Obsidian draws the window (guide § UI) |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ N/A | no UI of ours |
+| **UI: Responsiveness at target viewports** | ☑ N/A | no UI of ours |
 
 ---
 
@@ -90,9 +78,36 @@ $ ls -a notes dir
 easy-note.base
 ```
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+**AFTER**: captured 2026-11-19T10:27:50Z on commit `2bd1447`, debug build with `--features tray`, same sandbox shape as BEFORE
+(`S=…/scratchpad/after`, `EASY_NOTE_PROC_DIR=$S/proc` empty, so Obsidian is not running):
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+```
+$ easy-note setup
+launcher:
+✓ wrote $S/home/.local/share/applications/easy-note.desktop
+✓ wrote $S/home/.local/share/icons/hicolor/scalable/apps/easy-note.svg
+✓ wrote $S/home/.local/share/icons/hicolor/16x16/apps/easy-note.svg
+✓ wrote $S/home/.local/share/icons/hicolor/symbolic/apps/easy-note-symbolic.svg
+✓ wrote $S/home/.local/share/icons/hicolor/symbolic/apps/easy-note-saved-symbolic.svg
+obsidian:
+✓ wrote $S/home/easy-notes/easy-note.base
+backup: $S/xdg/obsidian/obsidian.json.easy-note-20261119-172751.bak
+✓ added $S/home/easy-notes to Obsidian's vaults
+tray:
+✓ wrote $S/home/.config/autostart/easy-note-tray.desktop
+Using Claude Code? Run easy-note install claude to add the /note hook.
+exit 0
+$ cat obsidian.json
+{"vaults":{"aaaa":{"path":"$S/home/easy-notes/notes","ts":1,"open":true},"2f5a1a03612d73c4":{"path":"$S/home/easy-notes","ts":1795084071384,"open":true}},"frame":"native"}
+$ easy-note setup        # second run
+obsidian:
+already installed ($S/home/easy-notes/easy-note.base)
+already an Obsidian vault ($S/home/easy-notes)
+tray:
+already installed ($S/home/.config/autostart/easy-note-tray.desktop)
+exit 0
+```
 
-**WITNESS**: [who ran it and when — derived from `memory/event-trace/HUN-277.jsonl`, never the
-implementing agent alone]
+**DELTA**: one `easy-note setup` now makes the notes folder an Obsidian vault (plus launcher, icons and tray), so the launcher opens the dashboard with no clicks inside Obsidian.
+
+**WITNESS**: the Supervisor ran the AFTER capture 2026-11-19T10:27:50Z (`memory/event-trace/HUN-277.jsonl`); the owner ran `easy-note setup` and `easy-note dashboard` on the real machine the same day (vault `/home/hungnguyenhuu/easy-notes` added, backup `obsidian.json.easy-note-20261119-171805.bak`).
