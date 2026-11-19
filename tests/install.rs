@@ -51,6 +51,8 @@ fn settings_with_memory() -> String {
 
 struct Sb {
     dir: tempfile::TempDir,
+    /// Stub programs, outside `dir` so the file snapshots never see them.
+    bin: tempfile::TempDir,
 }
 
 impl Sb {
@@ -60,8 +62,22 @@ impl Sb {
                 .prefix(&format!("easy-note-install-{name}-"))
                 .tempdir()
                 .unwrap(),
+            bin: tempfile::Builder::new()
+                .prefix("easy-note-install-bin-")
+                .tempdir()
+                .unwrap(),
         };
         std::fs::create_dir_all(sb.home()).unwrap();
+        // HUN-277: `install obsidian` asks `xdg-mime` for the Obsidian handler and reads Obsidian's
+        // vault list and the process list. A stub with no handler, a temp XDG_CONFIG_HOME and an
+        // empty process dir keep every run off the real machine.
+        let bin = sb.bin.path();
+        std::fs::write(bin.join("xdg-mime"), "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(
+            bin.join("xdg-mime"),
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
         sb
     }
     fn root(&self) -> &Path {
@@ -81,8 +97,16 @@ impl Sb {
 
 fn easy(sb: &Sb, args: &[&str], cfg: Option<&Path>) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_easy-note"));
+    let path = format!(
+        "{}:{}",
+        sb.bin.path().display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
     cmd.args(args)
         .env("HOME", sb.home())
+        .env("PATH", path)
+        .env("XDG_CONFIG_HOME", sb.root().join("xdg"))
+        .env("EASY_NOTE_PROC_DIR", sb.root().join("proc"))
         .env("EASY_NOTE_DIR", sb.root().join("notes"))
         .current_dir(sb.home());
     match cfg {

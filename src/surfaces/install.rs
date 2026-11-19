@@ -1,5 +1,6 @@
 //! `install claude` and `uninstall claude` (FR-019, DDR 0003), `install launcher` and
-//! `uninstall launcher` (FR-026), and `install tray` and `uninstall tray` (FR-033).
+//! `uninstall launcher` (FR-026), `install tray` and `uninstall tray` (FR-033), and `install
+//! obsidian` / `uninstall obsidian` (FR-035, FR-040, DDR 0008).
 //!
 //! Install adds exactly one `UserPromptSubmit` entry (command `easy-note hook-prompt`, timeout 5)
 //! to the user-level `settings.json` and writes `commands/note.md`, both in the Claude Code config
@@ -13,7 +14,7 @@
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Map, Value};
@@ -230,17 +231,171 @@ fn own_file(path: &Path, content: &str, action: Action) -> Result<String, String
 }
 
 /// Run the action on `<notes dir>/easy-note.base`, like `launcher`, but a foreign file is exit 1. The notes dir is created if
-/// it is missing, as the first write does.
-pub fn obsidian(action: Action) -> Result<String, String> {
-    let dir = crate::core::config::notes_dir().map_err(|e| e.to_string())?;
-    let path = std::path::absolute(dir.join(super::dashboard::BASE_NAME))
-        .map_err(|e| format!("{}: {e}", dir.display()))?;
-    let out = own_file(&path, super::dashboard::BASE_FILE, action)?;
+/// it is missing, as the first write does. An install then makes the notes dir an Obsidian vault
+/// (FR-040). `Err` holds the text of the steps that ran and the message for stderr.
+pub fn obsidian(action: Action) -> Result<String, (String, String)> {
+    let dir = crate::core::config::notes_dir().map_err(|e| (String::new(), e.to_string()))?;
+    let dir = std::path::absolute(&dir)
+        .map_err(|e| (String::new(), format!("{}: {e}", dir.display())))?;
+    let path = dir.join(super::dashboard::BASE_NAME);
+    let out =
+        own_file(&path, super::dashboard::BASE_FILE, action).map_err(|e| (String::new(), e))?;
     // A file that is not ours is an error here (exit 1), unlike the launcher (AC 1).
-    match out.strip_suffix('\n').filter(|_| out.starts_with("kept ")) {
-        Some(kept) => Err(kept.to_string()),
-        None => Ok(out),
+    if let Some(kept) = out.strip_suffix('\n').filter(|_| out.starts_with("kept ")) {
+        return Err((String::new(), kept.to_string()));
     }
+    if action == Action::Uninstall {
+        // The vault is the person's now: its entry and `.obsidian/` stay (DDR 0008 item 3).
+        return Ok(out);
+    }
+    match register_vault(&dir) {
+        Ok(line) => Ok(out + &line),
+        Err(message) => Err((out, message)),
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Obsidian's vault list (FR-040, DDR 0008)
+// ---------------------------------------------------------------------------------------------
+
+/// `$XDG_CONFIG_HOME/obsidian/obsidian.json` when that is set and not empty, else
+/// `$HOME/.config/obsidian/obsidian.json` (native and snap builds).
+pub(crate) fn vault_list_path(xdg_config_home: Option<&std::ffi::OsStr>, home: &Path) -> PathBuf {
+    match xdg_config_home.filter(|v| !v.is_empty()) {
+        Some(xdg) => PathBuf::from(xdg),
+        None => home.join(".config"),
+    }
+    .join("obsidian/obsidian.json")
+}
+
+fn vault_list() -> Result<PathBuf, String> {
+    Ok(vault_list_path(
+        std::env::var_os("XDG_CONFIG_HOME").as_deref(),
+        &home_dir()?,
+    ))
+}
+
+/// The path of the first vault that is `notes_dir` or a parent of it, by path components. A vault
+/// inside the notes dir does not count. `notes_dir` is absolute.
+pub(crate) fn covering_vault(vaults: &Map<String, Value>, notes_dir: &Path) -> Option<String> {
+    vaults
+        .values()
+        .filter_map(|v| v.get("path").and_then(Value::as_str))
+        .find(|p| std::path::absolute(p).is_ok_and(|p| notes_dir.starts_with(p)))
+        .map(str::to_string)
+}
+
+/// `Some(true)` when Obsidian's vault list covers `notes_dir`, `Some(false)` when it does not, and
+/// `None` when the list is missing or cannot be read (no hint is worth giving then).
+pub(crate) fn in_vault_list(notes_dir: &Path) -> Option<bool> {
+    let text = fs::read_to_string(vault_list().ok()?).ok()?;
+    let value: Value = serde_json::from_str(&text).ok()?;
+    let vaults = value.get("vaults")?.as_object()?;
+    let dir = std::path::absolute(notes_dir).ok()?;
+    Some(covering_vault(vaults, &dir).is_some())
+}
+
+/// True when one of the process names (`/proc/<pid>/comm`) is `obsidian`.
+pub(crate) fn obsidian_running(comms: &[String]) -> bool {
+    comms.iter().any(|c| c.trim_end() == "obsidian")
+}
+
+/// The name of every process: `<root>/<pid>/comm`. `root` is `$EASY_NOTE_PROC_DIR` when set (a
+/// test seam, so tests never depend on a real Obsidian), else `/proc`.
+fn process_names() -> Vec<String> {
+    let root = std::env::var_os("EASY_NOTE_PROC_DIR")
+        .filter(|v| !v.is_empty())
+        .map_or_else(|| PathBuf::from("/proc"), PathBuf::from);
+    let Ok(entries) = fs::read_dir(root) else {
+        return vec![];
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter(|e| {
+            e.file_name()
+                .to_str()
+                .is_some_and(|n| n.bytes().all(|b| b.is_ascii_digit()))
+        })
+        .filter_map(|e| fs::read_to_string(e.path().join("comm")).ok())
+        .collect()
+}
+
+/// 16 lowercase hex characters from `/dev/urandom`, like Obsidian's own vault ids.
+fn random_id() -> Result<String, String> {
+    use std::io::Read;
+    let mut bytes = [0u8; 8];
+    fs::File::open("/dev/urandom")
+        .and_then(|mut f| f.read_exact(&mut bytes))
+        .map_err(|e| format!("cannot read /dev/urandom: {e}"))?;
+    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// Add `notes_dir` (absolute) to Obsidian's vault list and make `<notes dir>/.obsidian/`. Every
+/// check runs before the first write; `Ok` is the line for stdout.
+fn register_vault(notes_dir: &Path) -> Result<String, String> {
+    let list = vault_list()?;
+    let name = list.display().to_string();
+    let left = "the file was left as it is";
+    let state = Settings::read_with(&list, left)?;
+    if state.text.is_none() && super::dashboard::handler().trim().is_empty() {
+        return Ok("Obsidian is not installed: the vault step is skipped\n".to_string());
+    }
+    let mut value = state.value.clone();
+    let Some(root) = value.as_object_mut() else {
+        return Err(format!(
+            "{name}: the top-level value is not an object; {left}"
+        ));
+    };
+    let vaults = root
+        .entry("vaults")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .ok_or_else(|| format!("{name}: \"vaults\" is not an object; {left}"))?;
+    if let Some(vault) = covering_vault(vaults, notes_dir) {
+        return Ok(format!("already an Obsidian vault ({vault})\n"));
+    }
+    if obsidian_running(&process_names()) {
+        return Err("Obsidian is running: its vault list was left as it is. Close Obsidian, then run easy-note setup again".to_string());
+    }
+    let shown = notes_dir.display();
+    let path = notes_dir
+        .to_str()
+        .ok_or_else(|| format!("{shown}: the path is not UTF-8; {left}"))?;
+    let mut id = random_id()?;
+    while vaults.contains_key(&id) {
+        id = random_id()?;
+    }
+    vaults.insert(
+        id,
+        json!({"path": path, "ts": chrono::Utc::now().timestamp_millis(), "open": true}),
+    );
+    let new_text = serde_json::to_string(&value).map_err(|e| e.to_string())?;
+
+    fs::create_dir_all(notes_dir.join(".obsidian"))
+        .map_err(|e| format!("cannot make {shown}/.obsidian: {e}"))?;
+    let mut out = String::new();
+    match &state.text {
+        Some(old) => {
+            let backup = write_backup(&list, old, state.mode)?;
+            out.push_str(&format!("backup: {}\n", backup.display()));
+        }
+        None => {
+            let parent = state.target.parent().expect("a file path has a parent");
+            fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(parent)
+                .map_err(|e| format!("cannot make {}: {e}", parent.display()))?;
+        }
+    }
+    write_atomic(
+        &state.target,
+        new_text.as_bytes(),
+        state.mode.unwrap_or(0o644),
+    )
+    .map_err(|e| format!("cannot write {}: {e}", state.target.display()))?;
+    out.push_str(&format!("✓ added {shown} to Obsidian's vaults\n"));
+    Ok(out)
 }
 
 fn home_dir() -> Result<PathBuf, String> {
@@ -271,6 +426,11 @@ struct Settings {
 
 impl Settings {
     fn read(path: &Path) -> Result<Settings, String> {
+        Settings::read_with(path, "comments are not allowed. Nothing was changed")
+    }
+
+    /// Like `read`; `bad_json` ends the message for a file that is not JSON.
+    fn read_with(path: &Path, bad_json: &str) -> Result<Settings, String> {
         let name = path.display();
         let is_link = fs::symlink_metadata(path).is_ok_and(|m| m.is_symlink());
         let target = if is_link {
@@ -291,9 +451,8 @@ impl Settings {
             }
             Err(e) => return Err(format!("{name}: cannot read the file ({e})")),
         };
-        let value: Value = serde_json::from_str(&text).map_err(|e| {
-            format!("{name}: not plain JSON ({e}); comments are not allowed. Nothing was changed")
-        })?;
+        let value: Value = serde_json::from_str(&text)
+            .map_err(|e| format!("{name}: not plain JSON ({e}); {bad_json}"))?;
         let mode = fs::metadata(&target)
             .ok()
             .map(|m| m.permissions().mode() & 0o777);
@@ -491,19 +650,23 @@ fn write_atomic(target: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
     result
 }
 
-/// `settings.json.easy-note-<YYYYMMDD-HHMMSS>.bak` beside the settings file. A name that is
-/// taken (two runs in one second) gets `-2`, `-3` ... before `.bak`; an old backup is never
-/// overwritten.
+/// `<file name>.easy-note-<YYYYMMDD-HHMMSS>.bak` beside the file (`settings.json`,
+/// `obsidian.json`). A name that is taken (two runs in one second) gets `-2`, `-3` ... before
+/// `.bak`; an old backup is never overwritten.
 fn write_backup(settings: &Path, old: &str, mode: Option<u32>) -> Result<PathBuf, String> {
     let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
     let dir = settings.parent().expect("settings has a parent");
+    let file = settings
+        .file_name()
+        .expect("a file path has a name")
+        .to_string_lossy();
     for n in 1..1000 {
         let suffix = if n == 1 {
             String::new()
         } else {
             format!("-{n}")
         };
-        let path = dir.join(format!("settings.json.easy-note-{stamp}{suffix}.bak"));
+        let path = dir.join(format!("{file}.easy-note-{stamp}{suffix}.bak"));
         match OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -674,6 +837,75 @@ mod tests {
             !LAUNCHER_ICONS[1].1.contains("M24 32"),
             "16 px has no text lines"
         );
+    }
+
+    #[test]
+    fn the_vault_list_is_under_xdg_config_home_else_home_dot_config() {
+        let home = Path::new("/h");
+        let want = |p: &str| PathBuf::from(p);
+        assert_eq!(
+            vault_list_path(Some("/x".as_ref()), home),
+            want("/x/obsidian/obsidian.json")
+        );
+        assert_eq!(
+            vault_list_path(Some("".as_ref()), home),
+            want("/h/.config/obsidian/obsidian.json")
+        );
+        assert_eq!(
+            vault_list_path(None, home),
+            want("/h/.config/obsidian/obsidian.json")
+        );
+    }
+
+    #[test]
+    fn a_vault_covers_its_own_dir_and_children_by_components() {
+        let vaults = |paths: &[&str]| -> Map<String, Value> {
+            paths
+                .iter()
+                .enumerate()
+                .map(|(i, p)| (format!("{i}"), json!({"path": p, "ts": 1, "open": true})))
+                .collect()
+        };
+        let dir = Path::new("/home/a/easy-notes");
+        for covering in ["/home/a/easy-notes", "/home/a/easy-notes/", "/home/a", "/"] {
+            assert_eq!(
+                covering_vault(&vaults(&["/other", covering]), dir).as_deref(),
+                Some(covering)
+            );
+        }
+        for not in [
+            "/home/a/easy-notes/notes",
+            "/home/a/easy",
+            "/home/a/easy-notes-old",
+        ] {
+            assert_eq!(covering_vault(&vaults(&[not]), dir), None, "{not}");
+        }
+        let odd: Map<String, Value> = [("x".to_string(), json!({"path": 3}))]
+            .into_iter()
+            .collect();
+        assert_eq!(covering_vault(&odd, dir), None);
+    }
+
+    #[test]
+    fn obsidian_runs_only_when_a_process_is_named_obsidian() {
+        let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(obsidian_running(&names(&["bash\n", "obsidian\n"])));
+        assert!(obsidian_running(&names(&["obsidian"])));
+        assert!(!obsidian_running(&names(&[
+            "bash\n",
+            "obsidian-cli\n",
+            "Obsidian\n"
+        ])));
+        assert!(!obsidian_running(&[]));
+    }
+
+    #[test]
+    fn a_random_id_is_16_lowercase_hex() {
+        let id = random_id().unwrap();
+        assert_eq!(id.len(), 16);
+        assert!(id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)));
     }
 
     #[test]
