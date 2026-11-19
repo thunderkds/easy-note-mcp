@@ -68,8 +68,27 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE**: captured 2026-11-19T08:45:22Z on commit `8047fec` (no implementation commit yet), debug build,
+`env -i PATH=$S/bin:/usr/bin:/bin HOME=$S/home XDG_CONFIG_HOME=$S/xdg EASY_NOTE_DIR=$S/home/easy-notes`,
+`$S/bin/xdg-mime` prints `obsidian.desktop`, `$S/xdg/obsidian/obsidian.json` holds one vault at the child
+`<notes dir>/notes` (the owner's case). `S=/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-easy-note-mcp/271aecd5-0d60-4de1-85a8-6a2749f104f0/scratchpad/before`.
+
+```
+$ easy-note setup
+error: unrecognized subcommand 'setup'
+
+Usage: easy-note <COMMAND>
+
+For more information, try '--help'.
+exit 2
+$ easy-note install obsidian
+✓ wrote /tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-easy-note-mcp/271aecd5-0d60-4de1-85a8-6a2749f104f0/scratchpad/before/home/easy-notes/easy-note.base
+exit 0
+$ cat obsidian.json
+{"vaults":{"aaaa":{"path":"/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-easy-note-mcp/271aecd5-0d60-4de1-85a8-6a2749f104f0/scratchpad/before/home/easy-notes/notes","ts":1,"open":true}},"frame":"native"}
+$ ls -a notes dir
+easy-note.base
+```
 
 **AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
 
