@@ -1,6 +1,6 @@
 //! `tray`: an optional icon in the Linux system tray (FR-033, DDR 0005).
 //!
-//! The menu is New note, the 5 newest notes, Open notes folder and Quit. New note runs this binary
+//! The menu is New note, Open dashboard (runs `easy-note dashboard`), the 5 newest notes, Open notes folder and Quit. New note runs this binary
 //! as `quick`; a note and the folder open with `xdg-open`. Every command is an argv list, never a
 //! shell. The recent list is read again each time the menu opens.
 //!
@@ -12,6 +12,7 @@
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
 
@@ -45,6 +46,7 @@ pub enum Action {
     NewNote,
     Open(PathBuf),
     OpenFolder,
+    OpenDashboard,
     Quit,
 }
 
@@ -56,12 +58,13 @@ pub enum Entry {
     Separator,
 }
 
-/// The menu, top to bottom: New note, the newest notes (at most `RECENT`) or `no notes yet`,
+/// The menu, top to bottom: New note, Open dashboard, the newest notes (at most `RECENT`) or `no notes yet`,
 /// Open notes folder, Quit. `recent` is newest first. A label holds only masked text, with
 /// control characters shown as `\xNN`.
 pub fn menu(recent: &[Recent], now: DateTime<Utc>) -> Vec<Entry> {
     let mut entries = vec![
         Entry::Item("New note".to_string(), Action::NewNote),
+        Entry::Item("Open dashboard".to_string(), Action::OpenDashboard),
         Entry::Separator,
     ];
     if recent.is_empty() {
@@ -138,7 +141,70 @@ pub fn argv(action: &Action, exe: &Path, root: &Path) -> Option<(PathBuf, Vec<Os
         Action::NewNote => Some((exe.to_path_buf(), vec![OsString::from("quick")])),
         Action::Open(path) => Some(open(path)),
         Action::OpenFolder => Some(open(root)),
+        Action::OpenDashboard => Some((exe.to_path_buf(), vec![OsString::from("dashboard")])),
         Action::Quit => None,
+    }
+}
+
+/// The theme icon used when our own icons are not installed.
+const FALLBACK_ICON: &str = "accessories-text-editor";
+
+/// The tray icon name: ours when `install launcher` wrote it, the theme icon otherwise (FR-039).
+pub fn icon_choice(installed: bool, saved: bool) -> &'static str {
+    match (installed, saved) {
+        (true, true) => "easy-note-saved-symbolic",
+        (true, false) => "easy-note-symbolic",
+        (false, _) => FALLBACK_ICON,
+    }
+}
+
+/// How long the "just saved" badge shows.
+const BADGE_SECS: i64 = 3;
+
+/// Does the badge show? Only from the change until `BADGE_SECS` later. A clock set back gives no
+/// badge, so it never shows longer than 3 s.
+pub fn badge_state(last_change: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
+    last_change.is_some_and(|at| {
+        let secs = now.signed_duration_since(at).num_milliseconds();
+        (0..BADGE_SECS * 1000).contains(&secs)
+    })
+}
+
+/// The newest modified time of this month's folder and the inbox: one or two `stat` calls and no
+/// note listing (NFR-004). A missing folder counts as no time.
+pub fn watch_stamp(root: &Path, now: DateTime<Utc>) -> Option<SystemTime> {
+    let month = root.join(now.format("%Y/%m").to_string());
+    [month, root.join("inbox")]
+        .iter()
+        .filter_map(|dir| fs::metadata(dir).and_then(|m| m.modified()).ok())
+        .max()
+}
+
+/// The tray's saved-badge state: when the watched stamp last changed.
+pub struct Badge {
+    stamp: Option<SystemTime>,
+    changed: Option<DateTime<Utc>>,
+}
+
+impl Badge {
+    /// `stamp` is the baseline taken at start, so a note saved before the tray ran shows nothing.
+    pub fn new(stamp: Option<SystemTime>) -> Badge {
+        Badge {
+            stamp,
+            changed: None,
+        }
+    }
+
+    /// Feed the stamp of this poll; `true` when the badge shows. A folder that vanishes is no
+    /// change.
+    pub fn poll(&mut self, stamp: Option<SystemTime>, now: DateTime<Utc>) -> bool {
+        if stamp.is_some() && stamp != self.stamp {
+            self.changed = Some(now);
+        }
+        if stamp.is_some() {
+            self.stamp = stamp;
+        }
+        badge_state(self.changed, now)
     }
 }
 
@@ -187,8 +253,9 @@ mod icon {
 
     use super::*;
 
-    /// The theme icon until the designer's set exists.
-    const ICON: &str = "accessories-text-editor";
+    /// Where `install launcher` puts the symbolic tray icon, below `$HOME`.
+    const ICON_ROOT: &str = ".local/share/icons";
+    const SYMBOLIC: &str = "hicolor/symbolic/apps/easy-note-symbolic.svg";
     const WATCHER: &str = "org.kde.StatusNotifierWatcher";
     /// How often the main thread checks that the host did not go away.
     const POLL: Duration = Duration::from_secs(1);
@@ -197,6 +264,9 @@ mod icon {
         store: Store,
         recent: Vec<Recent>,
         clicks: mpsc::Sender<Action>,
+        /// The icon theme folder, when our symbolic icon is installed there.
+        icon_root: Option<PathBuf>,
+        saved: bool,
     }
 
     impl ksni::Tray for SniTray {
@@ -209,7 +279,13 @@ mod icon {
         }
 
         fn icon_name(&self) -> String {
-            ICON.to_string()
+            icon_choice(self.icon_root.is_some(), self.saved).to_string()
+        }
+
+        fn icon_theme_path(&self) -> String {
+            self.icon_root
+                .as_ref()
+                .map_or(String::new(), |dir| dir.display().to_string())
         }
 
         fn menu(&self) -> Vec<MenuItem<Self>> {
@@ -273,7 +349,15 @@ mod icon {
         let _lock = acquire_lock(&store.root)?;
         let exe = std::env::current_exe().map_err(|e| format!("cannot find myself: {e}"))?;
         let (clicks, inbox) = mpsc::channel();
+        let icon_root = std::env::var_os("HOME")
+            .filter(|home| !home.is_empty())
+            .map(|home| PathBuf::from(home).join(ICON_ROOT))
+            .filter(|root| root.join(SYMBOLIC).is_file());
+        let mut shown = false;
+        let mut badge = Badge::new(watch_stamp(&store.root, Utc::now()));
         let tray = SniTray {
+            icon_root,
+            saved: false,
             recent: recent(&store, RECENT),
             store: store.clone(),
             clicks,
@@ -288,6 +372,12 @@ mod icon {
                 Err(RecvTimeoutError::Timeout) => {
                     if handle.is_closed() {
                         return Err(format!("the tray host went away; {HOTKEY_HINT}"));
+                    }
+                    let now = Utc::now();
+                    let saved = badge.poll(watch_stamp(&store.root, now), now);
+                    if saved != shown {
+                        shown = saved;
+                        handle.update(|tray| tray.saved = saved);
                     }
                 }
             }
@@ -360,6 +450,7 @@ mod tests {
             labels(&entries),
             [
                 "New note",
+                "Open dashboard",
                 "---",
                 "n0 · just now",
                 "n1 · 1 min ago",
@@ -373,14 +464,18 @@ mod tests {
         );
         assert_eq!(entries[0], Entry::Item("New note".into(), Action::NewNote));
         assert_eq!(
-            entries[2],
+            entries[1],
+            Entry::Item("Open dashboard".into(), Action::OpenDashboard)
+        );
+        assert_eq!(
+            entries[3],
             Entry::Item("n0 · just now".into(), Action::Open(notes[0].path.clone()))
         );
         assert_eq!(
-            entries[8],
+            entries[9],
             Entry::Item("Open notes folder".into(), Action::OpenFolder)
         );
-        assert_eq!(entries[9], Entry::Item("Quit".into(), Action::Quit));
+        assert_eq!(entries[10], Entry::Item("Quit".into(), Action::Quit));
     }
 
     #[test]
@@ -390,6 +485,7 @@ mod tests {
             labels(&entries),
             [
                 "New note",
+                "Open dashboard",
                 "---",
                 "no notes yet",
                 "---",
@@ -397,26 +493,26 @@ mod tests {
                 "Quit"
             ]
         );
-        assert_eq!(entries[2], Entry::Disabled("no notes yet".into()));
+        assert_eq!(entries[3], Entry::Disabled("no notes yet".into()));
     }
 
     #[test]
     fn a_long_title_is_cut_to_forty_characters_and_a_secret_stays_masked() {
         let long = "x".repeat(60);
-        let label = labels(&menu(&[note(&long, at(11, 0, 0))], at(12, 0, 0)))[2].clone();
+        let label = labels(&menu(&[note(&long, at(11, 0, 0))], at(12, 0, 0)))[3].clone();
         let title = label.split(" · ").next().unwrap();
         assert_eq!(title.chars().count(), LABEL_MAX);
         assert!(title.ends_with('…'));
         let exact = "y".repeat(LABEL_MAX);
-        assert!(labels(&menu(&[note(&exact, at(11, 0, 0))], at(12, 0, 0)))[2].starts_with(&exact));
+        assert!(labels(&menu(&[note(&exact, at(11, 0, 0))], at(12, 0, 0)))[3].starts_with(&exact));
         let aws = concat!("AK", "IAIOSFODNN7EXAMPLE");
         let label = labels(&menu(
             &[note(&format!("key {aws}"), at(11, 0, 0))],
             at(12, 0, 0),
-        ))[2]
+        ))[3]
             .clone();
         assert!(!label.contains(aws), "{label}");
-        let label = labels(&menu(&[note("a\u{1b}[2Jb", at(11, 0, 0))], at(12, 0, 0)))[2].clone();
+        let label = labels(&menu(&[note("a\u{1b}[2Jb", at(11, 0, 0))], at(12, 0, 0)))[3].clone();
         assert!(!label.contains('\u{1b}'), "{label}");
     }
 
@@ -452,6 +548,63 @@ mod tests {
             Some((PathBuf::from("xdg-open"), vec![root.as_os_str().to_owned()]))
         );
         assert_eq!(argv(&Action::Quit, exe, root), None);
+        assert_eq!(
+            argv(&Action::OpenDashboard, exe, root),
+            Some((exe.to_path_buf(), vec![OsString::from("dashboard")]))
+        );
+    }
+
+    /// HUN-276 AC 6.
+    #[test]
+    fn the_tray_icon_is_ours_only_when_it_is_installed() {
+        assert_eq!(icon_choice(true, false), "easy-note-symbolic");
+        assert_eq!(icon_choice(true, true), "easy-note-saved-symbolic");
+        assert_eq!(icon_choice(false, false), "accessories-text-editor");
+        assert_eq!(icon_choice(false, true), "accessories-text-editor");
+    }
+
+    /// HUN-276 AC 7: the badge shows for 3 seconds from the change.
+    #[test]
+    fn the_badge_shows_for_three_seconds() {
+        let t0 = at(12, 0, 0);
+        let after = |ms: i64| t0 + chrono::Duration::milliseconds(ms);
+        assert!(badge_state(Some(t0), t0));
+        assert!(badge_state(Some(t0), after(2900)));
+        assert!(!badge_state(Some(t0), after(3100)));
+        assert!(!badge_state(None, t0));
+        // the clock went back: never longer than 3 s, so no badge
+        assert!(!badge_state(Some(after(5000)), t0));
+    }
+
+    #[test]
+    fn a_changed_stamp_starts_the_badge_and_the_first_poll_does_not() {
+        let t0 = at(12, 0, 0);
+        let s = |n: u64| Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(n));
+        let mut badge = Badge::new(s(10));
+        assert!(!badge.poll(s(10), t0), "same stamp: no badge");
+        assert!(badge.poll(s(11), t0), "a new stamp starts it");
+        assert!(badge.poll(s(11), t0 + chrono::Duration::seconds(2)));
+        assert!(!badge.poll(s(11), t0 + chrono::Duration::seconds(4)));
+        // a folder that vanishes is no change
+        assert!(!badge.poll(None, t0 + chrono::Duration::seconds(5)));
+        // a month folder that appears is a change
+        assert!(badge.poll(s(20), t0 + chrono::Duration::seconds(6)));
+    }
+
+    #[test]
+    fn the_stamp_is_the_newest_of_this_month_and_the_inbox_and_missing_is_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = at(12, 0, 0);
+        assert_eq!(watch_stamp(dir.path(), now), None);
+        fs::create_dir_all(dir.path().join("2026/11")).unwrap();
+        let month = watch_stamp(dir.path(), now);
+        assert!(month.is_some());
+        // another month is not watched
+        let other = tempfile::tempdir().unwrap();
+        fs::create_dir_all(other.path().join("2026/10")).unwrap();
+        assert_eq!(watch_stamp(other.path(), now), None);
+        fs::create_dir_all(dir.path().join("inbox")).unwrap();
+        assert!(watch_stamp(dir.path(), now) >= month);
     }
 
     #[test]

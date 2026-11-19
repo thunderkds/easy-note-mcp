@@ -32,8 +32,25 @@ Call the `note_add` tool of the easy-note MCP server with `text` set to the text
 $ARGUMENTS
 ";
 
-/// The launcher: one file, so the desktop menu and dock list `easy-note quick` (FR-026).
+/// The launcher: the desktop menu and dock open the dashboard; a right-click offers New note
+/// (FR-026, FR-039).
 const LAUNCHER_DESKTOP: &str = "[Desktop Entry]
+Type=Application
+Name=easy-note
+Comment=Your notes, one press away
+Exec=easy-note dashboard
+Icon=easy-note
+Terminal=false
+Categories=Utility;
+Actions=new-note;
+
+[Desktop Action new-note]
+Name=New note
+Exec=easy-note quick
+";
+
+/// The launcher text before the icons (HUN-260). It is ours only to upgrade or remove it.
+const LAUNCHER_DESKTOP_V1: &str = "[Desktop Entry]
 Type=Application
 Name=easy-note
 Comment=Save a one-line note
@@ -41,6 +58,26 @@ Exec=easy-note quick
 Terminal=false
 Categories=Utility;
 ";
+
+/// The icon files `install launcher` owns, below `$HOME` (FR-039).
+const LAUNCHER_ICONS: [(&str, &str); 4] = [
+    (
+        ".local/share/icons/hicolor/scalable/apps/easy-note.svg",
+        include_str!("../../assets/icons/easy-note.svg"),
+    ),
+    (
+        ".local/share/icons/hicolor/16x16/apps/easy-note.svg",
+        include_str!("../../assets/icons/easy-note-16.svg"),
+    ),
+    (
+        ".local/share/icons/hicolor/symbolic/apps/easy-note-symbolic.svg",
+        include_str!("../../assets/icons/easy-note-symbolic.svg"),
+    ),
+    (
+        ".local/share/icons/hicolor/symbolic/apps/easy-note-saved-symbolic.svg",
+        include_str!("../../assets/icons/easy-note-saved-symbolic.svg"),
+    ),
+];
 
 /// The tray's login item: one file, so the tray starts with the session (FR-033).
 const TRAY_DESKTOP: &str = "[Desktop Entry]
@@ -112,14 +149,53 @@ pub fn claude(action: Action) -> Result<String, String> {
     Ok(out)
 }
 
-/// Run the action on `$HOME/.local/share/applications/easy-note.desktop`. A file there that is
-/// not byte-identical to ours is never changed or removed.
+/// Run the action on the launcher and its icons: `$HOME/.local/share/applications/easy-note.desktop`
+/// and the four icon files. A file there that is not byte-identical to ours is never changed or
+/// removed. An install checks all five first: one foreign file means nothing is written. The old
+/// launcher text counts as ours and is replaced.
 pub fn launcher(action: Action) -> Result<String, String> {
-    own_desktop_file(
-        ".local/share/applications/easy-note.desktop",
+    let home = home_dir()?;
+    let mut files: Vec<(PathBuf, &str, &[&str])> = vec![(
+        home.join(".local/share/applications/easy-note.desktop"),
         LAUNCHER_DESKTOP,
-        action,
-    )
+        &[LAUNCHER_DESKTOP_V1],
+    )];
+    files.extend(
+        LAUNCHER_ICONS
+            .iter()
+            .map(|(rel, svg)| (home.join(rel), *svg, &[] as &[&str])),
+    );
+    let mut plans = vec![];
+    for (path, ours, old) in &files {
+        plans.push(plan_own_file_from(path, action, ours, old)?);
+    }
+    if action == Action::Install {
+        let kept: Vec<String> = files
+            .iter()
+            .zip(&plans)
+            .filter(|(_, plan)| matches!(plan, OwnFile::Keep))
+            .map(|((path, ..), _)| path.display().to_string())
+            .collect();
+        if !kept.is_empty() {
+            return Err(format!(
+                "kept {}: not the file easy-note writes. Nothing was written\n",
+                kept.join(", ")
+            ));
+        }
+    }
+    let mut out = String::new();
+    for ((path, ours, _), plan) in files.iter().zip(&plans) {
+        out.push_str(&plan.apply(path, ours)?);
+    }
+    Ok(if out.is_empty() {
+        let name = files[0].0.display();
+        match action {
+            Action::Install => format!("already installed ({name})\n"),
+            Action::Uninstall => format!("not installed ({name})\n"),
+        }
+    } else {
+        out
+    })
 }
 
 /// Run the action on `$HOME/.config/autostart/easy-note-tray.desktop`, like `launcher`. A build
@@ -137,10 +213,7 @@ pub fn tray(action: Action) -> Result<String, String> {
 
 /// `content` at `$HOME/<rel>`, installed or removed only when the file is missing or ours.
 fn own_desktop_file(rel: &str, content: &str, action: Action) -> Result<String, String> {
-    let home = std::env::var_os("HOME")
-        .filter(|v| !v.is_empty())
-        .ok_or("HOME is not set")?;
-    own_file(&PathBuf::from(home).join(rel), content, action)
+    own_file(&home_dir()?.join(rel), content, action)
 }
 
 /// `content` at `path`, installed or removed only when the file is missing or ours.
@@ -168,6 +241,13 @@ pub fn obsidian(action: Action) -> Result<String, String> {
         Some(kept) => Err(kept.to_string()),
         None => Ok(out),
     }
+}
+
+fn home_dir() -> Result<PathBuf, String> {
+    let home = std::env::var_os("HOME")
+        .filter(|v| !v.is_empty())
+        .ok_or("HOME is not set")?;
+    Ok(PathBuf::from(home))
 }
 
 /// `$CLAUDE_CONFIG_DIR` when set and not empty, else `$HOME/.claude` (DDR 0003 item 7).
@@ -329,18 +409,36 @@ fn remove_entry(root: &mut Map<String, Value>) -> Result<bool, String> {
 enum OwnFile {
     Nothing,
     Write,
+    /// An older text of ours, replaced by the new one; holds the old text for the diff.
+    Replace(String),
     Remove,
     /// A file that is not ours: left alone.
     Keep,
 }
 
 fn plan_own_file(path: &Path, action: Action, ours: &str) -> Result<OwnFile, String> {
+    plan_own_file_from(path, action, ours, &[])
+}
+
+/// Like `plan_own_file`; a file that equals one of `previous` is also ours.
+fn plan_own_file_from(
+    path: &Path,
+    action: Action,
+    ours: &str,
+    previous: &[&str],
+) -> Result<OwnFile, String> {
     let current = match fs::read(path) {
         Ok(bytes) => Some(bytes),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => return Err(format!("{}: cannot read the file ({e})", path.display())),
     };
-    let ours = current.as_deref() == Some(ours.as_bytes());
+    let old = previous
+        .iter()
+        .find(|old| current.as_deref() == Some(old.as_bytes()));
+    if let (Action::Install, Some(old)) = (action, old) {
+        return Ok(OwnFile::Replace((*old).to_string()));
+    }
+    let ours = old.is_some() || current.as_deref() == Some(ours.as_bytes());
     Ok(match (action, current.is_some(), ours) {
         (Action::Install, false, _) => OwnFile::Write,
         (Action::Install, true, true) | (Action::Uninstall, false, _) => OwnFile::Nothing,
@@ -362,6 +460,15 @@ impl OwnFile {
                     .and_then(|()| write_atomic(path, content.as_bytes(), 0o644))
                     .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
                 Ok(format!("✓ wrote {}\n", path.display()))
+            }
+            OwnFile::Replace(old) => {
+                write_atomic(path, content.as_bytes(), 0o644)
+                    .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+                let shown = path.display().to_string();
+                Ok(format!(
+                    "{}✓ updated {shown}\n",
+                    unified_diff(old, content, &shown, &shown)
+                ))
             }
             OwnFile::Remove => {
                 fs::remove_file(path)
@@ -520,6 +627,53 @@ mod tests {
         assert_ne!(first, second);
         assert_eq!(fs::read_to_string(&first).unwrap(), "one");
         assert_eq!(fs::read_to_string(&second).unwrap(), "two");
+    }
+
+    /// A small well-formedness check: every tag closes in order. No XML crate is needed.
+    fn well_formed(xml: &str) -> bool {
+        let mut stack: Vec<&str> = vec![];
+        let mut rest = xml;
+        while let Some(start) = rest.find('<') {
+            let Some(end) = rest[start..].find('>') else {
+                return false;
+            };
+            let tag = &rest[start + 1..start + end];
+            rest = &rest[start + end + 1..];
+            if tag.ends_with('/') {
+                continue;
+            }
+            let name = tag
+                .trim_start_matches('/')
+                .split_whitespace()
+                .next()
+                .unwrap_or("");
+            if tag.starts_with('/') {
+                if stack.pop() != Some(name) {
+                    return false;
+                }
+            } else {
+                stack.push(name);
+            }
+        }
+        stack.is_empty()
+    }
+
+    #[test]
+    fn each_icon_is_an_svg_with_a_view_box_and_the_design_colours() {
+        for (rel, svg) in LAUNCHER_ICONS {
+            assert!(svg.starts_with("<svg "), "{rel}");
+            assert!(svg.contains("viewBox=\""), "{rel}");
+            assert!(well_formed(svg), "{rel}");
+            if rel.contains("symbolic") {
+                assert!(svg.contains("#bebebe") && !svg.contains("#3CF5A8"), "{rel}");
+            } else {
+                assert!(svg.contains("#181B1A") && svg.contains("#3CF5A8"), "{rel}");
+            }
+        }
+        assert!(
+            !LAUNCHER_ICONS[1].1.contains("M24 32"),
+            "16 px has no text lines"
+        );
     }
 
     #[test]

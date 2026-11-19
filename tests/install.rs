@@ -661,11 +661,41 @@ fn an_unknown_install_target_is_a_usage_error() {
 // HUN-260 AC 8: `install launcher` / `uninstall launcher`
 // ---------------------------------------------------------------------------------------------
 
-const LAUNCHER: &str = "[Desktop Entry]\nType=Application\nName=easy-note\nComment=Save a one-line note\nExec=easy-note quick\nTerminal=false\nCategories=Utility;\n";
+const LAUNCHER: &str = "[Desktop Entry]\nType=Application\nName=easy-note\nComment=Your notes, one press away\nExec=easy-note dashboard\nIcon=easy-note\nTerminal=false\nCategories=Utility;\nActions=new-note;\n\n[Desktop Action new-note]\nName=New note\nExec=easy-note quick\n";
+/// The launcher text before HUN-276 (an upgrade target).
+const LAUNCHER_V1: &str = "[Desktop Entry]\nType=Application\nName=easy-note\nComment=Save a one-line note\nExec=easy-note quick\nTerminal=false\nCategories=Utility;\n";
 
 fn launcher_path(sb: &Sb) -> PathBuf {
     sb.home()
         .join(".local/share/applications/easy-note.desktop")
+}
+
+/// HUN-276 AC 2: the five files `install launcher` owns, relative to HOME.
+const ICON_FILES: [(&str, &str); 4] = [
+    (
+        ".local/share/icons/hicolor/scalable/apps/easy-note.svg",
+        "easy-note.svg",
+    ),
+    (
+        ".local/share/icons/hicolor/16x16/apps/easy-note.svg",
+        "easy-note-16.svg",
+    ),
+    (
+        ".local/share/icons/hicolor/symbolic/apps/easy-note-symbolic.svg",
+        "easy-note-symbolic.svg",
+    ),
+    (
+        ".local/share/icons/hicolor/symbolic/apps/easy-note-saved-symbolic.svg",
+        "easy-note-saved-symbolic.svg",
+    ),
+];
+
+fn asset(name: &str) -> String {
+    std::fs::read_to_string(format!(
+        "{}/assets/icons/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap()
 }
 
 fn launcher(sb: &Sb, verb: &str) -> Output {
@@ -673,21 +703,26 @@ fn launcher(sb: &Sb, verb: &str) -> Output {
 }
 
 #[test]
-fn ac8_install_launcher_writes_exactly_one_desktop_file() {
+fn ac8_install_launcher_writes_exactly_the_launcher_and_its_icons() {
     let sb = Sb::new("launcher");
     let o = launcher(&sb, "install");
     assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
     let files: Vec<PathBuf> = snapshot(sb.root()).into_iter().map(|(p, _)| p).collect();
-    assert_eq!(files, [launcher_path(&sb)], "no other file anywhere");
+    let mut want: Vec<PathBuf> = ICON_FILES
+        .iter()
+        .map(|(rel, _)| sb.home().join(rel))
+        .collect();
+    want.push(launcher_path(&sb));
+    want.sort();
+    assert_eq!(files, want, "no other file anywhere");
     let body = std::fs::read_to_string(launcher_path(&sb)).unwrap();
     assert_eq!(body, LAUNCHER);
-    for line in [
-        "Type=Application",
-        "Name=easy-note",
-        "Exec=easy-note quick",
-        "Terminal=false",
-    ] {
-        assert!(body.lines().any(|l| l == line), "{line}");
+    for (rel, name) in ICON_FILES {
+        assert_eq!(
+            std::fs::read_to_string(sb.home().join(rel)).unwrap(),
+            asset(name),
+            "{rel}"
+        );
     }
     assert!(
         text(&o.stdout).contains("easy-note.desktop"),
@@ -701,8 +736,47 @@ fn ac8_install_launcher_writes_exactly_one_desktop_file() {
     assert!(!sb.default_cfg().exists());
 }
 
+/// HUN-276 AC 3: the launcher passes the freedesktop validator when it is installed.
 #[test]
-fn ac8_a_second_install_says_already_installed_and_writes_nothing() {
+fn ac3_the_launcher_text_passes_desktop_file_validate() {
+    let sb = Sb::new("launcher-validate");
+    launcher(&sb, "install");
+    match Command::new("desktop-file-validate")
+        .arg(launcher_path(&sb))
+        .output()
+    {
+        Ok(o) => assert!(o.status.success(), "{}{}", text(&o.stdout), text(&o.stderr)),
+        Err(_) => eprintln!("skipped: desktop-file-validate is not installed"),
+    }
+}
+
+/// HUN-276 AC 4: an install made by the old launcher text is upgraded and the change is shown.
+#[test]
+fn ac4_the_old_launcher_text_is_upgraded_and_the_change_is_shown() {
+    let sb = Sb::new("launcher-v1");
+    write(&launcher_path(&sb), LAUNCHER_V1);
+    let o = launcher(&sb, "install");
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    assert_eq!(
+        std::fs::read_to_string(launcher_path(&sb)).unwrap(),
+        LAUNCHER
+    );
+    let said = text(&o.stdout);
+    assert!(said.contains("-Exec=easy-note quick"), "{said}");
+    assert!(said.contains("+Exec=easy-note dashboard"), "{said}");
+    for (rel, _) in ICON_FILES {
+        assert!(sb.home().join(rel).exists(), "{rel}");
+    }
+    // the old text, uninstalled, is also ours
+    let sb = Sb::new("launcher-v1-uninstall");
+    write(&launcher_path(&sb), LAUNCHER_V1);
+    let o = launcher(&sb, "uninstall");
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    assert!(!launcher_path(&sb).exists());
+}
+
+#[test]
+fn ac2_a_second_install_says_already_installed_and_writes_nothing() {
     let sb = Sb::new("launcher-twice");
     launcher(&sb, "install");
     let before = snapshot(sb.root());
@@ -716,29 +790,75 @@ fn ac8_a_second_install_says_already_installed_and_writes_nothing() {
     assert_eq!(snapshot(sb.root()), before);
 }
 
+/// A person deleted one icon by hand: the next install writes only that one.
+#[test]
+fn ac2_a_deleted_icon_is_written_again_and_the_rest_stay() {
+    let sb = Sb::new("launcher-missing-icon");
+    launcher(&sb, "install");
+    let gone = sb.home().join(ICON_FILES[1].0);
+    std::fs::remove_file(&gone).unwrap();
+    let o = launcher(&sb, "install");
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    assert_eq!(
+        std::fs::read_to_string(&gone).unwrap(),
+        asset("easy-note-16.svg")
+    );
+    let said = text(&o.stdout);
+    assert_eq!(said.matches("wrote").count(), 1, "{said}");
+}
+
 #[test]
 fn ac8_a_desktop_file_that_is_not_ours_is_kept_and_named() {
     let sb = Sb::new("launcher-foreign");
     let path = launcher_path(&sb);
     write(&path, "[Desktop Entry]\nName=mine\n");
     let before = snapshot(sb.root());
-    for verb in ["install", "uninstall"] {
-        let o = launcher(&sb, verb);
-        assert_eq!(o.status.code(), Some(0), "{verb}: {}", text(&o.stderr));
-        let said = text(&o.stdout);
-        assert!(said.contains("kept"), "{verb}: {said}");
-        assert!(said.contains(path.to_str().unwrap()), "{verb}: {said}");
-        assert_eq!(snapshot(sb.root()), before, "{verb}");
-    }
+    let o = launcher(&sb, "install");
+    assert_eq!(o.status.code(), Some(1), "{}", text(&o.stdout));
+    let said = text(&o.stderr);
+    assert!(said.contains("kept"), "{said}");
+    assert!(said.contains(path.to_str().unwrap()), "{said}");
+    assert_eq!(snapshot(sb.root()), before, "nothing written");
+    let o = launcher(&sb, "uninstall");
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    let said = text(&o.stdout);
+    assert!(said.contains("kept"), "{said}");
+    assert!(said.contains(path.to_str().unwrap()), "{said}");
+    assert_eq!(snapshot(sb.root()), before, "uninstall");
+}
+
+/// HUN-276 AC 2: a foreign icon file stops the install and nothing else is written.
+#[test]
+fn ac2_a_foreign_icon_file_is_kept_named_and_nothing_else_is_written() {
+    let sb = Sb::new("launcher-foreign-icon");
+    let icon = sb.home().join(ICON_FILES[0].0);
+    write(&icon, "<svg>mine</svg>");
+    let before = snapshot(sb.root());
+    let o = launcher(&sb, "install");
+    assert_eq!(o.status.code(), Some(1), "{}", text(&o.stdout));
+    let said = text(&o.stderr);
+    assert!(said.contains("kept"), "{said}");
+    assert!(said.contains(icon.to_str().unwrap()), "{said}");
+    assert_eq!(snapshot(sb.root()), before, "nothing else written");
+    // uninstall removes our files and keeps the foreign one
+    let sb = Sb::new("launcher-foreign-icon-uninstall");
+    launcher(&sb, "install");
+    let icon = sb.home().join(ICON_FILES[0].0);
+    write(&icon, "<svg>mine</svg>");
+    let o = launcher(&sb, "uninstall");
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    let left: Vec<PathBuf> = snapshot(sb.root()).into_iter().map(|(p, _)| p).collect();
+    assert_eq!(left, [icon]);
 }
 
 #[test]
-fn ac8_uninstall_removes_the_file_only_when_it_is_byte_identical_to_ours() {
+fn ac8_uninstall_removes_the_files_only_when_they_are_byte_identical_to_ours() {
     let sb = Sb::new("launcher-uninstall");
     launcher(&sb, "install");
     let o = launcher(&sb, "uninstall");
     assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
     assert!(!launcher_path(&sb).exists());
+    assert!(snapshot(sb.root()).is_empty(), "all five files are gone");
     assert!(text(&o.stdout).contains("removed"), "{}", text(&o.stdout));
     // a file that differs by one byte stays
     write(&launcher_path(&sb), &format!("{LAUNCHER}\n"));
