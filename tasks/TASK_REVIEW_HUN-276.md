@@ -14,21 +14,22 @@ Mode: auto
 Checks: pending (Stage 4)
 Memory: pending (Stage 5)
 Not done: merge (admin: after the auto verify pass); auto verify: not started
+Paused: auto-mode check failed — no test run in memory/event-trace/HUN-276.jsonl — write /home/thunderkds/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d/$CLAUDE_CODE_SESSION_ID with the task ID (minimal-track step 1): `mkdir -p /home/thunderkds/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d && printf '%s\n%s\n' "HUN-276" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /home/thunderkds/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d/$CLAUDE_CODE_SESSION_ID`, then rerun the task's tests so the trace records them under the task, then stop; extended track, but the trace has no `code-review` Skill call (Stage 4 runs in auto mode) [report 25aa77f49477]
 
 ## Evidence
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | tests/install.rs (ac8_install_launcher_writes_exactly_the_launcher_and_its_icons, ac3_the_launcher_text_passes_desktop_file_validate, ac4_the_old_launcher_text_is_upgraded_and_the_change_is_shown, ac2_a_second_install_..., ac2_a_deleted_icon_..., ac2_a_foreign_icon_file_..., ac8_*); src/surfaces/install.rs (each_icon_is_an_svg_with_a_view_box_and_the_design_colours); src/surfaces/tray.rs (menu, argv, icon_choice, badge_state, Badge::poll, watch_stamp). install suite: 29 passed; lib: 45 passed |
+| Verification command run | ☑ pass | Full guide command, both feature sets, `EXIT=0`: fmt clean, clippy -D warnings clean (default and `--features tray`), all `test result: ok`, `cargo tree -e normal -i ksni` empty |
+| Negative cases hold | ☑ pass | Red run first: before install.rs changed, `ac4_...` and `ac8_install_launcher_writes_exactly_...` failed (left: old text / 1 file; right: new text / 5 files). Foreign launcher and foreign icon: exit 1, snapshot unchanged. Tray tests were written together with their pure functions, so they had no separate red run |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | Stage 4 (Supervisor) |
+| Full smoke suite still green (no regression) | ☑ pass | `cargo test --locked` and `--features tray`: no failure (leak suite 46 passed in 129 s) |
 | **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | No renderer on this machine (`rsvg-convert`, `inkscape`, `convert`: not found), so no PNG was rendered. The SVGs were not seen as images. Path `d` values of the 4 app-icon paths equal the board (grep count 1 each in the SVG and the board). Owner screenshot still needed. Left open for ux-evaluate / owner |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ pass | grep of colours: app icons use only #181B1A, #2C3230, #EAEDEA, #8C9590, #3CF5A8; symbolic files use only #bebebe (8 uses, no other colour) |
+| **UI: Responsiveness at target viewports** | ☑ N/A | Desktop-native icons; 16 px variant has no lines or cursor (checked by unit test); no renderer to view 16/22 px |
 
 ---
 
@@ -39,12 +40,61 @@ Not done: merge (admin: after the auto verify pass); auto verify: not started
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE** (captured before any implementation commit; real output):
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+```
+Thu Nov 19 05:09:23 UTC 2026
+$ HOME=<temp> cargo run -q -- install launcher
+✓ wrote $HOME/.local/share/applications/easy-note.desktop
+$ find $HOME/.local/share -type f
+$HOME/.local/share/applications/easy-note.desktop
+$ cat $HOME/.local/share/applications/easy-note.desktop
+[Desktop Entry]
+Type=Application
+Name=easy-note
+Comment=Save a one-line note
+Exec=easy-note quick
+Terminal=false
+Categories=Utility;
+```
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+One file only: no icon, `Exec=easy-note quick`, no dashboard entry.
+
+**AFTER** (same command, after the change; real output):
+
+```
+Thu Nov 19 05:21:52 UTC 2026
+$ HOME=<temp> cargo run -q -- install launcher
+✓ wrote $HOME/.local/share/applications/easy-note.desktop
+✓ wrote $HOME/.local/share/icons/hicolor/scalable/apps/easy-note.svg
+✓ wrote $HOME/.local/share/icons/hicolor/16x16/apps/easy-note.svg
+✓ wrote $HOME/.local/share/icons/hicolor/symbolic/apps/easy-note-symbolic.svg
+✓ wrote $HOME/.local/share/icons/hicolor/symbolic/apps/easy-note-saved-symbolic.svg
+$ find $HOME/.local/share -type f
+$HOME/.local/share/applications/easy-note.desktop
+$HOME/.local/share/icons/hicolor/16x16/apps/easy-note.svg
+$HOME/.local/share/icons/hicolor/scalable/apps/easy-note.svg
+$HOME/.local/share/icons/hicolor/symbolic/apps/easy-note-saved-symbolic.svg
+$HOME/.local/share/icons/hicolor/symbolic/apps/easy-note-symbolic.svg
+$ cat easy-note.desktop
+[Desktop Entry]
+Type=Application
+Name=easy-note
+Comment=Your notes, one press away
+Exec=easy-note dashboard
+Icon=easy-note
+Terminal=false
+Categories=Utility;
+Actions=new-note;
+
+[Desktop Action new-note]
+Name=New note
+Exec=easy-note quick
+$ again
+already installed ($HOME/.local/share/applications/easy-note.desktop)
+```
+
+**DELTA**: After `install launcher`, easy-note has its own icon in the app grid, clicking the app runs `easy-note dashboard`, and a right-click offers New note; the tray shows the outline icon, an Open dashboard item and a 3 s saved badge.
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/Txxx.jsonl`, never the
 implementing agent alone]

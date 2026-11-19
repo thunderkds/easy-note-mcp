@@ -134,8 +134,11 @@ easy-note hotkey
 
 prints the commands for your desktop (GNOME, KDE, or any other). It changes nothing: you run them.
 
-For a click instead of a key, add the launcher. It writes one file,
-`~/.local/share/applications/easy-note.desktop`, and `easy-note uninstall launcher` removes it.
+For a click instead of a key, add the launcher. It writes five files: the app entry
+`~/.local/share/applications/easy-note.desktop` and four icons under
+`~/.local/share/icons/hicolor/`. `easy-note uninstall launcher` removes them. Clicking the app opens
+the dashboard; a right-click offers New note. A file there that is not ours
+is kept: the install names it, writes nothing and exits with 1.
 
 ```
 easy-note install launcher
@@ -150,11 +153,12 @@ build, so the default `easy-note` links no tray code. Install a build that has i
 cargo install --path . --locked --features tray
 ```
 
-Then run `easy-note tray`. The menu holds New note (opens the quick box with the last context), your
-5 newest notes (click one to open it), Open notes folder and Quit. It needs a desktop with a
+Then run `easy-note tray`. The menu holds New note (opens the quick box with the last context), Open
+dashboard, your 5 newest notes (click one to open it), Open notes folder and Quit. It needs a desktop with a
 StatusNotifier host: KDE has one; GNOME needs the AppIndicator extension. Without a host,
 `easy-note tray` exits with 1 and prints the hotkey hint, and `easy-note doctor` says
-`tray: no tray host`. Only one tray runs at a time.
+`tray: no tray host`. Only one tray runs at a time. After `install launcher` the tray shows the
+easy-note outline icon, and a check badge for 3 seconds after a note is saved.
 
 To start it at login, `easy-note install tray` writes one file,
 `~/.config/autostart/easy-note-tray.desktop`, and `easy-note uninstall tray` removes it. Nothing
