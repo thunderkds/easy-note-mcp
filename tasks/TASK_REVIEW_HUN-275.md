@@ -14,6 +14,7 @@ Mode: auto
 Checks: pending (Stage 4)
 Memory: pending (Stage 5)
 Not done: merge (admin: after the auto verify pass); auto verify: not started
+Paused: auto-mode check failed — no test run in memory/event-trace/HUN-275.jsonl — write /home/thunderkds/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d/$CLAUDE_CODE_SESSION_ID with the task ID (minimal-track step 1): `mkdir -p /home/thunderkds/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d && printf '%s\n%s\n' "HUN-275" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /home/thunderkds/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d/$CLAUDE_CODE_SESSION_ID`, then rerun the task's tests so the trace records them under the task, then stop; Risk High: decision 3 (`FACT`) is a choice — its FACT has no Citation (`path:line "quoted text"`) — so it must be `DEBATED` with exactly 3 Advocates named; extended track, but the trace has no `code-review` Skill call (Stage 4 runs in auto mode); Risk High, but the trace has no `security-review` Skill call [report cd980ec7422f]
 
 ## Evidence
 
@@ -39,8 +40,24 @@ Not done: merge (admin: after the auto verify pass); auto verify: not started
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE**: captured on branch `feat/HUN-275-claude-enrich` at `2be87be`, before any implementation commit, with a temp `HOME` and `EASY_NOTE_DIR` (`$S` = the agent's scratchpad; `RUSTUP_HOME`/`CARGO_HOME` pinned so cargo runs under the temp `HOME`):
+
+```
+$ date -u
+Thu Nov 19 05:11:56 UTC 2026
+$ HOME=$S/before/home EASY_NOTE_DIR=$S/before/notes cargo run -q -- ai enrich --pending; echo "exit $?"
+error: unrecognized subcommand 'enrich'
+
+Usage: easy-note ai <COMMAND>
+
+For more information, try '--help'.
+exit 2
+$ HOME=$S/before/home EASY_NOTE_DIR=$S/before/notes cargo run -q -- doctor; echo "exit $?"
+notes dir: /tmp/claude-1000/-home-thunderkds-workspace-pets-hungnguyen111-easy-note-mcp/787574a0-3c07-428c-b66c-57bbc928438d/scratchpad/before/notes
+0 notes checked
+no problems found
+exit 0
+```
 
 **AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
 
