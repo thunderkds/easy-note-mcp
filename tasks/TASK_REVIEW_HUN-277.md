@@ -10,11 +10,13 @@ Mode: auto
 1. Obsidian open → write nothing and ask to close it; `setup` runs launcher, obsidian, tray and never `install claude` — RULE: `docs/ddr/0008-register-the-obsidian-vault.md` § Decision
 2. Kept the `dashboard` hint "run easy-note install obsidian" for a missing `.base` file (not changed to `setup`) — FACT: PRD.md:96 "When `<notes dir>/easy-note.base` is missing it says to run `easy-note install obsidian`, exit 1"
 3. One P3 left as a suggestion (`setup` picks each step by matching its name string) — RULE: `.claude/skills/code-review/SKILL.md` § Phase 4 "Present P2/P3 fixes as suggestions only."
-4. Companion score not run (N/A row) — FACT: `templates/TASK_REVIEW_template.md` Evidence row "the merge gate blocks on ☑ fail only, never on an absent or N/A row" ⚠ decided for you — please review
-5. Merge HUN-277 although the owner now wants easy-note's own dashboard window — RULE: owner's answer in chat 2026-11-19 ("Merge it now"); the window is a new task that supersedes DDR 0006
+4. Companion score not run; the row is `☑ N/A` — DEBATED: record N/A (Advocate 1: run the easy-verifier score on `main...HEAD` and write the real row; Advocate 2: write N/A, the score is optional and every past run failed on scanner false positives, `memory/learnings.md:37`) ⚠ decided for you — please review
+5. Merge HUN-277 although the owner now wants easy-note's own dashboard window — RULE: `memory/decisions.md` § 2026-11-19 — HUN-277 `easy-note setup` registers the Obsidian vault; owner now wants easy-note's own dashboard window
 Checks: tests `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked && cargo clippy --all-targets --locked --features tray -- -D warnings && cargo test --locked --features tray` — exit 0, 0 failed (code at 2bd1447); reviews code-review — 0 P0/P1/P2, 1 P3 kept; security-review — no findings (10 candidates rejected, all confidence ≤2); real run `easy-note setup` on the owner's machine via the try script — vault `/home/hungnguyenhuu/easy-notes` added, `easy-note dashboard` opened `easy-note.base` in Obsidian's Bases view (checked in `~/easy-notes/.obsidian/workspace.json`)
 Memory: memory/decisions.md — 2026-11-19 owner wants easy-note's own dashboard window (the design's Main board), superseding DDR 0006; HUN-277 kept
-Not done: merge (admin: after the auto verify pass); auto verify: running (T182); the own dashboard window (new task, to be planned)
+Not done: merge (admin: after the auto verify pass); auto verify: ☑ pass (session 57adcf06-698d-4fd2-ae01-d55a73e5839c, commit c00391b7f352d0d7f2626d9c9bc5fc09744e7de2, log .claude/verify-runs/HUN-277-c00391b7f352.log); the own dashboard window (new task, to be planned)
+Paused: auto-mode check failed — Risk Medium: decision 4 (`FACT`) is a choice — it is flagged ⚠ — so it must be `DEBATED` with exactly 2 Advocates named; Risk Medium: decision 5 (`RULE`) is a choice — its RULE cites no written rule (`path:line`, `path § <heading>` or `docs/claude-md/tracks.md` `### <section>`) — so it must be `DEBATED` with exactly 2 Advocates named [report 64e11b778d36]
+Closed: row moved to Done 2026-11-19 — auto verify pass (session 57adcf06-698d-4fd2-ae01-d55a73e5839c, commit c00391b7f352d0d7f2626d9c9bc5fc09744e7de2); Gates 5 and 6 checked
 
 ## Evidence
 
@@ -39,10 +41,10 @@ EXIT 0
 ```
 |
 | Negative cases hold | ☑ pass | Red run before the code: `tests/setup.rs` 1 passed, 18 failed (`ac2_install_adds_one_vault…`, `ac4_when_obsidian_runs_nothing_is_written…`, `ac6_a_bad_vault_list_is_left_as_it_is_and_named`, `ac8_a_failing_step_does_not_stop_the_next_and_setup_exits_1` …); BEFORE capture below: `setup` → "unrecognized subcommand", exit 2 |
-| verify | ☐ pass / ☐ fail / ☐ N/A | |
+| verify | ☑ pass | auto-run by hook, session 57adcf06-698d-4fd2-ae01-d55a73e5839c, commit c00391b7f352d0d7f2626d9c9bc5fc09744e7de2, log .claude/verify-runs/HUN-277-c00391b7f352.log — pass |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Reviewed: `src/surfaces/install.rs` (`obsidian`, `register_vault`, `Settings::read_with`, `write_backup`), `cli.rs` (`setup`, `installed`), `dashboard.rs` (`run`, `handler`), tests, README. Callers of `install::obsidian` (cli only) checked. Skipped: `src/core/*`, `tray.rs` (untouched). Lane: `C2, 10 files, 1288 lines, EXCEEDS (lines 1288 > 500)` — tests and plan docs; warn only |
 | Full smoke suite still green (no regression) | ☑ pass | full `cargo test --locked` and `--features tray`: every `test result: ok`, 0 failed |
-| **Companion score (easy-verifier)** | ☑ N/A | not run for HUN-277 (see Auto decision 4) |
+| **Companion score (easy-verifier)** | ☑ N/A | not run: optional tool, decided by a two-Advocate debate (Auto decision 4); tests, code-review and security-review pass |
 | **UI: Visual regression (diff or verdict pasted)** | ☑ N/A | no UI of ours: terminal output only; Obsidian draws the window (guide § UI) |
 | **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ N/A | no UI of ours |
 | **UI: Responsiveness at target viewports** | ☑ N/A | no UI of ours |
