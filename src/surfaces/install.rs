@@ -140,8 +140,12 @@ fn own_desktop_file(rel: &str, content: &str, action: Action) -> Result<String, 
     let home = std::env::var_os("HOME")
         .filter(|v| !v.is_empty())
         .ok_or("HOME is not set")?;
-    let path = PathBuf::from(home).join(rel);
-    let out = plan_own_file(&path, action, content)?.apply(&path, content)?;
+    own_file(&PathBuf::from(home).join(rel), content, action)
+}
+
+/// `content` at `path`, installed or removed only when the file is missing or ours.
+fn own_file(path: &Path, content: &str, action: Action) -> Result<String, String> {
+    let out = plan_own_file(path, action, content)?.apply(path, content)?;
     Ok(if out.is_empty() {
         match action {
             Action::Install => format!("already installed ({})\n", path.display()),
@@ -150,6 +154,20 @@ fn own_desktop_file(rel: &str, content: &str, action: Action) -> Result<String, 
     } else {
         out
     })
+}
+
+/// Run the action on `<notes dir>/easy-note.base`, like `launcher`, but a foreign file is exit 1. The notes dir is created if
+/// it is missing, as the first write does.
+pub fn obsidian(action: Action) -> Result<String, String> {
+    let dir = crate::core::config::notes_dir().map_err(|e| e.to_string())?;
+    let path = std::path::absolute(dir.join(super::dashboard::BASE_NAME))
+        .map_err(|e| format!("{}: {e}", dir.display()))?;
+    let out = own_file(&path, super::dashboard::BASE_FILE, action)?;
+    // A file that is not ours is an error here (exit 1), unlike the launcher (AC 1).
+    match out.strip_suffix('\n').filter(|_| out.starts_with("kept ")) {
+        Some(kept) => Err(kept.to_string()),
+        None => Ok(out),
+    }
 }
 
 /// `$CLAUDE_CONFIG_DIR` when set and not empty, else `$HOME/.claude` (DDR 0003 item 7).

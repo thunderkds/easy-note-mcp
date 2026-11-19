@@ -69,6 +69,8 @@ pub enum Target {
     Launcher,
     /// The tray's login item, `easy-note-tray.desktop` in `~/.config/autostart`.
     Tray,
+    /// The `easy-note.base` Obsidian dashboard in the notes dir.
+    Obsidian,
 }
 
 /// What `ai` does with a note's AI detail file.
@@ -180,8 +182,10 @@ pub enum Command {
     Hotkey,
     /// Show an icon in the system tray (needs a build with `--features tray`).
     Tray,
-    /// Add the Claude Code hook (shows a diff, keeps a backup of settings.json), the launcher, or
-    /// the tray login item.
+    /// Open the notes dashboard (`easy-note.base`) in Obsidian. Run `install obsidian` first.
+    Dashboard,
+    /// Add the Claude Code hook (shows a diff, keeps a backup of settings.json), the launcher, the
+    /// tray login item, or the Obsidian dashboard file.
     Install { target: Target },
     /// Remove what `install` added (a file that is not ours stays).
     Uninstall { target: Target },
@@ -226,6 +230,7 @@ pub fn starts_mcp(command: &Command) -> bool {
         | Command::Quick { .. }
         | Command::Hotkey
         | Command::Tray
+        | Command::Dashboard
         | Command::Install { .. }
         | Command::Uninstall { .. } => false,
     }
@@ -415,6 +420,7 @@ fn dispatch(command: Command) -> Outcome {
             say_raw(&super::quick::hotkey(&desktop))
         }
         Command::Tray => super::tray::run().map_err(Fail::runtime),
+        Command::Dashboard => super::dashboard::run().map_err(Fail::runtime),
         Command::Install { target } => installed(target, super::install::Action::Install),
         Command::Uninstall { target } => installed(target, super::install::Action::Uninstall),
     }
@@ -427,6 +433,7 @@ fn installed(target: Target, action: super::install::Action) -> Outcome {
         Target::Claude => super::install::claude(action),
         Target::Launcher => super::install::launcher(action),
         Target::Tray => super::install::tray(action),
+        Target::Obsidian => super::install::obsidian(action),
     };
     match result {
         Ok(text) => say_raw(&safe(&text)),
@@ -637,6 +644,7 @@ mod tests {
             Command::Quick { cwd: None },
             Command::Hotkey,
             Command::Tray,
+            Command::Dashboard,
             Command::Install {
                 target: Target::Claude,
             },
@@ -654,6 +662,12 @@ mod tests {
             },
             Command::Uninstall {
                 target: Target::Tray,
+            },
+            Command::Install {
+                target: Target::Obsidian,
+            },
+            Command::Uninstall {
+                target: Target::Obsidian,
             },
         ]
     }
