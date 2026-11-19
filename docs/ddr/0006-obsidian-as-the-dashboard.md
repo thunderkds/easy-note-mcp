@@ -1,6 +1,6 @@
 # 0006. Obsidian is the dashboard; easy-note draws no window of its own
 
-**Status**: Accepted (owner, chat 2026-11-19: "how about apply the obsidian as brain"; "let create the tasks")
+**Status**: Accepted; item 2 superseded by DDR 0009 when built with `window` and a display (owner, chat 2026-11-19: "how about apply the obsidian as brain"; "let create the tasks")
 **Date**: 2026-11-19
 **Deciders**: thunderkds
 **Related**: PRD US-017, FR-034–FR-036, FR-039 · amends DDR 0001 (write targets), DDR 0004 (where AI detail is visible) · design `docs/design/`
