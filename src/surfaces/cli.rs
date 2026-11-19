@@ -69,7 +69,7 @@ pub enum Target {
     Launcher,
     /// The tray's login item, `easy-note-tray.desktop` in `~/.config/autostart`.
     Tray,
-    /// The `easy-note.base` Obsidian dashboard in the notes dir.
+    /// The `easy-note.base` Obsidian dashboard in the notes dir, and the notes dir as a vault.
     Obsidian,
 }
 
@@ -197,8 +197,10 @@ pub enum Command {
     Tray,
     /// Open the notes dashboard (`easy-note.base`) in Obsidian. Run `install obsidian` first.
     Dashboard,
+    /// Set up the launcher, the Obsidian dashboard and vault, and the tray login item in one go.
+    Setup,
     /// Add the Claude Code hook (shows a diff, keeps a backup of settings.json), the launcher, the
-    /// tray login item, or the Obsidian dashboard file.
+    /// tray login item, or the Obsidian dashboard file and vault.
     Install { target: Target },
     /// Remove what `install` added (a file that is not ours stays).
     Uninstall { target: Target },
@@ -244,6 +246,7 @@ pub fn starts_mcp(command: &Command) -> bool {
         | Command::Hotkey
         | Command::Tray
         | Command::Dashboard
+        | Command::Setup
         | Command::Install { .. }
         | Command::Uninstall { .. } => false,
     }
@@ -445,6 +448,7 @@ fn dispatch(command: Command) -> Outcome {
         }
         Command::Tray => super::tray::run().map_err(Fail::runtime),
         Command::Dashboard => super::dashboard::run().map_err(Fail::runtime),
+        Command::Setup => setup(),
         Command::Install { target } => installed(target, super::install::Action::Install),
         Command::Uninstall { target } => installed(target, super::install::Action::Uninstall),
     }
@@ -454,14 +458,51 @@ fn dispatch(command: Command) -> Outcome {
 /// person's settings file, so it is masked like every other output.
 fn installed(target: Target, action: super::install::Action) -> Outcome {
     let result = match target {
-        Target::Claude => super::install::claude(action),
-        Target::Launcher => super::install::launcher(action),
-        Target::Tray => super::install::tray(action),
+        Target::Claude => super::install::claude(action).map_err(|e| (String::new(), e)),
+        Target::Launcher => super::install::launcher(action).map_err(|e| (String::new(), e)),
+        Target::Tray => super::install::tray(action).map_err(|e| (String::new(), e)),
         Target::Obsidian => super::install::obsidian(action),
     };
     match result {
         Ok(text) => say_raw(&safe(&text)),
-        Err(message) => Err(Fail::runtime(message)),
+        Err((done, message)) => {
+            say_raw(&safe(&done))?;
+            Err(Fail::runtime(message))
+        }
+    }
+}
+
+/// `setup` (FR-041): `install launcher`, `install obsidian` and, in a tray build, `install tray`,
+/// each under its own heading. A failed step does not stop the next; exit 1 if any failed. It
+/// never runs `install claude` (DDR 0008 item 4).
+fn setup() -> Outcome {
+    use super::install::{self, Action::Install};
+    let mut failed = vec![];
+    for name in ["launcher", "obsidian", "tray"] {
+        say(&format!("{name}:"))?;
+        let result = match name {
+            "launcher" => install::launcher(Install).map_err(|e| (String::new(), e)),
+            "obsidian" => install::obsidian(Install),
+            _ if cfg!(feature = "tray") => install::tray(Install).map_err(|e| (String::new(), e)),
+            _ => Ok("tray not built in: skipped\n".to_string()),
+        };
+        match result {
+            Ok(text) => say_raw(&safe(&text))?,
+            Err((done, message)) => {
+                say_raw(&safe(&done))?;
+                eprintln!("easy-note: {}", safe(message.trim_end()));
+                failed.push(name);
+            }
+        }
+    }
+    say("Using Claude Code? Run easy-note install claude to add the /note hook.")?;
+    if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(Fail::runtime(format!(
+            "setup: {} failed",
+            failed.join(", ")
+        )))
     }
 }
 
@@ -676,6 +717,7 @@ mod tests {
             Command::Hotkey,
             Command::Tray,
             Command::Dashboard,
+            Command::Setup,
             Command::Install {
                 target: Target::Claude,
             },

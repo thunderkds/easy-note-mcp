@@ -140,3 +140,44 @@ fn dashboard_without_xdg_open_fails_in_one_line() {
     assert_eq!(o.status.code(), Some(1));
     assert!(text(&o.stderr).contains("xdg-open"), "{}", text(&o.stderr));
 }
+
+/// HUN-277 AC 9: Obsidian's vault list (`$HOME/.config/obsidian/obsidian.json` here, as
+/// XDG_CONFIG_HOME is cleared) does not cover the notes dir: one hint line, and the URI still opens.
+#[test]
+fn hun277_ac9_dashboard_hints_when_the_notes_dir_is_not_a_vault_yet() {
+    let hint = "the notes dir is not an Obsidian vault yet: run easy-note setup";
+    let list = |sb: &Sb, vault: &str| {
+        let path = sb.root().join("home/.config/obsidian/obsidian.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            path,
+            format!(r#"{{"vaults":{{"aaaa":{{"path":"{vault}","ts":1,"open":true}}}}}}"#),
+        )
+        .unwrap();
+    };
+
+    let sb = with_stubs("hint");
+    assert_eq!(sb.run(&["install", "obsidian"], "").status.code(), Some(0));
+    list(&sb, &format!("{}/notes", sb.notes().display()));
+    let o = sb.run(&["dashboard"], "obsidian.desktop");
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    assert_eq!(
+        text(&o.stderr).lines().filter(|l| l.contains(hint)).count(),
+        1,
+        "{}",
+        text(&o.stderr)
+    );
+    assert!(sb.log("open.args").starts_with("obsidian://open?path="));
+
+    // Covered (the notes dir itself): no hint.
+    list(&sb, sb.notes().to_str().unwrap());
+    let o = sb.run(&["dashboard"], "obsidian.desktop");
+    assert_eq!(o.status.code(), Some(0));
+    assert!(!text(&o.stderr).contains(hint), "{}", text(&o.stderr));
+
+    // No vault list at all: no hint (AC 3 above keeps its single open call).
+    let sb = with_stubs("hint-nolist");
+    sb.run(&["install", "obsidian"], "");
+    let o = sb.run(&["dashboard"], "obsidian.desktop");
+    assert!(!text(&o.stderr).contains(hint), "{}", text(&o.stderr));
+}

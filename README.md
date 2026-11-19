@@ -20,6 +20,21 @@ ln -s "$(command -v easy-note)" ~/.cargo/bin/n   # `n` is the same binary: `n <t
 Another `n` (for example the Node version manager) may already be on `PATH`. `easy-note doctor`
 reports the clash; `easy-note add` always works.
 
+## Set up
+
+One command puts the desktop parts in place: the launcher and its icons, the Obsidian dashboard
+and vault, and (in a build with the tray) the tray login item.
+
+```
+easy-note setup
+```
+
+Close Obsidian first: Obsidian keeps its vault list in memory and can save over a change. If
+Obsidian is open, `setup` says so, leaves Obsidian's vault list as it is and exits with 1; close
+Obsidian and run it again. Each step prints under its own heading (`launcher:`, `obsidian:`,
+`tray:`). A step that fails does not stop the next one. A second run writes nothing. `setup` does
+not touch Claude Code: run `easy-note install claude` for that (see "Clients").
+
 ## First note
 
 No setup is needed. The first write creates `~/easy-notes`:
@@ -150,15 +165,23 @@ quick box. Neither reads the other's folder.
 ## Obsidian dashboard
 
 easy-note draws no window of its own. Obsidian shows the notes: by day, project, task, tag and source.
-One command writes the dashboard file, `easy-note.base`, in your notes folder (the path `easy-note path` prints). `easy-note uninstall obsidian` removes it.
+`easy-note setup` (or `easy-note install obsidian` alone) writes the dashboard file, `easy-note.base`, in your notes
+folder (the path `easy-note path` prints). It also makes the notes folder an Obsidian vault: it creates
+`<notes folder>/.obsidian/` and adds the folder to Obsidian's vault list,
+`$XDG_CONFIG_HOME/obsidian/obsidian.json` (else `~/.config/obsidian/obsidian.json`). It only adds: every other vault
+and setting stays, and a backup of the old file is kept beside it. Nothing is added when a vault already is the notes
+folder or a parent of it, or when the file is not valid JSON (it names the file and exits with 1). With no Obsidian at
+all, the vault step is skipped. Flatpak's Obsidian is not covered.
 
 ```
-easy-note install obsidian
+easy-note setup
 easy-note dashboard
 ```
 
-`dashboard` opens the file in Obsidian. Open the notes folder as a vault in Obsidian once (a parent folder works too).
+`dashboard` opens the file in Obsidian. If the notes folder is not a vault yet, it says to run `easy-note setup`.
 If Obsidian is not installed, `dashboard` says so and opens the notes folder instead.
+`easy-note uninstall obsidian` removes only `easy-note.base`: it never edits Obsidian's vault list and never removes
+`.obsidian/`, because the vault is yours now. Remove the vault in Obsidian's vault switcher if you want it gone.
 
 ## One key press
 

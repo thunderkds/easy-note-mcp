@@ -136,7 +136,8 @@ pub fn choose(handler: &str, base_exists: bool) -> Plan {
     }
 }
 
-fn handler() -> String {
+/// What `xdg-mime` names as the `obsidian://` handler ("" when none or no `xdg-mime`).
+pub(crate) fn handler() -> String {
     Command::new("xdg-mime")
         .args(["query", "default", "x-scheme-handler/obsidian"])
         .stdin(Stdio::null())
@@ -159,7 +160,14 @@ pub fn run() -> Result<(), String> {
     let base: PathBuf = std::path::absolute(dir.join(BASE_NAME)).map_err(|e| e.to_string())?;
     match choose(&handler(), base.is_file()) {
         Plan::NoDashboard => Err("no dashboard yet: run easy-note install obsidian".to_string()),
-        Plan::OpenInObsidian => open(&obsidian_uri(&base)),
+        Plan::OpenInObsidian => {
+            if super::install::in_vault_list(&dir) == Some(false) {
+                eprintln!(
+                    "easy-note: the notes dir is not an Obsidian vault yet: run easy-note setup"
+                );
+            }
+            open(&obsidian_uri(&base))
+        }
         Plan::OpenFolder => {
             eprintln!("easy-note: Obsidian is not installed; opening the notes folder instead");
             open(&dir.to_string_lossy())
