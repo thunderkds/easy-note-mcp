@@ -1,5 +1,5 @@
 # PRD — easy-note-mcp
-**Last updated**: 2026-11-14
+**Last updated**: 2026-11-19 (round 4: Obsidian dashboard, local Claude enrich, icons — DDR 0006, DDR 0007)
 **Status**: Draft (PRD gate passed in autonomous mode; owner review pending)
 **Owner**: thunderkds
 
@@ -51,6 +51,8 @@ search and read notes; only the person edits or deletes them. Everything stays o
 | US-014 | As P1, I want one key press or one click from anywhere on my desktop to note, so I never open a terminal. | P1 | v1 |
 | US-015 | As P1, I want an easy-note icon in my system tray with "New note", so a note is a click away. | P1 | v1 (round 3c) |
 | US-016 | As P1, I want Claude to add a clear title and the missing detail to my one-line notes later, without changing my words, so a note still makes sense next month. | P1, P2 | v1 |
+| US-017 | As P1, I want my notes dir to be my Obsidian "brain": one click opens a dashboard of my notes by day, project, task and tag, and the AI detail shows there too, so I browse and link notes in the app I already use. | P1 | v1 (round 4) |
+| US-018 | As P1, I want easy-note to ask my own Claude subscription (the local `claude` CLI, the account I pick) to write the AI detail, so I do not have to start an `enrich_notes` run myself. | P1 | v1 (round 4) |
 | US-013 | As P1, I want a note typed in Claude Code to be saved without the agent seeing it, so the task is not disturbed and no tokens are spent. | P1 | v1 |
 
 ---
@@ -91,6 +93,12 @@ search and read notes; only the person edits or deletes them. Everything stays o
 | FR-031 | *(round 3)* MCP prompt `enrich_notes` (fixed text in code) must ask the client's model to use one subagent, call `note_pending_enrich`, read the session transcript only when `session` is set and the file exists, explain without quoting, and call `note_enrich` per note. The server runs no model. *Round 3b:* read only the transcript entries from the 10 minutes before the note's `created` (at most 40 entries); for a note with no `session` but a `repo` (terminal, `quick`), look for a Claude Code transcript of that repo with entries in that window and use it if exactly one matches; else enrich from the note text, repo, branch and task only and set `kind` with no context claim. | US-016 |
 | FR-032 | *(round 3)* Read outputs must show AI detail labelled `AI detail (not your words)` with model and date; search must match it and mark `matched_in: ai`; `easy-note tag <id> --accept-ai` copies suggested tags into the note; `easy-note ai rm <id>` deletes the AI file; `rm`/`restore` move the AI file with its note. `note_add` may take an optional `detail` (≤ 600 chars) stored as an AI file with `model: capture`. | US-016 |
 | FR-033 | *(round 3c)* `easy-note tray` (optional extra `[tray]`) must show a system tray icon with menu: New note (runs `quick`), the 5 newest notes (open the file), Open notes folder, Quit. `install tray` / `uninstall tray` write / remove exactly `~/.config/autostart/easy-note-tray.desktop` (Linux). With no tray host, `tray` exits with the hotkey hint and `doctor` reports it. | US-015 |
+| FR-034 | *(round 4)* `easy-note dashboard` must open the notes dashboard in Obsidian with `xdg-open "obsidian://open?path=<notes dir>/easy-note.base"` (argv list, no shell). When `<notes dir>/easy-note.base` is missing it says to run `easy-note install obsidian`, exit 1; when no `obsidian://` handler is registered (`xdg-mime query default x-scheme-handler/obsidian` is empty) it says Obsidian is not installed and opens the notes dir with `xdg-open` instead (DDR 0006). | US-017 |
+| FR-035 | *(round 4)* `easy-note install obsidian` / `uninstall obsidian` must write / remove exactly `<notes dir>/easy-note.base` (an Obsidian Bases file: views over `YYYY/MM` notes by day, project, task, tag and source), with the DDR 0003 rules: diff shown, a second run writes nothing, a file that is not ours is kept and named. The file is not a note (NOTE_FORMAT: only `YYYY/MM` files are notes). | US-017 |
+| FR-036 | *(round 4)* When the notes dir is inside an Obsidian vault (a `.obsidian` folder in the notes dir or a parent), every AI file write must also write `<notes dir>/ai/<id>.md`: front matter `easy-note-ai-view: 1`, `note: "[[<id>]]"`, `model`, `at`, `kind`, `stale`; a body headed `AI detail (not your words)`; every string masked. It is a view of the JSON AI file, never a note and never read back. `easy-note ai render` rewrites all views; `rm` / `restore` / `trash --empty` move or delete the view with its AI file (DDR 0006). | US-017, US-016 |
+| FR-037 | *(round 4)* `easy-note ai enrich <id>…` / `--pending [--limit N]` must, only when `[ai] enrich = "claude"` in config.toml, run the person's own Claude Code CLI: `claude -p --output-format json --json-schema <AI detail schema> --tools "" --strict-mcp-config --no-session-persistence --model <model>`, note text (masked) on stdin, `CLAUDE_CONFIG_DIR` from `[ai] claude_config_dir` when set, `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` removed from the child environment, a timeout; the answer is written through the `note_enrich` writer (caps, kinds, masking, `based_on`), `model` = the model the CLI reports. Off by default: with `enrich` unset or `"off"` the command says how to turn it on, exit 1, starts nothing (DDR 0007). | US-018 |
+| FR-038 | *(round 4)* config.toml `[ai]` section: `enrich` (`"off"` \| `"claude"`, default `"off"`), `command` (default `"claude"`), `claude_config_dir` (optional, `~` expanded), `model` (default `"haiku"`), `timeout_secs` (default 120), `after_save` (default `false`: when `true`, a note saved by `add`/`quick`/`hook`/MCP starts `ai enrich <id>` as a detached child and never waits for it). `easy-note doctor` reports the section, whether `command` is on `PATH`, and the account folder in use. | US-018 |
+| FR-039 | *(round 4)* App and tray icons from the design (`docs/design/` copy of the Graphite Mint canvas): `install launcher` also writes `easy-note.svg` to `~/.local/share/icons/hicolor/scalable/apps/` and the 16 px variant to `hicolor/16x16/apps/`, and `easy-note-symbolic.svg` plus `easy-note-saved-symbolic.svg` (the check badge) to `hicolor/symbolic/apps/`; the launcher gets `Icon=easy-note`, `Exec=easy-note dashboard` and a `New note` desktop action running `easy-note quick`. The tray uses `easy-note-symbolic` (theme path set to the installed folder), adds `Open dashboard` under `New note`, and shows the check badge for 3 s after a note is saved. `uninstall launcher` removes exactly the files it wrote. | US-014, US-015, US-017 |
 | FR-017 | Files the parser cannot read (bad front matter, unknown `easy-note` version) must be counted as `skipped` with the path in `stats` and `doctor`, never changed and never hidden silently. | US-004 |
 
 ---
@@ -99,13 +107,13 @@ search and read notes; only the person edits or deletes them. Everything stays o
 
 | ID | Requirement | Category |
 |----|-------------|----------|
-| NFR-001 | No traffic leaves the machine; HTTP mode binds `127.0.0.1` only. Subprocesses: read-only `git` (`rev-parse`, `branch --show-current`, `remote get-url`), in `quick` only, the OS input/notification tool (`osascript`, `zenity`, `kdialog`, `notify-send`), and in `tray` only, the OS opener (`xdg-open`, `open`). | Security |
+| NFR-001 | No traffic leaves the machine; HTTP mode binds `127.0.0.1` only. Subprocesses: read-only `git` (`rev-parse`, `branch --show-current`, `remote get-url`), in `quick` only, the OS input/notification tool (`osascript`, `zenity`, `kdialog`, `notify-send`), and in `tray` and `dashboard` only, the OS opener (`xdg-open`, `open`) and `xdg-mime query`. *(round 4)* One opt-in exception: `ai enrich` (FR-037) starts the person's own `claude` CLI, which sends the masked note text to the person's Claude account; nothing else leaves the machine, and nothing does while `[ai] enrich` is `"off"` (DDR 0007). | Security |
 | NFR-002 | No secret appears in any note file written by the tool, any response, or any log (fixture with planted secrets proves it). Logs never contain note text. | Security / Privacy |
-| NFR-003 | Writes only inside the notes dir, the config file, the one hook entry + command file owned by `install claude`, the launcher file owned by `install launcher` and the autostart file owned by `install tray` (DDR 0001, DDR 0003). Nothing in any code repo is ever written. | Safety |
+| NFR-003 | Writes only inside the notes dir, the config file, the one hook entry + command file owned by `install claude`, the launcher file and the four icon files owned by `install launcher` (FR-039), and the autostart file owned by `install tray` (DDR 0001, DDR 0003). Nothing in any code repo is ever written. | Safety |
 | NFR-004 | Search p95 < 500 ms and `note_add` p95 < 150 ms over 10,000 notes on a laptop. Confirmed by HUN-265 (2026-11-17, release build, WSL2, warm cache): search p95 173 ms, `note_add` p95 5.3 ms. | Performance |
 | NFR-005 | Safe under a sync tool: two machines adding notes at the same time never lose a note (per-file writes, unique IDs). | Reliability |
 | NFR-006 | One Rust binary (`easy-note`, with `n` as a link to it), installed with `cargo install`; Linux (x86_64) only in v1 (DDR 0005). | Portability |
-| NFR-007 | Deterministic: same files + same query → same output order; no LLM in the server. | Correctness |
+| NFR-007 | Deterministic: same files + same query → same output order; no LLM in the server. *(round 4)* `ai enrich` runs a model only in the person's own `claude` CLI, as a child process, and only on request or with `after_save`; no read path, count or search order depends on it (DDR 0007). | Correctness |
 | NFR-008 | Works with no kernel installed, and with no other plug-in installed. | Microkernel |
 | NFR-009 | *(round 2)* Hook pass path (prompt without the prefix) p95 < 50 ms, no interpreter start (native binary, DDR 0005); hook save path p95 < 150 ms. Confirmed by HUN-265 (2026-11-17, WSL2): pass p95 1.5 ms, save p95 16.0 ms. | Performance |
 | NFR-011 | *(round 3)* `quick` box visible p95 < 300 ms after the key press. | Performance |
@@ -139,9 +147,9 @@ search and read notes; only the person edits or deletes them. Everything stays o
 - Daily-journal files, templates, to-dos, reminders, due dates.
 - Attachments and images.
 - Automatic capture from transcripts (easy-memory's job). The round 2 prompt hook captures only what the person types after the prefix.
-- A key-listener daemon; macOS/Windows tray autostart (v1.1); a model call inside easy-note; AI edits of note files; network capture from a phone (the `inbox/` folder plus the person's sync tool covers it).
+- A key-listener daemon; macOS/Windows tray autostart (v1.1); a model call inside easy-note other than the opt-in `claude` CLI child of FR-037 (no API key, no SDK, no HTTP client); AI edits of note files; network capture from a phone (the `inbox/` folder plus the person's sync tool covers it).
 - Zero-model-call capture in Codex/Cursor (no hook system there).
-- A web UI (easy-personal shows counts and links; reader built on its own board, follow-up F1).
+- A web UI or a window of easy-note's own (round 4: the dashboard is an Obsidian Bases file, DDR 0006; easy-personal shows counts and links, follow-up F1).
 - Kernel skills or hooks for notes (follow-up F2 only lists easy-note in `companion-setup`).
 
 ---

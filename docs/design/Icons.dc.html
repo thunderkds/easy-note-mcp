@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>easy-note — icons</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0;background:#121413}</style>
+</helmet>
+<div style="width: 1280px; height: 780px; box-sizing: border-box; padding: 36px 40px; background: #121413; color: #DCE0DD; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font: 400 12.5px 'IBM Plex Mono', monospace; color: {{accent}}">&gt; the mark: a note with a folded corner</span>
+<h1 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; color: #EAEDEA">App icon and tray icon</h1>
+<p style="margin: 0; max-width: 900px; font-size: 13.5px; color: #8C9590">One sheet, one folded corner, two lines of text. The app icon adds the graphite tile, a neon fold and a neon text cursor. The tray icon is the bare outline in one colour, so it fits any panel.</p>
+</div>
+
+<div style="display: flex; gap: 24px; flex: 1">
+<section aria-label="App icon" style="flex: 1 1 560px; padding: 22px; border: 1px solid #262B29; border-radius: 8px; display: flex; flex-direction: column; gap: 18px">
+<h2 style="margin: 0; font: 500 13px 'IBM Plex Mono', monospace; color: #ABB3AE">app icon · dock and app menu</h2>
+<div style="display: flex; align-items: flex-end; gap: 28px">
+<svg width="220" height="220" viewBox="0 0 64 64" role="img" aria-label="easy-note app icon, 512 px shown at 220"><rect x="0.5" y="0.5" width="63" height="63" rx="14" fill="#181B1A" stroke="#2C3230"></rect><path d="M18 11h20l10 10v32H18z" fill="none" stroke="#EAEDEA" stroke-width="3" stroke-linejoin="round"></path><path d="M38 11v10h10z" fill="{{accent}}" stroke="{{accent}}" stroke-width="3" stroke-linejoin="round"></path><path d="M24 32h16M24 41h9" stroke="#8C9590" stroke-width="3" stroke-linecap="round"></path><path d="M37.5 37.5v7" stroke="{{accent}}" stroke-width="3" stroke-linecap="round"></path></svg>
+<div style="display: flex; align-items: flex-end; gap: 22px">
+<sc-for list="{{appSizes}}" as="sz" hint-placeholder-count="4">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px">
+<svg width="{{sz}}" height="{{sz}}" viewBox="0 0 64 64" role="img" aria-label="app icon {{sz}} px"><rect x="0.5" y="0.5" width="63" height="63" rx="14" fill="#181B1A" stroke="#2C3230"></rect><path d="M18 11h20l10 10v32H18z" fill="none" stroke="#EAEDEA" stroke-width="3" stroke-linejoin="round"></path><path d="M38 11v10h10z" fill="{{accent}}" stroke="{{accent}}" stroke-width="3" stroke-linejoin="round"></path><path d="M24 32h16M24 41h9" stroke="#8C9590" stroke-width="3" stroke-linecap="round"></path><path d="M37.5 37.5v7" stroke="{{accent}}" stroke-width="3" stroke-linecap="round"></path></svg>
+<span style="font: 400 11px 'IBM Plex Mono', monospace; color: #8C9590">{{sz}}</span>
+</div>
+</sc-for>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px">
+<svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="app icon 16 px, simplified"><rect x="0.5" y="0.5" width="15" height="15" rx="4" fill="#181B1A" stroke="#2C3230"></rect><path d="M4.5 3h5.2l2.3 2.3V13H4.5z" fill="none" stroke="#EAEDEA" stroke-width="1.3" stroke-linejoin="round"></path><path d="M9.7 3v2.3H12z" fill="{{accent}}" stroke="{{accent}}" stroke-width="1.3" stroke-linejoin="round"></path></svg>
+<span style="font: 400 11px 'IBM Plex Mono', monospace; color: #8C9590">16</span>
+</div>
+</div>
+</div>
+<p style="margin: 0; font-size: 12.5px; line-height: 1.5; color: #8C9590">512, 256, 128, 64 and 32 share one drawing. 16 px drops the text lines and the cursor so the sheet stays sharp. Files: <code style="font-family: 'IBM Plex Mono', monospace; color: #DCE0DD">easy-note.svg</code> plus PNGs in <code style="font-family: 'IBM Plex Mono', monospace; color: #DCE0DD">hicolor/&lt;size&gt;/apps</code>.</p>
+</section>
+
+<section aria-label="Tray icon" style="flex: 1 1 560px; padding: 22px; border: 1px solid #262B29; border-radius: 8px; display: flex; flex-direction: column; gap: 16px">
+<h2 style="margin: 0; font: 500 13px 'IBM Plex Mono', monospace; color: #ABB3AE">tray icon · 16, 22, 24 px</h2>
+<sc-for list="{{panels}}" as="p" hint-placeholder-count="2">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font: 400 11px 'IBM Plex Mono', monospace; color: #8C9590">{{p.label}}</span>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<sc-for list="{{p.states}}" as="st" hint-placeholder-count="2">
+<div style="height: 72px; border-radius: 6px; background: {{p.bg}}; display: flex; align-items: center; justify-content: center; gap: 22px; position: relative">
+<sc-for list="{{traySizes}}" as="sz" hint-placeholder-count="3">
+<svg width="{{sz}}" height="{{sz}}" viewBox="0 0 16 16" role="img" aria-label="tray icon {{st.name}} {{sz}} px on {{p.label}}"><path d="M3.5 1.5h6.5l3 3v10h-9.5z" fill="none" stroke="{{p.ink}}" stroke-width="1.3" stroke-linejoin="round"></path><path d="M10 1.5v3h3" fill="none" stroke="{{p.ink}}" stroke-width="1.3" stroke-linejoin="round"></path><path d="M5.8 8.5h4.4M5.8 11.2h2.6" stroke="{{p.ink}}" stroke-width="1.3" stroke-linecap="round"></path><circle cx="12.3" cy="12.3" r="3.4" fill="{{st.badge}}" stroke="{{p.bg}}" stroke-width="1.4" opacity="{{st.on}}"></circle><path d="M10.8 12.4l1.1 1.1 1.9-2.1" fill="none" stroke="{{p.bg}}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" opacity="{{st.on}}"></path></svg>
+</sc-for>
+<span style="position: absolute; left: 10px; bottom: 6px; font: 400 10.5px 'IBM Plex Mono', monospace; color: {{p.caption}}">{{st.name}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-for>
+<p style="margin: 0; font-size: 12.5px; line-height: 1.5; color: #8C9590">Ship it as <code style="font-family: 'IBM Plex Mono', monospace; color: #DCE0DD">easy-note-symbolic.svg</code> so GNOME and KDE recolour the outline for the panel. “Just saved” adds a check badge for 3 seconds after any capture, then the icon goes back to rest. No unread counts: notes are never “unread”.</p>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#3CF5A8"},"$preview":{"width":1280,"height":780}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#3CF5A8';
+const states = (badge) => [{ name: 'at rest', badge: badge, on: 0 }, { name: 'just saved · 3 s', badge: badge, on: 1 }];
+return {
+accent: accent,
+appSizes: [128, 64, 48, 32],
+traySizes: [16, 22, 24],
+panels: [
+{ label: 'dark panel (GNOME default)', bg: '#1C1F1E', ink: '#DCE0DD', caption: '#8C9590', states: states(accent) },
+{ label: 'light panel', bg: '#E8EBE9', ink: '#2C3230', caption: '#5A625E', states: states('#14935F') }
+]
+};
+}
+}
+</script>
+</body>
+</html>

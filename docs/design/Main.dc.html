@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>easy-note — dashboard</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#121413}
+a{color:#7EDDB0;text-decoration:none}a:hover{color:#B2EDCF}
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #3CF5A8;outline-offset:2px}
+</style>
+</helmet>
+<div style="position: relative; min-height: 100vh; background: #121413; color: #DCE0DD; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column">
+
+<header style="min-height: 60px; box-sizing: border-box; padding: 10px 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; border-bottom: 1px solid #232826">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 4.5h13.5L26 10v17.5H7z" fill="none" stroke="{{accent}}" stroke-width="2" stroke-linejoin="round"></path><path d="M20.5 4.5V10H26" fill="none" stroke="{{accent}}" stroke-width="2" stroke-linejoin="round"></path><path d="M11.5 16h9M11.5 21h5.5" stroke="{{accent}}" stroke-width="2" stroke-linecap="round"></path></svg>
+<span style="font-weight: 600; font-size: 17px; color: #EAEDEA">easy-note</span>
+<span style="font: 400 12px 'IBM Plex Mono', monospace; color: #8C9590; padding: 3px 8px; border: 1px solid #2C3230; border-radius: 4px">~/easy-notes</span>
+</div>
+<div role="status" aria-label="Status" style="display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto">
+<span title="Tray icon" style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid #262B29; border-radius: 6px; font: 400 12px 'IBM Plex Mono', monospace; color: #ABB3AE"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{accent}}; box-shadow: {{dotGlow}}"></span>tray on</span>
+<span title="Global hotkey" style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid #262B29; border-radius: 6px; font: 400 12px 'IBM Plex Mono', monospace; color: #ABB3AE"><kbd style="font: inherit; color: #DCE0DD">Ctrl+Alt+N</kbd></span>
+<span title="Notes waiting for AI detail" style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border: 1px solid #262B29; border-radius: 6px; font: 400 12px 'IBM Plex Mono', monospace; color: #ABB3AE">{{pendingCount}} without AI detail</span>
+</div>
+<button type="button" onClick="{{openCapture}}" style="height: 38px; padding: 0 16px; background: {{accent}}; color: #0E100F; border: 0; border-radius: 6px; box-shadow: {{neonGlow}}; font: 500 14px 'IBM Plex Sans', sans-serif; cursor: pointer">+ New note</button>
+</header>
+
+<div style="padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; box-sizing: border-box; width: 100%; max-width: 1440px">
+
+<section aria-label="Counts" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); border: 1px solid #262B29; border-radius: 8px; overflow: hidden">
+<div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid #262B29"><span style="font: 500 26px/1.1 'IBM Plex Mono', monospace; color: {{accent}}; text-shadow: {{neonText}}">{{todayCount}}</span><span style="font-size: 13px; color: #8C9590">notes today</span></div>
+<div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid #262B29"><span style="font: 500 26px/1.1 'IBM Plex Mono', monospace; color: #EAEDEA">{{totalCount}}</span><span style="font-size: 13px; color: #8C9590">notes in total</span></div>
+<div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid #262B29"><span style="font: 500 26px/1.1 'IBM Plex Mono', monospace; color: #EAEDEA">{{repoCount}}</span><span style="font-size: 13px; color: #8C9590">projects</span></div>
+<div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 8px"><span style="font-size: 13px; color: #8C9590">by project</span>
+<sc-for list="{{topRepos}}" as="r" hint-placeholder-count="3">
+<div style="display: flex; align-items: center; gap: 8px; font: 400 12px 'IBM Plex Mono', monospace"><span style="width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ABB3AE">{{r.name}}</span><span style="flex: 1; height: 4px; border-radius: 2px; background: #232826"><span style="display: block; width: {{r.pct}}%; height: 4px; border-radius: 2px; background: #7EDDB0"></span></span><span style="width: 18px; text-align: right; color: #8C9590">{{r.n}}</span></div>
+</sc-for>
+</div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+
+<section aria-label="Notes" style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+<label for="search" style="position: relative; display: block">
+<span style="position: absolute; left: 12px; top: 11px; color: #8C9590" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.4"></circle><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></span>
+<input id="search" type="search" value="{{query}}" onChange="{{setQuery}}" placeholder="Search notes — every word must match" aria-label="Search notes" autocomplete="off" style="width: 100%; box-sizing: border-box; height: 38px; padding: 0 12px 0 36px; background: #0E100F; color: #DCE0DD; border: 1px solid #2C3230; border-radius: 6px; font: 400 14px 'IBM Plex Sans', sans-serif">
+</label>
+<div role="group" aria-label="Filter" style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{filters}}" as="f" hint-placeholder-count="7">
+<button type="button" onClick="{{f.pick}}" aria-pressed="{{f.pressed}}" style="height: 30px; padding: 0 12px; border-radius: 6px; background: {{f.bg}}; color: {{f.color}}; border: 1px solid {{f.border}}; font: 400 12.5px 'IBM Plex Sans', sans-serif; cursor: pointer">{{f.label}} <span style="font-family: 'IBM Plex Mono', monospace; color: #8C9590">{{f.n}}</span></button>
+</sc-for>
+</div>
+
+<sc-if value="{{noResults}}" hint-placeholder-val="{{false}}">
+<div style="padding: 28px; border: 1px dashed #2C3230; border-radius: 8px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start">
+<p style="margin: 0; color: #DCE0DD">No note matches “{{query}}”.</p>
+<p style="margin: 0; font-size: 13px; color: #8C9590">Every word must match: text, project, task or tag.</p>
+<button type="button" onClick="{{clearSearch}}" style="height: 32px; padding: 0 12px; background: transparent; color: #DCE0DD; border: 1px solid #2C3230; border-radius: 6px; font: 500 12.5px 'IBM Plex Sans', sans-serif; cursor: pointer">Clear search</button>
+</div>
+</sc-if>
+
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h2 style="margin: 4px 0 0; font: 400 11.5px 'IBM Plex Mono', monospace; color: #8C9590">// {{g.label}}</h2>
+<ul style="margin: 0; padding: 0; list-style: none; border: 1px solid #262B29; border-radius: 8px; overflow: hidden">
+<sc-for list="{{g.rows}}" as="n" hint-placeholder-count="3">
+<li style="border-bottom: 1px solid #1F2321">
+<button type="button" onClick="{{n.pick}}" aria-current="{{n.current}}" style="width: 100%; display: flex; align-items: center; gap: 12px; padding: 11px 14px; background: {{n.bg}}; border: 0; box-shadow: {{n.ring}}; color: #DCE0DD; text-align: left; cursor: pointer; font: 400 14px 'IBM Plex Sans', sans-serif">
+<span style="width: 44px; flex-shrink: 0; font: 400 12px 'IBM Plex Mono', monospace; color: #8C9590">{{n.time}}</span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: {{n.titleColor}}">{{n.first}}</span>
+<span style="font: 400 12px 'IBM Plex Mono', monospace; color: #8C9590; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{n.where}}</span>
+</span>
+<sc-if value="{{n.hasKind}}" hint-placeholder-val="{{true}}"><span style="flex-shrink: 0; font: 400 11.5px 'IBM Plex Mono', monospace; color: #ABB3AE; padding: 2px 7px; border: 1px solid #2C3230; border-radius: 4px">{{n.kind}}</span></sc-if>
+<span style="width: 40px; flex-shrink: 0; text-align: right; font: 400 11.5px 'IBM Plex Mono', monospace; color: {{n.markColor}}">{{n.mark}}</span>
+</button>
+</li>
+</sc-for>
+</ul>
+</div>
+</sc-for>
+</section>
+
+<aside aria-label="Note" style="flex: 1 1 380px; min-width: 0; max-width: 100%">
+<sc-if value="{{hasSel}}" hint-placeholder-val="{{true}}">
+<article style="border: 1px solid #262B29; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+<span style="font: 400 12px 'IBM Plex Mono', monospace; color: #8C9590">{{sel.id}}</span>
+<span style="margin-left: auto; font: 400 11.5px 'IBM Plex Mono', monospace; color: #ABB3AE; padding: 2px 7px; border: 1px solid #2C3230; border-radius: 4px">{{sel.source}}</span>
+</div>
+<p style="margin: 0; font-size: 12px; color: #8C9590">Your words</p>
+<p style="margin: -10px 0 0; font-size: 16px; line-height: 1.6; color: #EAEDEA; white-space: pre-wrap">{{sel.text}}</p>
+<sc-if value="{{sel.masked}}" hint-placeholder-val="{{false}}"><p style="margin: -6px 0 0; font: 400 12px 'IBM Plex Mono', monospace; color: #E3B66B">1 secret masked</p></sc-if>
+<p style="margin: 0; font: 400 12.5px 'IBM Plex Mono', monospace; color: #ABB3AE">{{sel.context}}</p>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{sel.tagList}}" as="t" hint-placeholder-count="2"><span style="padding: 3px 9px; border: 1px solid #2C3230; border-radius: 4px; font: 400 12px 'IBM Plex Mono', monospace; color: #B5BCB7">#{{t}}</span></sc-for>
+<sc-if value="{{sel.noTags}}" hint-placeholder-val="{{false}}"><span style="font-size: 12.5px; color: #6E7772">no tags</span></sc-if>
+</div>
+
+<sc-if value="{{sel.hasAi}}" hint-placeholder-val="{{true}}">
+<section aria-label="AI detail, not your words" style="padding: 14px 16px; border: 1px dashed #2C3230; border-radius: 6px; background: #0E100F; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l1.6 4.9L14.5 8l-4.9 1.6L8 14.5l-1.6-4.9L1.5 8l4.9-1.6z" fill="none" stroke="#8C9590" stroke-width="1.2" stroke-linejoin="round"></path></svg>
+<strong style="font: 500 12px 'IBM Plex Mono', monospace; color: #ABB3AE">AI detail (not your words)</strong>
+<span style="margin-left: auto; font: 400 11.5px 'IBM Plex Mono', monospace; color: #8C9590">{{sel.ai.model}} · {{sel.ai.at}}</span>
+</div>
+<sc-if value="{{sel.ai.stale}}" hint-placeholder-val="{{false}}"><p style="margin: 0; display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: #E3B66B"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5l6 11H2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path><path d="M8 7v3M8 12v.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>stale: you edited the note after the AI wrote this</p></sc-if>
+<p style="margin: 0; font-weight: 500; color: #ABB3AE">{{sel.ai.title}}</p>
+<p style="margin: 0; font: 400 12px 'IBM Plex Mono', monospace; color: #8C9590">type: {{sel.ai.kind}}</p>
+<p style="margin: 0; font-size: 13px; line-height: 1.55; color: #8C9590">{{sel.ai.summary}}</p>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px">
+<span style="font-size: 12px; color: #8C9590">suggested</span>
+<sc-for list="{{sel.ai.suggest}}" as="t" hint-placeholder-count="2"><span style="padding: 2px 8px; border: 1px dashed #2C3230; border-radius: 4px; font: 400 12px 'IBM Plex Mono', monospace; color: #8C9590">#{{t}}</span></sc-for>
+<sc-if value="{{sel.canAccept}}" hint-placeholder-val="{{true}}"><button type="button" onClick="{{acceptTags}}" style="margin-left: auto; height: 30px; padding: 0 12px; background: transparent; color: #DCE0DD; border: 1px solid #2C3230; border-radius: 6px; font: 500 12.5px 'IBM Plex Sans', sans-serif; cursor: pointer">Add as tags</button></sc-if>
+</div>
+</section>
+</sc-if>
+<sc-if value="{{sel.noAi}}" hint-placeholder-val="{{false}}">
+<p style="margin: 0; padding: 12px 14px; border: 1px dashed #2C3230; border-radius: 6px; font-size: 13px; line-height: 1.5; color: #8C9590">No AI detail yet. In Claude Code, run the <code style="font-family: 'IBM Plex Mono', monospace; color: #DCE0DD">enrich_notes</code> prompt; your own AI writes it in a separate file.</p>
+</sc-if>
+
+<div style="display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; border-top: 1px solid #1F2321">
+<button type="button" onClick="{{openEditor}}" style="height: 34px; padding: 0 14px; background: transparent; color: #DCE0DD; border: 1px solid #2C3230; border-radius: 6px; font: 500 13px 'IBM Plex Sans', sans-serif; cursor: pointer">Open in editor</button>
+<button type="button" onClick="{{copyId}}" style="height: 34px; padding: 0 14px; background: transparent; color: #DCE0DD; border: 1px solid #2C3230; border-radius: 6px; font: 500 13px 'IBM Plex Sans', sans-serif; cursor: pointer">Copy id</button>
+<button type="button" onClick="{{trash}}" style="margin-left: auto; height: 34px; padding: 0 14px; background: transparent; color: #E8968F; border: 1px solid #2C3230; border-radius: 6px; font: 500 13px 'IBM Plex Sans', sans-serif; cursor: pointer">Move to trash</button>
+</div>
+</article>
+</sc-if>
+<sc-if value="{{noSel}}" hint-placeholder-val="{{false}}">
+<p style="margin: 0; padding: 24px; border: 1px dashed #2C3230; border-radius: 8px; color: #8C9590">Pick a note to read it.</p>
+</sc-if>
+</aside>
+</div>
+</div>
+
+<sc-if value="{{capOpen}}" hint-placeholder-val="{{false}}">
+<div style="position: fixed; inset: 0; background: rgba(8, 10, 9, 0.6); display: flex; justify-content: center; align-items: flex-start; padding-top: 14vh; z-index: 5">
+<div role="dialog" aria-label="New note" style="width: 560px; max-width: calc(100% - 32px); box-sizing: border-box; background: #181B1A; border: 1px solid {{accentLine}}; border-radius: 10px; box-shadow: {{neonGlow}}; padding: 14px 16px 10px; display: flex; flex-direction: column; gap: 10px">
+<sc-if value="{{capChip}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 9px; border: 1px solid #2C3230; border-radius: 4px; font: 400 12px 'IBM Plex Mono', monospace; color: #ABB3AE">easy-ui-mcp · T120<button type="button" onClick="{{dropChip}}" aria-label="Drop context" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; background: none; border: 0; color: #8C9590; cursor: pointer"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></button></span>
+<span style="font-size: 12px; color: #6E7772">from your last note, 18 min ago</span>
+</div>
+</sc-if>
+<textarea id="cap" value="{{capText}}" onChange="{{setCap}}" onKeyDown="{{capKey}}" autofocus="{{yes}}" rows="2" placeholder="Note…" aria-label="Note text" style="resize: none; background: transparent; border: 0; padding: 4px 0; color: #EAEDEA; font: 400 18px/1.5 'IBM Plex Sans', sans-serif; outline: none"></textarea>
+<div style="display: flex; flex-wrap: wrap; gap: 14px; padding-top: 8px; border-top: 1px solid #232826; font: 400 11.5px 'IBM Plex Mono', monospace; color: #8C9590">
+<span><kbd style="color: #DCE0DD; font: inherit">Enter</kbd> save</span>
+<span><kbd style="color: #DCE0DD; font: inherit">Shift+Enter</kbd> new line</span>
+<span><kbd style="color: #DCE0DD; font: inherit">Esc</kbd> cancel</span>
+<span><kbd style="color: #DCE0DD; font: inherit">Backspace</kbd> on empty: drop context</span>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{false}}">
+<div role="status" style="position: fixed; right: 24px; bottom: 24px; z-index: 6; display: flex; align-items: center; gap: 14px; max-width: 420px; padding: 12px 16px; background: #181B1A; border: 1px solid {{accentLine}}; border-radius: 6px; box-shadow: {{neonGlow}}; font-size: 13px; color: #EAEDEA">
+<span style="font-family: 'IBM Plex Mono', monospace">{{toast}}</span>
+<sc-if value="{{canUndo}}" hint-placeholder-val="{{false}}"><button type="button" onClick="{{undo}}" style="background: none; border: 0; padding: 0; color: #7EDDB0; font: 500 13px 'IBM Plex Sans', sans-serif; cursor: pointer">Undo</button></sc-if>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#3CF5A8","options":["#3CF5A8","#7EDDB0","#4FE3F0","#B89CFF"]},"glow":{"editor":"boolean","default":true},"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { notes: this.seed(), sel: '20261119-104212-3f0a', query: '', filter: 'all', capOpen: false, capText: '', capChip: true, toast: '', undo: null, extra: 0 };
+}
+seed() {
+return [
+{ id: '20261119-104212-3f0a', day: 'today', time: '10:42', repo: 'easy-ui-mcp', branch: 'fix/t120-firefox', task: 'T120', tags: ['flaky'], source: 'quick', text: 'Retry bug only on Firefox #flaky\n\nui_wait_for times out after the second navigation. Check after T120 lands.', masked: false,
+  ai: { model: 'claude-sonnet-4-5', at: '19 Nov', title: 'Firefox-only timeout in ui_wait_for', kind: 'bug', summary: 'ui_wait_for times out on Firefox after a second navigation. Revisit once T120 is merged.', suggest: ['firefox', 'e2e'], stale: false } },
+{ id: '20261119-091530-77c2', day: 'today', time: '09:15', repo: 'easy-personal-mcp', branch: 'feat/hun-263-tray', task: 'HUN-263', tags: [], source: 'hook', text: 'ask about the 8 KB limit on the status line snapshot', masked: false,
+  ai: { model: 'claude-sonnet-4-5', at: '19 Nov', title: 'Ask about the 8 KB status line limit', kind: 'question', summary: 'Open question on whether the status line snapshot really needs an 8 KB cap.', suggest: ['status-line'], stale: false } },
+{ id: '20261119-080311-a90e', day: 'today', time: '08:03', repo: '', branch: '', task: '', tags: ['idea'], source: 'cli', text: 'idea: i18n check for toast copy #idea', masked: false, ai: null },
+{ id: '20261118-214005-1c3d', day: 'yesterday', time: '21:40', repo: 'idea-radar', branch: 'main', task: '', tags: [], source: 'quick', text: 'Wake brief should say why a repo moved, not only that it moved', masked: false,
+  ai: { model: 'claude-sonnet-4-5', at: '18 Nov', title: 'Explain movement in the Wake brief', kind: 'idea', summary: 'The morning brief lists repos that moved between tiers; add the reason for each move.', suggest: ['wake'], stale: true } },
+{ id: '20261118-164711-b5e0', day: 'yesterday', time: '16:47', repo: 'easy-note-mcp', branch: 'feat/hun-262-claude-detail', task: 'HUN-262', tags: [], source: 'hook', text: 'to-do: check /note while Claude is working (queued prompt)', masked: false,
+  ai: { model: 'claude-sonnet-4-5', at: '18 Nov', title: 'Test /note during a running turn', kind: 'to-do', summary: 'Confirm that a /note typed while Claude is mid-turn is saved from the queued prompt.', suggest: ['hook', 'claude-code'], stale: false } },
+{ id: '20261118-110204-4e81', day: 'yesterday', time: '11:02', repo: 'easy-ui-mcp', branch: 'main', task: 'T118', tags: [], source: 'cli', text: 'staging token for the screenshot job: ••••••••  rotate after the demo', masked: true, ai: null },
+{ id: '20261117-193000-9d14', day: 'earlier', time: 'Mon', repo: '', branch: '', task: '', tags: [], source: 'inbox', text: 'buy a usb-c hub for the demo', masked: false,
+  ai: { model: 'claude-sonnet-4-5', at: '17 Nov', title: 'Buy a USB-C hub', kind: 'to-do', summary: 'Hardware errand before the demo.', suggest: ['errand'], stale: false } },
+{ id: '20261116-150845-e2a7', day: 'earlier', time: 'Sun', repo: 'easy-verifier-mcp', branch: 'main', task: '', tags: ['scoring'], source: 'quick', text: 'coverage check should name the missing source, not only count it', masked: false, ai: null }
+];
+}
+componentWillUnmount() { clearTimeout(this._t); }
+notify(msg, undo) {
+this.setState({ toast: msg, undo: undo || null });
+clearTimeout(this._t);
+this._t = setTimeout(() => this.setState({ toast: '', undo: null }), undo ? 6000 : 2800);
+}
+save() {
+const s = this.state;
+const text = s.capText.trim();
+if (!text) { this.setState({ capOpen: false, capText: '' }); this.notify('nothing saved'); return; }
+const n = s.extra + 1;
+const id = '20261119-11' + String(10 + n).padStart(2, '0') + '00-' + (4096 + n * 37).toString(16).slice(-4);
+const note = { id: id, day: 'today', time: 'now', repo: s.capChip ? 'easy-ui-mcp' : '', branch: s.capChip ? 'fix/t120-firefox' : '', task: s.capChip ? 'T120' : '', tags: (text.match(/#([a-z0-9_\/-]+)/g) || []).map((t) => t.slice(1)), source: 'quick', text: text, masked: false, ai: null };
+this.setState({ notes: [note].concat(s.notes), sel: id, capOpen: false, capText: '', capChip: true, extra: n, query: '', filter: 'all' });
+this.notify('✓ noted' + (s.capChip ? ' · easy-ui-mcp · T120' : ''));
+}
+renderVals() {
+const s = this.state;
+const accent = this.props.accent ?? '#3CF5A8';
+const glow = this.props.glow ?? true;
+const neonText = glow ? '0 0 12px ' + accent + '59' : 'none';
+const neonGlow = glow ? '0 0 0 1px ' + accent + '40, 0 0 18px ' + accent + '40' : 'none';
+const dotGlow = glow ? '0 0 8px ' + accent : 'none';
+const accentLine = accent + '59';
+const notes = s.notes;
+const words = s.query.toLowerCase().split(/\s+/).filter(Boolean);
+const hay = (n) => (n.text + ' ' + n.repo + ' ' + n.task + ' ' + n.tags.join(' ')).toLowerCase();
+const kindOf = (n) => (n.ai ? n.ai.kind : '');
+const filterDefs = [
+['all', 'All', () => true], ['bug', 'Bugs', (n) => kindOf(n) === 'bug'], ['idea', 'Ideas', (n) => kindOf(n) === 'idea'],
+['question', 'Questions', (n) => kindOf(n) === 'question'], ['to-do', 'To-dos', (n) => kindOf(n) === 'to-do'],
+['noai', 'No AI detail', (n) => !n.ai], ['stale', 'Stale', (n) => n.ai && n.ai.stale]
+];
+const active = filterDefs.find((f) => f[0] === s.filter) || filterDefs[0];
+const shown = notes.filter((n) => active[2](n) && words.every((w) => hay(n).indexOf(w) >= 0));
+const filters = filterDefs.map((f) => {
+const on = f[0] === s.filter;
+return { label: f[1], n: notes.filter(f[2]).length, pressed: on ? 'true' : 'false', bg: on ? accent + '14' : 'transparent', color: on ? accent : '#ABB3AE', border: on ? accentLine : '#2C3230', pick: () => this.setState({ filter: f[0] }) };
+});
+const labels = { today: 'today', yesterday: 'yesterday', earlier: 'earlier this week' };
+const groups = ['today', 'yesterday', 'earlier'].map((d) => ({
+label: labels[d],
+rows: shown.filter((n) => n.day === d).map((n) => {
+const cur = n.id === s.sel;
+return {
+time: n.time, first: n.text.split('\n')[0],
+where: [n.repo || 'no project', n.task, n.tags.map((t) => '#' + t).join(' ')].filter(Boolean).join(' · '),
+hasKind: !!n.ai, kind: n.ai ? n.ai.kind : '',
+mark: n.ai ? (n.ai.stale ? 'stale' : 'AI') : '', markColor: n.ai && n.ai.stale ? '#E3B66B' : '#8C9590',
+current: cur ? 'true' : 'false', bg: cur ? accent + '14' : 'transparent', ring: cur ? 'inset 2px 0 0 ' + accent : 'none',
+titleColor: cur ? '#EAEDEA' : '#DCE0DD',
+pick: () => this.setState({ sel: n.id })
+};
+})
+})).filter((g) => g.rows.length > 0);
+const selNote = notes.find((n) => n.id === s.sel);
+let sel = null;
+if (selNote) {
+const ctx = [selNote.repo || 'no project', selNote.branch, selNote.task, selNote.time === 'now' ? 'just now' : (selNote.day === 'today' ? 'today ' + selNote.time : selNote.day === 'yesterday' ? 'yesterday ' + selNote.time : selNote.time)].filter(Boolean).join(' · ');
+const missing = selNote.ai ? selNote.ai.suggest.filter((t) => selNote.tags.indexOf(t) < 0) : [];
+sel = { id: selNote.id, source: selNote.source, text: selNote.text, masked: selNote.masked, context: ctx, tagList: selNote.tags, noTags: selNote.tags.length === 0, hasAi: !!selNote.ai, noAi: !selNote.ai, ai: selNote.ai || { suggest: [] }, canAccept: missing.length > 0 };
+}
+const repos = {};
+notes.forEach((n) => { if (n.repo) repos[n.repo] = (repos[n.repo] || 0) + 1; });
+const repoList = Object.keys(repos).map((k) => ({ name: k, n: repos[k] })).sort((a, b) => b.n - a.n);
+const max = repoList.length ? repoList[0].n : 1;
+const update = (fn) => this.setState({ notes: s.notes.map((n) => (n.id === s.sel ? fn(n) : n)) });
+return {
+accent: accent, accentLine: accentLine, neonText: neonText, neonGlow: neonGlow, dotGlow: dotGlow, yes: true,
+todayCount: notes.filter((n) => n.day === 'today').length, totalCount: notes.length, repoCount: repoList.length,
+pendingCount: notes.filter((n) => !n.ai).length,
+topRepos: repoList.slice(0, 3).map((r) => ({ name: r.name, n: r.n, pct: Math.round((r.n / max) * 100) })),
+query: s.query, setQuery: (e) => this.setState({ query: e.target.value }), clearSearch: () => this.setState({ query: '' }),
+filters: filters, groups: groups, noResults: shown.length === 0,
+hasSel: !!sel, noSel: !sel, sel: sel || { tagList: [], ai: { suggest: [] } },
+acceptTags: () => { const add = selNote.ai.suggest.filter((t) => selNote.tags.indexOf(t) < 0); update((n) => ({ ...n, tags: n.tags.concat(add) })); this.notify('tags added: ' + add.map((t) => '#' + t).join(' ')); },
+openEditor: () => this.notify('opens ' + (selNote ? selNote.id : '') + '.md in $EDITOR'),
+copyId: () => { try { navigator.clipboard.writeText(selNote.id).catch(() => {}); } catch (e) {} this.notify('copied ' + selNote.id); },
+trash: () => {
+const gone = selNote; const idx = s.notes.indexOf(gone);
+const rest = s.notes.filter((n) => n.id !== gone.id);
+this.setState({ notes: rest, sel: rest.length ? rest[Math.min(idx, rest.length - 1)].id : '' });
+this.notify('moved to trash', { note: gone, idx: idx });
+},
+canUndo: !!s.undo,
+undo: () => { const u = s.undo; if (!u) return; const list = s.notes.slice(); list.splice(u.idx, 0, u.note); this.setState({ notes: list, sel: u.note.id }); this.notify('restored'); },
+openCapture: () => this.setState({ capOpen: true, capText: '', capChip: true }),
+capOpen: s.capOpen, capChip: s.capChip, capText: s.capText,
+setCap: (e) => this.setState({ capText: e.target.value }),
+dropChip: () => this.setState({ capChip: false }),
+capKey: (e) => {
+if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.save(); }
+else if (e.key === 'Escape') { e.preventDefault(); this.setState({ capOpen: false, capText: '' }); this.notify('cancelled · nothing saved'); }
+else if (e.key === 'Backspace' && s.capText === '' && s.capChip) { e.preventDefault(); this.setState({ capChip: false }); }
+},
+hasToast: s.toast !== '', toast: s.toast
+};
+}
+}
+</script>
+</body>
+</html>

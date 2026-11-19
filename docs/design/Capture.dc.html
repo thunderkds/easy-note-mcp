@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>easy-note — quick capture</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0;background:#121413}</style>
+</helmet>
+<div style="width: 1280px; height: 600px; box-sizing: border-box; padding: 36px 40px; background: #121413; color: #DCE0DD; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 22px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font: 400 12.5px 'IBM Plex Mono', monospace; color: {{accent}}">&gt; one key press · Ctrl+Alt+N</span>
+<h1 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; color: #EAEDEA">Quick capture</h1>
+<p style="margin: 0; font-size: 13.5px; color: #8C9590">560 px wide, 18% from the top of the screen, no title bar. The cursor is already in the field. It never asks a question.</p>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; flex: 1">
+
+<section aria-label="Empty, with context" style="display: flex; flex-direction: column; gap: 10px">
+<span style="font: 400 11.5px 'IBM Plex Mono', monospace; color: #8C9590">01 · opened, context from your last note</span>
+<div style="background: #181B1A; border: 1px solid {{accentLine}}; border-radius: 10px; box-shadow: {{neonGlow}}; padding: 14px 16px 10px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; gap: 8px"><span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid #2C3230; border-radius: 4px; font: 400 12px 'IBM Plex Mono', monospace; color: #ABB3AE">easy-ui-mcp · T120 <span aria-hidden="true" style="color: #8C9590">×</span></span><span style="font-size: 11.5px; color: #6E7772">18 min ago</span></div>
+<div style="display: flex; align-items: center; gap: 2px; font: 400 18px/1.5 'IBM Plex Sans', sans-serif; color: #6E7772"><span style="width: 2px; height: 22px; background: {{accent}}"></span>Note…</div>
+<div style="padding-top: 8px; border-top: 1px solid #232826; font: 400 11px 'IBM Plex Mono', monospace; color: #8C9590">Enter save · Esc cancel · ⌫ drop context</div>
+</div>
+</section>
+
+<section aria-label="Typing, context dropped" style="display: flex; flex-direction: column; gap: 10px">
+<span style="font: 400 11.5px 'IBM Plex Mono', monospace; color: #8C9590">02 · typing, two lines, context dropped</span>
+<div style="background: #181B1A; border: 1px solid {{accentLine}}; border-radius: 10px; box-shadow: {{neonGlow}}; padding: 14px 16px 10px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 12px; color: #6E7772">no context · saved without project</span>
+<p style="margin: 0; font: 400 18px/1.5 'IBM Plex Sans', sans-serif; color: #EAEDEA">buy a usb-c hub for the demo<br>and a spare hdmi cable<span style="display: inline-block; width: 2px; height: 20px; margin-left: 1px; vertical-align: -3px; background: {{accent}}"></span></p>
+<div style="padding-top: 8px; border-top: 1px solid #232826; font: 400 11px 'IBM Plex Mono', monospace; color: #8C9590">Enter save · Shift+Enter new line · Esc cancel</div>
+</div>
+<p style="margin: 0; font-size: 12.5px; line-height: 1.5; color: #8C9590">Grows up to 6 lines, then scrolls. A key that looks like a secret is masked on save, never refused.</p>
+</section>
+
+<section aria-label="Confirmation" style="display: flex; flex-direction: column; gap: 10px">
+<span style="font: 400 11.5px 'IBM Plex Mono', monospace; color: #8C9590">03 · saved: the box closes at once</span>
+<div style="background: #1C1F1E; border: 1px solid #2C3230; border-radius: 12px; padding: 12px 14px; display: flex; gap: 12px; align-items: flex-start">
+<svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true" style="flex-shrink: 0"><rect width="32" height="32" rx="8" fill="#0E100F"></rect><path d="M9 7h10l4 4v14H9z" fill="none" stroke="#DCE0DD" stroke-width="1.6" stroke-linejoin="round"></path><path d="M12.5 17.5l2.5 2.5 4.5-5" fill="none" stroke="{{accent}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 2px"><strong style="font-size: 13px; font-weight: 600; color: #EAEDEA">easy-note</strong><span style="font: 400 12.5px 'IBM Plex Mono', monospace; color: #DCE0DD">✓ noted · easy-ui-mcp · T120</span></div>
+</div>
+<span style="font-size: 11.5px; color: #6E7772">desktop notification (GNOME draws the frame; the text and icon are ours). Disappears by itself.</span>
+<div style="background: #0E100F; border: 1px solid #2C3230; border-radius: 6px; padding: 10px 12px; font: 400 12.5px/1.6 'IBM Plex Mono', monospace">
+<div><span style="color: {{accent}}">$</span> n retry bug only on Firefox #flaky</div>
+<div><span style="color: {{accent}}">✓</span> noted 20261114-164713-a1b2 <span style="color: #8C9590">· easy-ui-mcp · T120</span></div>
+<div style="margin-top: 6px"><span style="color: {{accent}}">$</span> n staging key sk-live-•••• for the job</div>
+<div><span style="color: {{accent}}">✓</span> noted 20261114-170311-0c2e <span style="color: #8C9590">· easy-ui-mcp</span> <span style="color: #E3B66B">· 1 secret masked</span></div>
+</div>
+<span style="font-size: 11.5px; color: #6E7772">terminal: same words, plus the id. Readable with colour off.</span>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#3CF5A8"},"glow":{"editor":"boolean","default":true},"$preview":{"width":1280,"height":600}}'>
+class Component extends DCLogic {
+renderVals() {
+const accent = this.props.accent ?? '#3CF5A8';
+const glow = this.props.glow ?? true;
+return { accent: accent, accentLine: accent + '59', neonGlow: glow ? '0 0 0 1px ' + accent + '40, 0 0 18px ' + accent + '40' : 'none' };
+}
+}
+</script>
+</body>
+</html>
