@@ -62,13 +62,17 @@ fn answer(input: &[u8]) -> Option<String> {
 /// Save the note with the event's `session` (FR-028); the reason line is
 /// `✓ noted <id> · <repo> · <task>`, with a masked count if any.
 fn save(text: &str, cwd: Option<&Path>, session: Option<&str>) -> Result<String, String> {
-    let store = Store::open().map_err(|e| e.to_string())?;
+    let (dir, after_save) = config::notes_dir_and_after_save().map_err(|e| e.to_string())?;
+    let store = Store::system(dir);
     let found = context::capture(None, cwd, &[]);
     let mut fields = found.fields();
     fields.push(("session", session));
     let added = store
         .add(text, "hook", &tags::extract(text), &fields)
         .map_err(|e| e.to_string())?;
+    if after_save {
+        super::enrich::after_save(&store.root, &added.id);
+    }
     Ok(confirmation(
         "noted",
         &added.id,

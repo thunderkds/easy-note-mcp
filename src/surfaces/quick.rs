@@ -20,6 +20,7 @@ use chrono::{DateTime, Datelike, Local};
 use wait_timeout::ChildExt;
 
 use super::cli::{confirmation, safe};
+use crate::core::config;
 use crate::core::context::{self, Context};
 use crate::core::format::parse;
 use crate::core::store::Store;
@@ -32,7 +33,8 @@ const NOTIFY_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Run `quick`. `Err` is the message for stderr (exit 1); a cancel or an empty answer is `Ok`.
 pub fn run(cwd: Option<&Path>) -> Result<(), String> {
-    let store = Store::open().map_err(|e| e.to_string())?;
+    let (dir, after_save) = config::notes_dir_and_after_save().map_err(|e| e.to_string())?;
+    let store = Store::system(dir);
     let context = match cwd.filter(|c| !c.as_os_str().is_empty()) {
         Some(dir) => context::capture(None, Some(dir), &[]),
         None => last_context(&store.root, Local::now()).unwrap_or_default(),
@@ -70,6 +72,9 @@ pub fn run(cwd: Option<&Path>) -> Result<(), String> {
             let mut out = io::stdout().lock();
             let _ = writeln!(out, "{line}");
             let _ = out.flush();
+            if after_save {
+                super::enrich::after_save(&store.root, &added.id);
+            }
             notify(&line);
             Ok(())
         }
@@ -184,7 +189,7 @@ fn has_display() -> bool {
 }
 
 /// The first executable file called `name` in `$PATH`.
-fn find_in_path(name: &str) -> Option<PathBuf> {
+pub(crate) fn find_in_path(name: &str) -> Option<PathBuf> {
     std::env::split_paths(&std::env::var_os("PATH")?)
         .filter(|dir| !dir.as_os_str().is_empty())
         .map(|dir| dir.join(name))

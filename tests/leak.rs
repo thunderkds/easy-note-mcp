@@ -1055,7 +1055,89 @@ const SURFACES: &[(&str, Surface)] = &[
     ("quick", surface_quick),
     ("tray", surface_tray),
     ("ai", surface_ai),
+    ("enrich", surface_enrich),
 ];
+
+/// `ai enrich` (HUN-275): the real binary with a fake `claude` that echoes the planted text back
+/// (in the answer fields, as raw non-JSON output, in an `is_error` result and on its stderr), and
+/// the planted text as an unknown id. The fake keeps the text in its env only, never in a file; it
+/// records the stdin it got under HOME, so the file grep checks what was sent too.
+fn surface_enrich(text: &str) -> Captured {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::{Command, Stdio};
+
+    let home = PathBuf::from(std::env::var("HOME").unwrap());
+    let notes = PathBuf::from(std::env::var("EASY_NOTE_DIR").unwrap());
+    let bin = home.join("fake-bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let fake = bin.join("claude");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\ncat >> \"$HOME/fake-stdin\"\ncase \"$FAKE_MODE\" in\n  raw) printf '%s' \"$FAKE_TEXT\";;\n  exit1) printf '%s' \"$FAKE_TEXT\" >&2; exit 1;;\n  *) printf '%s' \"$FAKE_ANSWER\"; printf '%s' \"$FAKE_ANSWER\" >&2;;\nesac\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let config = home.join(".config/easy-note/config.toml");
+    std::fs::create_dir_all(config.parent().unwrap()).unwrap();
+    std::fs::write(&config, "[ai]\nenrich = \"claude\"\n").unwrap();
+
+    let mut got = Captured {
+        objects: vec![],
+        stdout: String::new(),
+        stderr: String::new(),
+    };
+    let mut run = |args: &[&str], mode: &str, answer: &str| {
+        let out = Command::new(env!("CARGO_BIN_EXE_easy-note"))
+            .args(args)
+            .env("HOME", &home)
+            .env("EASY_NOTE_DIR", &notes)
+            .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+            .env("FAKE_MODE", mode)
+            .env("FAKE_TEXT", text)
+            .env("FAKE_ANSWER", answer)
+            .current_dir(&home)
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        let (o, e) = (
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        );
+        let n = got.objects.len();
+        got.objects.push(format!("run {n}\n{o}\n{e}"));
+        got.stdout.push_str(&o);
+        got.stderr.push_str(&e);
+        o
+    };
+    let added = run(&["add", text], "", "");
+    let id = added
+        .split_whitespace()
+        .nth(2)
+        .expect("the add printed its id")
+        .to_string();
+    let answer = |title: &str, summary: &str, tags: &[&str]| {
+        let fields = serde_json::json!({
+            "title": title, "kind": "other", "summary": summary, "tags_suggested": tags,
+        });
+        serde_json::json!({
+            "type": "result", "is_error": false, "result": fields.to_string(),
+            "structured_output": fields, "modelUsage": {"claude-haiku-5-5": {}},
+        })
+        .to_string()
+    };
+    run(&["ai", "enrich", &id], "", &answer("t", text, &[]));
+    run(&["ai", "enrich", &id], "", &answer(text, "s", &[]));
+    run(&["ai", "enrich", &id], "", &answer("t", "s", &[text]));
+    run(&["ai", "enrich", &id], "raw", "");
+    run(&["ai", "enrich", &id], "exit1", "");
+    let is_error = serde_json::json!({"is_error": true, "result": text}).to_string();
+    run(&["ai", "enrich", &id], "", &is_error);
+    run(&["ai", "enrich", text], "", &answer("t", "s", &[]));
+    got.objects.push(
+        std::fs::read_to_string(home.join("fake-stdin")).expect("the fake was given the note"),
+    );
+    got
+}
 
 fn nothing_leaked(secret: &str, got: &Captured, root: &Path) -> Result<(), String> {
     if got.objects.is_empty() {
@@ -1104,7 +1186,9 @@ fn planted_secret_never_leaks() {
 
 #[test]
 fn the_registry_holds_the_core_the_cli_and_the_inbox_surface() {
-    for wanted in ["core", "cli", "inbox", "hook", "quick", "tray", "ai"] {
+    for wanted in [
+        "core", "cli", "inbox", "hook", "quick", "tray", "ai", "enrich",
+    ] {
         assert!(SURFACES.iter().any(|(name, _)| *name == wanted), "{wanted}");
     }
 }

@@ -44,7 +44,8 @@ fn read_input(tty: bool, mut input: impl BufRead, mut prompt: impl Write) -> io:
 /// `add` and `n`: save the words as one note, print one line (FR-020, FR-021). Text that is
 /// empty or only white space saves nothing and is not an error.
 pub fn add(edit: bool, words: &[String]) -> Outcome {
-    let store = Store::open()?;
+    let (dir, after_save) = config::notes_dir_and_after_save()?;
+    let store = Store::system(dir);
     let given = words.join(" ");
     // The editor sees a file, so a secret in the given words is masked before the file exists.
     let mut masked_first: Vec<&'static str> = vec![];
@@ -70,12 +71,16 @@ pub fn add(edit: bool, words: &[String]) -> Outcome {
         );
     }
     masked_first.extend(&added.masked);
-    say(&confirmation(
+    let shown = say(&confirmation(
         "noted",
         &added.id,
         &[found.repo.as_deref(), found.task.as_deref()],
         &masked_first,
-    ))
+    ));
+    if after_save {
+        crate::surfaces::enrich::after_save(&store.root, &added.id);
+    }
+    shown
 }
 
 /// Open the editor on `path`, the way git does: `$VISUAL`, else `$EDITOR`, else `vi`, run by

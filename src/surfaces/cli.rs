@@ -76,6 +76,17 @@ pub enum Target {
 pub enum AiAction {
     /// Delete the AI detail of a note (the note stays as it is).
     Rm { id: String },
+    /// Ask your own `claude` CLI to write the AI detail of notes (needs `[ai] enrich = "claude"`).
+    Enrich {
+        #[arg(required_unless_present = "pending", conflicts_with = "pending")]
+        ids: Vec<String>,
+        /// Enrich the notes with no AI detail or a stale one, newest first.
+        #[arg(long)]
+        pending: bool,
+        /// With --pending: at most this many notes (1 to 20, default 20).
+        #[arg(long, conflicts_with = "ids")]
+        limit: Option<usize>,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Subcommand)]
@@ -402,6 +413,14 @@ fn dispatch(command: Command) -> Outcome {
         Command::Ai {
             action: AiAction::Rm { id },
         } => write::ai_rm(&id),
+        Command::Ai {
+            action:
+                AiAction::Enrich {
+                    ids,
+                    pending,
+                    limit,
+                },
+        } => super::enrich::run(&ids, pending, limit).map_err(Fail::runtime),
         Command::Stats { json, filters } => read::stats(json, filters.into()),
         Command::Doctor => read::doctor(),
         Command::Path => read::path(),
@@ -626,6 +645,13 @@ mod tests {
             },
             Command::Ai {
                 action: AiAction::Rm { id: id() },
+            },
+            Command::Ai {
+                action: AiAction::Enrich {
+                    ids: vec![],
+                    pending: true,
+                    limit: None,
+                },
             },
             Command::Stats {
                 json: false,

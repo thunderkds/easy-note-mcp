@@ -205,6 +205,7 @@ pub fn doctor() -> Outcome {
     } else {
         say(&format!("{} found", count(lines.len(), "problem")))?;
     }
+    say(&safe(&crate::surfaces::enrich::doctor_line()))?;
     // Only a tray build has a tray to miss, and a missing host is no problem with the notes.
     #[cfg(feature = "tray")]
     if let Some(line) = tray::doctor_line(tray::host_present()) {

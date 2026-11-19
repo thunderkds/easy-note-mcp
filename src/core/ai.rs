@@ -1,7 +1,8 @@
 //! AI detail files (FR-029–FR-032, DDR 0004): `<notes dir>/.easy-note/ai/<id>.json`, the
 //! `easy-note-ai: 1` shape of `docs/NOTE_FORMAT.md`. Not a note: this module never opens a note
 //! file for writing. easy-note runs no model; the text comes from the person's own Claude session
-//! through `note_enrich`, or from `note_add(detail)` (`model: capture`).
+//! through `note_enrich`, from their own `claude` CLI through `ai enrich` (DDR 0007), or from
+//! `note_add(detail)` (`model: capture`).
 //!
 //! Every string is masked on write, and again on read after the JSON is decoded, because a `\u`
 //! escape hides a token from the raw patterns. A file that is not readable, not JSON, of the wrong
