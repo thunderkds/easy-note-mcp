@@ -20,6 +20,7 @@ pub const REFRESH: &str = "window.__easyNote && window.__easyNote.refresh()";
 const HTML: &str = "text/html; charset=utf-8";
 const JS: &str = "text/javascript; charset=utf-8";
 const CSS: &str = "text/css; charset=utf-8";
+const WOFF2: &str = "font/woff2";
 
 /// The embedded file for a request path, with its MIME type; `None` for any other path.
 pub fn asset(path: &str) -> Option<(&'static str, &'static [u8])> {
@@ -27,6 +28,27 @@ pub fn asset(path: &str) -> Option<(&'static str, &'static [u8])> {
         "/" | "/index.html" => Some((HTML, include_bytes!("assets/index.html"))),
         "/app.js" => Some((JS, include_bytes!("assets/app.js"))),
         "/app.css" => Some((CSS, include_bytes!("assets/app.css"))),
+        "/ipc.js" => Some((JS, include_bytes!("assets/ipc.js"))),
+        "/fonts/ibm-plex-sans-latin-400-normal.woff2" => Some((
+            WOFF2,
+            include_bytes!("assets/fonts/ibm-plex-sans-latin-400-normal.woff2"),
+        )),
+        "/fonts/ibm-plex-sans-latin-500-normal.woff2" => Some((
+            WOFF2,
+            include_bytes!("assets/fonts/ibm-plex-sans-latin-500-normal.woff2"),
+        )),
+        "/fonts/ibm-plex-sans-latin-600-normal.woff2" => Some((
+            WOFF2,
+            include_bytes!("assets/fonts/ibm-plex-sans-latin-600-normal.woff2"),
+        )),
+        "/fonts/ibm-plex-mono-latin-400-normal.woff2" => Some((
+            WOFF2,
+            include_bytes!("assets/fonts/ibm-plex-mono-latin-400-normal.woff2"),
+        )),
+        "/fonts/ibm-plex-mono-latin-500-normal.woff2" => Some((
+            WOFF2,
+            include_bytes!("assets/fonts/ibm-plex-mono-latin-500-normal.woff2"),
+        )),
         _ => None,
     }
 }
@@ -182,7 +204,7 @@ mod shell {
 
         #[test]
         fn every_response_carries_the_csp() {
-            for path in ["/", "/app.js", "/app.css", "/missing"] {
+            for path in ["/", "/app.js", "/app.css", "/ipc.js", "/missing"] {
                 let r = respond(path);
                 assert_eq!(r.headers()[header::CONTENT_SECURITY_POLICY], CSP, "{path}");
             }

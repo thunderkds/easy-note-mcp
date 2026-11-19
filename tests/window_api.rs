@@ -11,7 +11,9 @@ use std::path::{Path, PathBuf};
 use easy_note_mcp::core::ai;
 use easy_note_mcp::core::store::Store;
 use easy_note_mcp::surfaces::dashboard::use_window;
-use easy_note_mcp::surfaces::window::{allowed_url, api::handle, asset, ipc, reply_script, CSP};
+use easy_note_mcp::surfaces::window::{
+    allowed_url, api::handle, asset, ipc, reply_script, CSP, REFRESH,
+};
 use serde_json::{json, Value};
 
 const PLANTED_JSON: &str = include_str!("fixtures/secrets/planted.json");
@@ -485,6 +487,10 @@ fn the_csp_allows_only_the_app_scheme() {
         "text/javascript; charset=utf-8"
     );
     assert_eq!(asset("/app.css").unwrap().0, "text/css; charset=utf-8");
+    assert_eq!(
+        asset("/ipc.js").unwrap().0,
+        "text/javascript; charset=utf-8"
+    );
     for path in [
         "/nope",
         "/../Cargo.toml",
@@ -573,7 +579,58 @@ fn every_served_asset_is_scanned_and_safe() {
         assert_eq!(served, text.as_bytes(), "{rel} is served as built");
         scanned += 1;
     }
-    assert!(scanned >= 3, "index.html, app.js, app.css");
+    assert!(scanned >= 4, "index.html, ipc.js, app.js, app.css");
+    assert!(
+        asset("/fonts/OFL.txt").is_none(),
+        "the licence is shipped, not served"
+    );
+}
+
+#[test]
+fn every_reference_in_the_page_is_served() {
+    // index.html's src/href and app.css's url(...) must each resolve through `asset`, so the page
+    // never asks for a file the binary does not hold (and never for one outside the app scheme).
+    let refs = regex::Regex::new(r#"(?:src|href)="([^"]+)"|url\(([^)]+)\)"#).unwrap();
+    let mut found = vec![];
+    for page in ["/", "/app.css"] {
+        let text = std::str::from_utf8(asset(page).unwrap().1).unwrap();
+        for c in refs.captures_iter(text) {
+            let r = c
+                .get(1)
+                .or_else(|| c.get(2))
+                .unwrap()
+                .as_str()
+                .trim_matches('\'');
+            assert!(
+                asset(&format!("/{r}")).is_some(),
+                "{page} refers to {r}, not served"
+            );
+            found.push(r.to_string());
+        }
+    }
+    for r in ["app.css", "ipc.js", "app.js"] {
+        assert!(found.iter().any(|f| f == r), "{r} not referenced");
+    }
+    let fonts = found.iter().filter(|f| f.ends_with(".woff2")).count();
+    assert_eq!(fonts, 5, "five Plex faces: {found:?}");
+}
+
+#[test]
+fn the_focus_refresh_calls_a_function_the_page_defines() {
+    // AC 10: the shell runs REFRESH on each window focus; the page must define what it calls.
+    assert_eq!(REFRESH, "window.__easyNote && window.__easyNote.refresh()");
+    let page = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
+    assert!(
+        page.contains("window.__easyNote.refresh = loadBoard;"),
+        "app.js must set window.__easyNote.refresh to the board load"
+    );
+    let html = std::str::from_utf8(asset("/").unwrap().1).unwrap();
+    let ipc_at = html.find(r#"src="ipc.js""#).expect("ipc.js script");
+    let app_at = html.find(r#"src="app.js""#).expect("app.js script");
+    assert!(
+        ipc_at < app_at,
+        "ipc.js defines window.__easyNote before app.js"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------

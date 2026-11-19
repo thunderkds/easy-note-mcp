@@ -2,19 +2,58 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src easy-note:; style-src easy-note: 'unsafe-inline'">
-<title>easy-note</title>
+<meta http-equiv="Content-Security-Policy" content="default-src easy-note:">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>easy-note — dashboard</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<!-- Placeholder page (HUN-278 backend slice): proves the shell, IPC and masking end to end.
-     The design port of the board replaces it (frontend slice of HUN-278). -->
-<header><strong>easy-note</strong> <span id="dir"></span></header>
-<p id="counts"></p>
-<main>
-<ul id="notes"></ul>
-<section id="detail" hidden></section>
-</main>
+<div class="app">
+
+<header class="header">
+<div class="brand">
+<svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 4.5h13.5L26 10v17.5H7z" fill="none" stroke="#3CF5A8" stroke-width="2" stroke-linejoin="round"></path><path d="M20.5 4.5V10H26" fill="none" stroke="#3CF5A8" stroke-width="2" stroke-linejoin="round"></path><path d="M11.5 16h9M11.5 21h5.5" stroke="#3CF5A8" stroke-width="2" stroke-linecap="round"></path></svg>
+<span class="brand-name">easy-note</span>
+<span class="dir-chip" id="notes-dir" title="Notes dir"></span>
+</div>
+</header>
+
+<div class="main">
+
+<section class="counts" aria-label="Counts">
+<div class="count"><span class="count-n accent" id="count-today">0</span><span class="count-label">notes today</span></div>
+<div class="count"><span class="count-n" id="count-total">0</span><span class="count-label">notes in total</span></div>
+<div class="count"><span class="count-n" id="count-projects">0</span><span class="count-label">projects</span></div>
+<div class="by-project" id="by-project"><span class="count-label">by project</span></div>
+</section>
+
+<div class="columns">
+
+<section class="notes" aria-label="Notes">
+<label class="search" for="search">
+<span class="search-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.4"></circle><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></span>
+<input id="search" type="search" placeholder="Search notes — every word must match" aria-label="Search notes" autocomplete="off">
+</label>
+<div class="filters" role="group" aria-label="Filter" id="filters"></div>
+<p class="error" id="error" role="alert" hidden></p>
+<div class="empty" id="no-results" hidden>
+<p class="empty-main" id="no-results-text"></p>
+<p class="empty-hint">Every word must match: text, project, task or tag.</p>
+<button type="button" class="btn" id="clear-search">Clear search</button>
+</div>
+<div id="groups"></div>
+</section>
+
+<aside class="detail" aria-label="Note" id="detail">
+<p class="pick" id="pick">Pick a note to read it.</p>
+</aside>
+
+</div>
+</div>
+</div>
+<template id="icon-ai"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l1.6 4.9L14.5 8l-4.9 1.6L8 14.5l-1.6-4.9L1.5 8l4.9-1.6z" fill="none" stroke="#8C9590" stroke-width="1.2" stroke-linejoin="round"></path></svg></template>
+<template id="icon-stale"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5l6 11H2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path><path d="M8 7v3M8 12v.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg></template>
+<script src="ipc.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
