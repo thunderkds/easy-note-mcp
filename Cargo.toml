@@ -37,9 +37,12 @@ percent-encoding = "2"
 wait-timeout = "0.2"
 ksni = { version = "0.3.7", optional = true, features = ["blocking"] }
 zbus = { version = "5", optional = true, default-features = false, features = ["blocking-api"] }
+wry = { version = "0.57.3", optional = true }
+tao = { version = "0.37.3", optional = true }
 
 [features]
 tray = ["dep:ksni", "dep:zbus"]
+window = ["dep:wry", "dep:tao"]
 
 [dev-dependencies]
 rmcp = { version = "3.10", default-features = false, features = ["client", "transport-child-process"] }

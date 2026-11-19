@@ -1,0 +1,7 @@
+/* Placeholder styles (HUN-278 backend slice); the design port replaces them. */
+body { margin: 0; padding: 16px; background: #0E100F; color: #DCE0DD; font-family: sans-serif; }
+main { display: flex; gap: 16px; }
+#notes { flex: 1; list-style: none; padding: 0; }
+#notes li { padding: 6px 0; cursor: pointer; }
+#detail { flex: 1; }
+pre { white-space: pre-wrap; }

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src easy-note:; style-src easy-note: 'unsafe-inline'">
+<title>easy-note</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<!-- Placeholder page (HUN-278 backend slice): proves the shell, IPC and masking end to end.
+     The design port of the board replaces it (frontend slice of HUN-278). -->
+<header><strong>easy-note</strong> <span id="dir"></span></header>
+<p id="counts"></p>
+<main>
+<ul id="notes"></ul>
+<section id="detail" hidden></section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
