@@ -105,6 +105,19 @@ They do different jobs. easy-memory saves agent turns automatically (a "memory n
 saves only what you ask it to save (a "note"): your words, typed with `n`, `/note`, `note:` or the
 quick box. Neither reads the other's folder.
 
+## Obsidian dashboard
+
+easy-note draws no window of its own. Obsidian shows the notes: by day, project, task, tag and source.
+One command writes the dashboard file, `easy-note.base`, in your notes folder (the path `easy-note path` prints). `easy-note uninstall obsidian` removes it.
+
+```
+easy-note install obsidian
+easy-note dashboard
+```
+
+`dashboard` opens the file in Obsidian. Open the notes folder as a vault in Obsidian once (a parent folder works too).
+If Obsidian is not installed, `dashboard` says so and opens the notes folder instead.
+
 ## One key press
 
 From anywhere on the Linux desktop or in an editor, one key press or one click opens a one-line

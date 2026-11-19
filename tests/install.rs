@@ -893,3 +893,102 @@ fn ac5_uninstall_tray_works_in_every_build() {
     assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
     assert!(!tray_path(&sb).exists());
 }
+
+// ---------------------------------------------------------------------------------------------
+// HUN-273 AC 1, 6, 7: `install obsidian` / `uninstall obsidian`
+// ---------------------------------------------------------------------------------------------
+
+fn base_path(sb: &Sb) -> PathBuf {
+    sb.root().join("notes/easy-note.base")
+}
+
+fn obsidian(sb: &Sb, verb: &str) -> Output {
+    easy(sb, &[verb, "obsidian"], Some(&sb.cfg()))
+}
+
+#[test]
+fn hun273_install_obsidian_writes_exactly_the_base_file_and_is_idempotent() {
+    let sb = Sb::new("obsidian");
+    let o = obsidian(&sb, "install");
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    let files: Vec<PathBuf> = snapshot(sb.root()).into_iter().map(|(p, _)| p).collect();
+    assert_eq!(
+        files,
+        [base_path(&sb)],
+        "the notes dir was created; nothing else written"
+    );
+    assert!(
+        text(&o.stdout).contains("easy-note.base"),
+        "{}",
+        text(&o.stdout)
+    );
+    let before = snapshot(sb.root());
+    let o = obsidian(&sb, "install");
+    assert_eq!(o.status.code(), Some(0));
+    assert!(
+        text(&o.stdout).contains("already installed"),
+        "{}",
+        text(&o.stdout)
+    );
+    assert_eq!(snapshot(sb.root()), before);
+    let o = obsidian(&sb, "uninstall");
+    assert_eq!(o.status.code(), Some(0));
+    assert!(!base_path(&sb).exists());
+    assert!(text(&o.stdout).contains("removed"), "{}", text(&o.stdout));
+}
+
+#[test]
+fn hun273_a_foreign_base_file_is_kept_and_named() {
+    let sb = Sb::new("obsidian-foreign");
+    write(&base_path(&sb), "views: []\n");
+    let o = obsidian(&sb, "install");
+    assert_eq!(o.status.code(), Some(1), "{}", text(&o.stdout));
+    assert!(
+        text(&o.stderr).contains("easy-note.base"),
+        "{}",
+        text(&o.stderr)
+    );
+    let o = obsidian(&sb, "uninstall");
+    assert_eq!(o.status.code(), Some(1));
+    assert!(
+        text(&o.stderr).contains("easy-note.base"),
+        "{}",
+        text(&o.stderr)
+    );
+    assert_eq!(
+        std::fs::read_to_string(base_path(&sb)).unwrap(),
+        "views: []\n"
+    );
+}
+
+#[test]
+fn hun273_no_other_command_writes_the_base_file() {
+    let sb = Sb::new("obsidian-others");
+    let id_out = easy(&sb, &["add", "first", "#t"], Some(&sb.cfg()));
+    assert_eq!(id_out.status.code(), Some(0), "{}", text(&id_out.stderr));
+    for args in [
+        vec!["ls"],
+        vec!["stats"],
+        vec!["doctor"],
+        vec!["init"],
+        vec!["install", "claude"],
+        vec!["install", "launcher"],
+        vec!["uninstall", "obsidian"],
+    ] {
+        easy(&sb, &args, Some(&sb.cfg()));
+        assert!(!base_path(&sb).exists(), "{args:?} wrote the base file");
+    }
+}
+
+/// AC 7: the base file is not a note and not a skipped file.
+#[test]
+fn hun273_the_store_ignores_the_base_file() {
+    let sb = Sb::new("obsidian-store");
+    easy(&sb, &["add", "first", "#t"], Some(&sb.cfg()));
+    let ls = |sb: &Sb| text(&easy(sb, &["ls"], Some(&sb.cfg())).stdout);
+    let stats = |sb: &Sb| text(&easy(sb, &["stats", "--json"], Some(&sb.cfg())).stdout);
+    let (ls0, stats0) = (ls(&sb), stats(&sb));
+    assert_eq!(obsidian(&sb, "install").status.code(), Some(0));
+    assert_eq!(ls(&sb), ls0);
+    assert_eq!(stats(&sb), stats0);
+}
