@@ -13,7 +13,8 @@ Mode: auto
 4. Stage 4 P1 fixes applied by the Supervisor: Bases filter `/(^|\/)\d{4}\/\d{2}$/.matches(file.folder)` AND `file.hasProperty("easy-note")`; Today view `file.name.startsWith(today().format("YYYYMMDD"))`; sort by `file.name` DESC — FACT: obsidian.md/help/bases/functions "The String type has no matches() function … `/abc/.matches("abcde")`"; "The date string should be in the format YYYY-MM-DD HH:mm:ss"
 Checks: tests `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` + the same with `--features tray` — exit 0, 0 failed (commit d649e8d); reviews code-review — 2 P1 fixed, 1 P2 (sort key undocumented, kept), 1 P3 (install::obsidian reads the "kept " prefix); real run `easy-note dashboard` with stub xdg tools — opened `obsidian://open?path=…easy-note.base` (auto-checked, not /verify)
 Memory: pending (Stage 5)
-Not done: merge (admin: after the auto verify pass); auto verify: not started; owner screenshot of the real Obsidian dashboard (yours); html-report for code-review (not rendered this run)
+Not done: merge (admin: after the auto verify pass); auto verify: running (T182); owner screenshot of the real Obsidian dashboard (yours); html-report for code-review (not rendered this run)
+Paused: done not moved — report incomplete: auto verify slot
 
 ## Evidence
 
@@ -43,7 +44,7 @@ exit=0
 ```
 |
 | Negative cases hold | ☑ pass | Red run against the prior content is the BEFORE capture below: `easy-note dashboard` → "unrecognized subcommand", `install obsidian` → "invalid value 'obsidian'", both exit 2. Foreign `.base` file and missing `.base` file covered by `tests/install.rs` / `tests/dashboard.rs` (exit 1, nothing started). |
-| verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
+| verify | ☑ pass | auto-run by hook, session 7140881f-c2d0-4457-ba7d-85e618f83313, commit 245533888b6d27af869946cce636a59a821d5d0b, log .claude/verify-runs/HUN-273-245533888b6d.log — pass |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Reviewed: `src/surfaces/dashboard.rs`, `install.rs` (`own_file` split, `obsidian`), `cli.rs` arms, `mod.rs`, both test files, README section. Callers of `own_desktop_file` (launcher, tray) checked unchanged. Skipped: `src/core/*` (untouched; AC 7 test proves the store ignores the file). Lane: `C1, 7 files, 579 lines, EXCEEDS` (mostly tests; warn only). |
 | Full smoke suite still green (no regression) | ☑ pass | full `cargo test --locked` and `--features tray` at d649e8d: every `test result: ok`, 0 failed (leak suite 46 passed in 154.81s) |
 | **Companion score (easy-verifier)** | ☑ N/A | not run in this session: the `score` skill was not started for the round-4 tasks (time); the merge gate does not block on N/A |
