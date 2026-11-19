@@ -21,6 +21,7 @@
 <!-- Format: - [Title](cold-file.md#section) — one-line summary.
      Target ≤150 chars/entry. Advisory: reported by the size test, never enforced.
      The enforced gate is the 42,000-character whole-file budget above. -->
+- [Codebase Map](codebase-map.md) — structural snapshot: directory tree, entry points, blast-radius hotspots. Refresh via /map-codebase.
 - [v1 scope kept at all 15 tasks](decisions.md#2026-11-14--v1-scope-kept-at-all-15-tasks-t001t015) — owner keeps T001–T015 + HTTP mode in v1; no v1.1 split
 - [MCP SDK pinned <2](decisions.md#2026-11-14--mcp-sdk-pinned-to-mcp12-2-fastmcp-v1-api) — FastMCP v1 API; v2 removed mcp.server.fastmcp (HUN-252)
 - [easy-verifier flags harness-lock.json hashes](learnings.md#2026-11-15--easy-verifier-counts-claudeharness-lockjson-hashes-as-secrets-hun-251-hun-253) — security ~30 on every branch; fix in easy-verifier

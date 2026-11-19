@@ -94,7 +94,7 @@ flowchart LR
 
 - **Requirements**: PRD.md
 - **Direction**: BRAINSTORMING_LOG.md (Option B; rounds 2–3: BRAINSTORMING_LOG_capture.md, BRAINSTORMING_LOG_oneclick-enrich.md)
-- **Codebase map**: none — blank scaffold (code starts with HUN-252)
+- **Codebase map**: memory/codebase-map.md
 - **Tech stack**: Rust (stable), `rmcp`, `clap`, cargo (DDR 0005); storage = plain Markdown files; hosting = the owner's machine, native install, no Docker
 - **Main flow**: PROJECT_SPEC.md (Mermaid flowchart in Architecture Summary)
 - **Approved by**: 
