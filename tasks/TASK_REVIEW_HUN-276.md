@@ -15,7 +15,7 @@ Mode: auto
 6. README names "opens the dashboard" without the command until HUN-273 merges; the Supervisor adds `easy-note dashboard` at merge — RULE: `tests/readme.rs` (a README command must exist)
 Checks: tests `cargo fmt --check && cargo clippy … -D warnings && cargo test --locked` + `--features tray` + `! cargo tree -e normal -i ksni` — exit 0, 40 `test result: ok`, 0 failed; reviews code-review — 0 P0/P1, 2 P3 (badge month folder from UTC not local; edit/tag also start the badge); real run `install launcher` in a temp HOME — 5 files, `desktop-file-validate` clean, second run `already installed` (auto-checked, not /verify)
 Memory: pending (Stage 5)
-Not done: merge (admin: after the auto verify pass); auto verify: not started; owner GNOME screenshots: app grid icon, tray outline + 3 s badge (yours); html-report for code-review (not rendered this run)
+Not done: merge (admin: after the auto verify pass); auto verify: running (T182); owner GNOME screenshots: app grid icon, tray outline + 3 s badge (yours); html-report for code-review (not rendered this run)
 
 ## Evidence
 
