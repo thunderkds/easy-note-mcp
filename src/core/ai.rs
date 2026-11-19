@@ -228,6 +228,7 @@ pub fn enrich(store: &Store, note_id: &str, input: &Input) -> Result<Detail, AiE
     detail.at = store.now_stamp();
     detail.id = id;
     write(store, &detail)?;
+    crate::core::ai_view::sync(store, &detail.id);
     Ok(detail)
 }
 
@@ -303,7 +304,10 @@ pub(crate) fn of<'a>(details: &'a HashMap<String, Detail>, note_id: &str) -> Opt
 pub fn remove(store: &Store, note_id: &str) -> Result<bool, AiError> {
     let id = store.canonical_id(note_id)?;
     match fs::remove_file(path(&store.root, &id)) {
-        Ok(()) => Ok(true),
+        Ok(()) => {
+            crate::core::ai_view::sync_remove(store, &id);
+            Ok(true)
+        }
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
         Err(e) => Err(e.into()),
     }

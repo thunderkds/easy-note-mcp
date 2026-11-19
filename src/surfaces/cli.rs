@@ -78,6 +78,8 @@ pub enum Target {
 pub enum AiAction {
     /// Delete the AI detail of a note (the note stays as it is).
     Rm { id: String },
+    /// Rewrite the Obsidian view of every AI detail (needs a `.obsidian` folder in or above the notes dir).
+    Render,
 }
 
 #[derive(Debug, PartialEq, Eq, Subcommand)]
@@ -407,6 +409,9 @@ fn dispatch(command: Command) -> Outcome {
         Command::Ai {
             action: AiAction::Rm { id },
         } => write::ai_rm(&id),
+        Command::Ai {
+            action: AiAction::Render,
+        } => write::ai_render(),
         Command::Stats { json, filters } => read::stats(json, filters.into()),
         Command::Doctor => read::doctor(),
         Command::Path => read::path(),

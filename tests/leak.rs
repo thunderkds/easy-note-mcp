@@ -1042,7 +1042,23 @@ fn surface_ai(text: &str) -> Captured {
     cli(&["ai", "rm", text]);
     cli(&["rm", &base]);
     cli(&["restore", &base]);
+    // Outside a vault this exits 1; in one (`surface_ai_view`) it writes the views of the hand files.
+    cli(&["ai", "render"]);
     std::fs::remove_file(&raw_path).unwrap();
+    got
+}
+
+/// HUN-274: the same AI surface in an Obsidian vault, so the `ai/<id>.md` views hold the planted
+/// secret's source text and the file grep covers them.
+fn surface_ai_view(text: &str) -> Captured {
+    let notes = PathBuf::from(std::env::var("EASY_NOTE_DIR").unwrap());
+    std::fs::create_dir_all(notes.parent().unwrap().join(".obsidian")).unwrap();
+    let got = surface_ai(text);
+    let views = all_files(notes.parent().unwrap())
+        .into_iter()
+        .filter(|p| p.starts_with(notes.join("ai")))
+        .count();
+    assert!(views >= 3, "the vault surface wrote {views} views");
     got
 }
 
@@ -1055,6 +1071,7 @@ const SURFACES: &[(&str, Surface)] = &[
     ("quick", surface_quick),
     ("tray", surface_tray),
     ("ai", surface_ai),
+    ("ai_view", surface_ai_view),
 ];
 
 fn nothing_leaked(secret: &str, got: &Captured, root: &Path) -> Result<(), String> {
@@ -1104,7 +1121,9 @@ fn planted_secret_never_leaks() {
 
 #[test]
 fn the_registry_holds_the_core_the_cli_and_the_inbox_surface() {
-    for wanted in ["core", "cli", "inbox", "hook", "quick", "tray", "ai"] {
+    for wanted in [
+        "core", "cli", "inbox", "hook", "quick", "tray", "ai", "ai_view",
+    ] {
         assert!(SURFACES.iter().any(|(name, _)| *name == wanted), "{wanted}");
     }
 }

@@ -8,7 +8,7 @@ A breaking change needs `easy-note: 2`, a new DDR, and a reader that still reads
 
 `<notes dir>/YYYY/MM/<id>.md`, where `YYYY/MM` is the local date of `created`.
 Only `.md` files in a `YYYY/MM` folder (4 digits / 2 digits) are notes. Files under `<notes dir>/.easy-note/`
-(trash, AI detail) and the writer's temp files (`.*.tmp` in a month folder) are not notes. Other files in the dir are ignored.
+(trash, AI detail), the Obsidian views in `<notes dir>/ai/` (below) and the writer's temp files (`.*.tmp` in a month folder) are not notes. Other files in the dir are ignored.
 
 The notes dir is `EASY_NOTE_DIR` if set, else `dir` in `~/.config/easy-note/config.toml`, else `~/easy-notes`
 (created by the first write).
@@ -136,3 +136,37 @@ Readers that must not hold note text (easy-personal) must not read AI files eith
 
 - Read-only. Never rename, move or rewrite a note.
 - A reader that must not hold note text reads only the front matter (stop at the second `---`).
+
+## Obsidian views of AI detail (FR-036, DDR 0006)
+
+When the notes dir, or a parent of it, holds a `.obsidian` folder (a vault), each AI file also shows as
+`<notes dir>/ai/<id>.md` (inbox ids: `inbox__<stem>.md`, so a name never holds `/`). A view is **not a note** and is
+**never read back**: it is output only, written by easy-note with a temp file and a rename, and only a file that starts
+with `easy-note-ai-view: 1` is replaced or removed, so the person's own files in `ai/` stay. Outside a vault nothing is
+written under `ai/`. A view write error never fails the AI write.
+
+```markdown
+---
+easy-note-ai-view: 1
+note: "[[20261114-164713-a1b2]]"
+model: "claude-…"
+at: "2026-11-15T09:00:00+07:00"
+kind: "bug"
+stale: false
+tags_suggested: ["firefox", "ui_wait_for"]
+---
+
+# AI detail (not your words)
+
+## Firefox-only retry failure in ui_wait_for
+
+…summary…
+
+Suggested tags: #firefox #ui_wait_for
+
+Accept with: easy-note tag 20261114-164713-a1b2 --accept-ai
+```
+
+Every string is masked. For an inbox note `note` links the file part (`[[phone]]`). `stale` is true when the AI file's
+`based_on` is not the hash of the note body. `ai rm`, `rm` remove the view, `restore` writes it again, `edit` and `tag`
+refresh it, and `easy-note ai render` rewrites every view (it prints `N views written`; outside a vault it exits 1).
