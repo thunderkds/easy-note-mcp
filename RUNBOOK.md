@@ -53,3 +53,16 @@ releases, so an older binary reads every note a newer one wrote.
 
 Another `n` may already be on PATH (for example the Node version manager `n`). `which n` shows which one wins.
 `easy-note add` does the same job as `n`. `easy-note doctor` reports the clash.
+
+## Rollback of `easy-note setup` (HUN-277)
+
+`install obsidian` changes one file outside easy-note: Obsidian's vault list. To undo it, close Obsidian, then:
+
+1. `cp ~/.config/obsidian/obsidian.json.easy-note-<YYYYMMDD-HHMMSS>.bak ~/.config/obsidian/obsidian.json` (the newest backup).
+2. Optional: `rm -r <notes dir>/.obsidian` (it holds only Obsidian's own settings for this vault).
+
+## Release Log
+
+| Version | Date | Scope | Deployer | Outcome | Approved (by / when / answer) |
+|---|---|---|---|---|---|
+| (no tag) `0885cb5` on `main` | 2026-11-19 | HUN-251–HUN-277 (no release tagged yet; round 4 + `easy-note setup`) | — | planned only, not released: production approval not asked (auto mode) | — |
