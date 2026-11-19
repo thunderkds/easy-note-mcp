@@ -2,7 +2,8 @@
 //! `127.0.0.1` only. Each tool is a thin call into the core (`store`, `query`, `context`, `guard`,
 //! `ai`). `note_add` adds one new note file (and, with `detail`, one AI file); `note_enrich` writes
 //! one AI file in `.easy-note/ai/`; no tool edits, deletes or moves a note. The prompt
-//! `enrich_notes` is fixed text: easy-note runs no model (DDR 0004).
+//! `enrich_notes` is fixed text: the server runs no model (DDR 0004). With `[ai] after_save`,
+//! `note_add` starts `easy-note ai enrich <id>`, which asks the person's own `claude` (DDR 0007).
 //!
 //! The tokio runtime is built here, inside `serve`, so the CLI path never starts it (NFR-010).
 //! Tool output is JSON text; a failure is a tool error whose text went through
@@ -34,11 +35,11 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value as Json};
 
 use crate::core::ai::{self, AiError, MAX_PENDING};
-use crate::core::context;
 use crate::core::format::{Note, Value};
 use crate::core::guard;
 use crate::core::query::{self, Filters, DEFAULT_LIMIT};
 use crate::core::store::{Store, StoreError};
+use crate::core::{config, context};
 
 pub const DEFAULT_PORT: u16 = 8769;
 const HOST: Ipv4Addr = Ipv4Addr::LOCALHOST;
@@ -284,7 +285,14 @@ impl EasyNote {
         if args.text.trim().is_empty() {
             return Err("note text is empty".into());
         }
-        let store = self.store()?;
+        // A server on a given store (tests) never starts `ai enrich`: its binary is not ours.
+        let (store, after_save) = match &self.store {
+            Some(store) => (store.clone(), false),
+            None => {
+                let (dir, after_save) = config::notes_dir_and_after_save().map_err(fail)?;
+                (Store::system(dir), after_save)
+            }
+        };
         let client = context
             .client_info()
             .map(|info| info.name)
@@ -307,6 +315,9 @@ impl EasyNote {
             fields.push(("client", client.as_deref()));
             let tags = args.tags.unwrap_or_default();
             let added = store.add(&args.text, "mcp", &tags, &fields).map_err(fail)?;
+            if after_save {
+                super::enrich::after_save(&store.root, &added.id);
+            }
             // Report what was written (masked), not what was asked for.
             let note = store.read(&added.id).map_err(fail)?;
             // The note is kept whatever happens to its AI file.

@@ -2,6 +2,7 @@
 
 pub mod cli;
 pub mod dashboard;
+pub mod enrich;
 pub mod hook;
 pub mod install;
 pub mod mcp;

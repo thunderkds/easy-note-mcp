@@ -3,7 +3,9 @@
 Capture one-line notes from the terminal, from Claude Code, Codex and Cursor, and from a desktop
 key press, into a folder of plain Markdown files. Each note gets its context for free: the repo,
 the branch and the task ID of the folder you were in. easy-note is one Linux binary with a CLI and
-an MCP server. It runs no model, makes no network call and masks secrets on every write and read.
+an MCP server. It masks secrets on every write and read. It runs no model and makes no network
+call, with one opt-in exception: `easy-note ai enrich` asks your own `claude` CLI for AI detail
+(see "AI detail with your Claude subscription").
 
 ## Install
 
@@ -94,6 +96,40 @@ notes in separate files (`easy-note ai rm <id>` deletes it). No tool edits, dele
 If your notes folder is inside an Obsidian vault (a `.obsidian` folder in it or above it), each note's AI detail also
 shows in Obsidian as a separate page, `ai/<id>.md`, labelled "AI detail (not your words)" and linked to the note. Your
 note files are never changed. Run `easy-note ai render` once to write the pages for detail you already have.
+
+## AI detail with your Claude subscription
+
+`easy-note ai enrich` writes the AI detail without a Claude session: it starts your own Claude
+Code CLI (`claude -p`) once per note, signed in to the account you pick. No API key is used:
+easy-note removes `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL` from the
+CLI's environment, so your subscription pays. It is off until you turn it on in
+`~/.config/easy-note/config.toml`:
+
+```
+[ai]
+enrich = "claude"                        # "off" (the default) or "claude"
+claude_config_dir = "~/.claude-personal" # the account; leave it out for Claude Code's default
+model = "haiku"                          # the default
+timeout_secs = 120                       # 1 to 600
+after_save = false                       # true: enrich each note just after you save it
+command = "claude"                       # the CLI, on PATH or a full path
+```
+
+Log in once for each account dir: run `CLAUDE_CONFIG_DIR=~/.claude-personal claude` and type
+`/login`. Then:
+
+```
+easy-note ai enrich <id> <id>          # those notes
+easy-note ai enrich --pending          # notes with no AI detail or a stale one (at most 20)
+easy-note ai enrich --pending --limit 3
+easy-note doctor                       # the "ai:" line shows the command, account and model
+```
+
+Only the note text, with secrets masked, goes to the CLI: no repo, branch, task, date or
+transcript. The CLI runs in an empty temp folder with no tools and no MCP servers, and its answer
+goes through the same caps and masking as `note_enrich`. Each call counts against your Claude
+usage limits and takes a few seconds. With `after_save = true`, `n`, `/note`, the quick box and
+`note_add` start `easy-note ai enrich <id>` in the background; the save never waits for it.
 
 ## Notes are plain files
 
