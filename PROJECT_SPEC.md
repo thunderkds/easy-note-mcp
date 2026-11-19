@@ -118,13 +118,13 @@ flowchart LR
 - No capture path may drop typed text: no setup refusal, no secret refusal (mask instead).
 - Inbox files are never written, renamed or normalized.
 - The hook pass path imports only the stdlib and never fails a prompt.
-- No model call inside easy-note, ever. AI detail is written only by `note_enrich` into `.easy-note/ai/`, capped, masked, labelled; it never changes a note file and never feeds counts (DDR 0004).
+- No model linked into easy-note (no SDK, no API key, no HTTP client). One opt-in exception (round 4, DDR 0007): `ai enrich` starts the person's own `claude` CLI as a child with the masked note text only, when `[ai] enrich = "claude"`. AI detail is written only through the `note_enrich` writer into `.easy-note/ai/` (plus the read-only `ai/<id>.md` view in an Obsidian vault, DDR 0006), capped, masked, labelled; it never changes a note file and never feeds counts (DDR 0004).
 - Git is read-only: only `git rev-parse`, `git branch --show-current`, `git remote get-url origin`, with a 2 s timeout. No commit, fetch, or push.
 - No traffic leaves the machine; HTTP binds `127.0.0.1` only, never `0.0.0.0`.
 - No MCP tool may edit, delete, restore, move a note or change config (FR-012). Tool surface is frozen once approved; new tools need owner approval.
 - No secret in any written note, response or log; logs never contain note text (FR-014, NFR-002).
 - Never store a filesystem path or cwd in a note (FR-004).
-- Deterministic: no LLM; same files + query → same output.
+- Deterministic: no LLM in any read path; same files + query → same output.
 - The file format is a public contract: a breaking change needs `easy-note: 2`, a DDR and a reader for v1 files.
 - Sibling repos are conventions-only references; never import or vendor their code (the guard's patterns are re-declared here).
 - Works with no kernel and no other plug-in installed; the kernel never depends on easy-note.
