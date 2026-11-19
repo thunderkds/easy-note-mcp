@@ -9,11 +9,11 @@
 Mode: auto
 1. Dashboard = an Obsidian Bases file, no window of our own; zenity kept for `quick` — RULE: `docs/ddr/0006-obsidian-as-the-dashboard.md` § Decision (owner's chat answers, 2026-11-19)
 2. Task breakdown: 4 tasks (HUN-273 dashboard, HUN-274 AI views, HUN-275 claude enrich, HUN-276 icons+launcher+tray), run in parallel worktrees as the owner asked — RULE: `docs/claude-md/tracks.md` `### Every user stop and its auto rule` (row 12)
-3. Spawn model from the CLI Model Table — FACT: `PROJECT_SPEC.md:168` "| claude | `claude` | haiku | sonnet | sonnet or opus | opus |"
-Checks: pending (Stage 4)
+3. Spawn model sonnet for C1 — FACT: PROJECT_SPEC.md:168 "| claude | `claude` | haiku | sonnet | sonnet or opus | opus |"
+4. Stage 4 P1 fixes applied by the Supervisor: Bases filter `/(^|\/)\d{4}\/\d{2}$/.matches(file.folder)` AND `file.hasProperty("easy-note")`; Today view `file.name.startsWith(today().format("YYYYMMDD"))`; sort by `file.name` DESC — FACT: obsidian.md/help/bases/functions "The String type has no matches() function … `/abc/.matches("abcde")`"; "The date string should be in the format YYYY-MM-DD HH:mm:ss"
+Checks: tests `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` + the same with `--features tray` — exit 0, 0 failed (commit d649e8d); reviews code-review — 2 P1 fixed, 1 P2 (sort key undocumented, kept), 1 P3 (install::obsidian reads the "kept " prefix); real run `easy-note dashboard` with stub xdg tools — opened `obsidian://open?path=…easy-note.base` (auto-checked, not /verify)
 Memory: pending (Stage 5)
-Not done: merge (admin: after the auto verify pass); auto verify: not started
-Paused: auto-mode check failed — no test run in memory/event-trace/HUN-273.jsonl — write /home/thunderkds/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d/$CLAUDE_CODE_SESSION_ID with the task ID (minimal-track step 1): `mkdir -p /home/thunderkds/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d && printf '%s\n%s\n' "HUN-273" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /home/thunderkds/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d/$CLAUDE_CODE_SESSION_ID`, then rerun the task's tests so the trace records them under the task, then stop; extended track, but the trace has no `code-review` Skill call (Stage 4 runs in auto mode) [report 3044de8cb218]
+Not done: merge (admin: after the auto verify pass); auto verify: not started; owner screenshot of the real Obsidian dashboard (yours); html-report for code-review (not rendered this run)
 
 ## Evidence
 
@@ -42,14 +42,14 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 exit=0
 ```
 |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| Negative cases hold | ☑ pass | Red run against the prior content is the BEFORE capture below: `easy-note dashboard` → "unrecognized subcommand", `install obsidian` → "invalid value 'obsidian'", both exit 2. Foreign `.base` file and missing `.base` file covered by `tests/install.rs` / `tests/dashboard.rs` (exit 1, nothing started). |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
-| **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Reviewed: `src/surfaces/dashboard.rs`, `install.rs` (`own_file` split, `obsidian`), `cli.rs` arms, `mod.rs`, both test files, README section. Callers of `own_desktop_file` (launcher, tray) checked unchanged. Skipped: `src/core/*` (untouched; AC 7 test proves the store ignores the file). Lane: `C1, 7 files, 579 lines, EXCEEDS` (mostly tests; warn only). |
+| Full smoke suite still green (no regression) | ☑ pass | full `cargo test --locked` and `--features tray` at d649e8d: every `test result: ok`, 0 failed (leak suite 46 passed in 154.81s) |
+| **Companion score (easy-verifier)** | ☑ N/A | not run in this session: the `score` skill was not started for the round-4 tasks (time); the merge gate does not block on N/A |
+| **UI: Visual regression (diff or verdict pasted)** | ☑ N/A | Obsidian draws the window (DDR 0006); easy-note owns only the `.base` text. Checked against Obsidian's Bases docs (syntax, functions) and by the parse test; the owner's screenshot of the real window stays an owner check |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ N/A | Obsidian's theme draws colours and type; view names and groupings match `docs/design/Main.dc.html` (today / by project) — parse test |
+| **UI: Responsiveness at target viewports** | ☑ N/A | desktop app window drawn by Obsidian; easy-note is Linux desktop only (NFR-006) |
 
 ---
 
