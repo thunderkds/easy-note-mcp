@@ -16,15 +16,15 @@ pub const BASE_NAME: &str = "easy-note.base";
 /// task, tag, source). The filter keeps only notes: a file in a `YYYY/MM` folder, or any file with
 /// the `easy-note` property (so it also works when the notes dir sits inside a larger vault).
 pub const BASE_FILE: &str = r#"filters:
-  or:
-    - 'file.folder.matches("^\d{4}/\d{2}$")'
+  and:
+    - '/(^|\/)\d{4}\/\d{2}$/.matches(file.folder)'
     - 'file.hasProperty("easy-note")'
 views:
   - type: table
     name: Today
     filters:
       and:
-        - 'date(note.created) >= today()'
+        - 'file.name.startsWith(today().format("YYYYMMDD"))'
     order:
       - note.created
       - file.name
@@ -33,7 +33,7 @@ views:
       - note.tags
       - note.source
     sort:
-      - property: note.created
+      - property: file.name
         direction: DESC
   - type: table
     name: All notes
@@ -45,7 +45,7 @@ views:
       - note.tags
       - note.source
     sort:
-      - property: note.created
+      - property: file.name
         direction: DESC
   - type: table
     name: By project
@@ -58,7 +58,7 @@ views:
       - note.task
       - note.tags
     sort:
-      - property: note.created
+      - property: file.name
         direction: DESC
   - type: table
     name: By task
@@ -71,7 +71,7 @@ views:
       - note.repo
       - note.tags
     sort:
-      - property: note.created
+      - property: file.name
         direction: DESC
   - type: table
     name: By tag
@@ -84,7 +84,7 @@ views:
       - note.repo
       - note.task
     sort:
-      - property: note.created
+      - property: file.name
         direction: DESC
   - type: table
     name: By source
@@ -97,7 +97,7 @@ views:
       - note.repo
       - note.task
     sort:
-      - property: note.created
+      - property: file.name
         direction: DESC
 "#;
 
@@ -201,9 +201,11 @@ mod tests {
         let docs = YamlOwned::load_from_str(BASE_FILE).expect("valid YAML");
         let root = &docs[0];
         let filters = get(root, "filters").expect("a global filter");
-        let rules = strings(get(filters, "or").expect("an `or` filter"));
+        let rules = strings(get(filters, "and").expect("an `and` filter"));
         assert!(
-            rules.iter().any(|r| r.contains(r"^\d{4}/\d{2}$")),
+            rules
+                .iter()
+                .any(|r| r.contains(r"\d{4}\/\d{2}$/.matches(file.folder)")),
             "{rules:?}"
         );
         assert!(rules.iter().any(|r| r.contains("easy-note")), "{rules:?}");
