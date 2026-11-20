@@ -72,14 +72,19 @@ pub fn reply_script(answer: &str) -> String {
 /// (an error too), so the page matches each reply to its request. A `req` that is not a number
 /// is dropped, never echoed.
 pub fn ipc(store: &Store, body: &str) -> String {
+    ipc_with(store, body, &|_| {})
+}
+
+/// `ipc`, with the `api::handle_with` hook for the id of a saved note.
+pub fn ipc_with(store: &Store, body: &str, on_added: &dyn Fn(&str)) -> String {
     let Ok(mut request) = serde_json::from_str::<Value>(body) else {
-        return api::handle(store, body);
+        return api::handle_with(store, body, on_added);
     };
     let req = request
         .as_object_mut()
         .and_then(|o| o.remove("req"))
         .filter(Value::is_number);
-    let answer = api::handle(store, &request.to_string());
+    let answer = api::handle_with(store, &request.to_string(), on_added);
     let Some(req) = req else { return answer };
     match serde_json::from_str::<Value>(&answer) {
         Ok(Value::Object(mut map)) => {
@@ -111,8 +116,10 @@ mod shell {
     use wry::http::{header, Response, StatusCode};
     use wry::{NewWindowResponse, WebViewBuilder, WebViewBuilderExtUnix};
 
-    use super::{allowed_url, asset, ipc, reply_script, CSP, REFRESH, START};
+    use super::{allowed_url, asset, ipc_with, reply_script, CSP, REFRESH, START};
+    use crate::core::config;
     use crate::core::store::Store;
+    use crate::surfaces::enrich;
 
     /// Some GPU / Wayland setups draw a blank WebKitGTK window without it (DDR 0009).
     const DMABUF: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
@@ -137,7 +144,9 @@ mod shell {
 
     /// Open the window and run its event loop until it is closed (the process then exits).
     pub fn open() -> Result<(), String> {
-        let store = Store::open().map_err(|e| e.to_string())?;
+        // One config read at start: the same `[ai] enrich` + `after_save` rule as `easy-note add`.
+        let (dir, after_save) = config::notes_dir_and_after_save().map_err(|e| e.to_string())?;
+        let store = Store::system(dir);
         if needs_dmabuf_default(std::env::var_os(DMABUF).as_deref()) {
             // Before any GTK or WebKit code runs; still one thread here.
             std::env::set_var(DMABUF, "1");
@@ -159,7 +168,12 @@ mod shell {
             })
             .with_ipc_handler(move |request| {
                 // The answer goes back through the event loop, where the webview lives.
-                let _ = proxy.send_event(ipc(&store, request.body()));
+                let answer = ipc_with(&store, request.body(), &|id| {
+                    if after_save {
+                        enrich::after_save(&store.root, id);
+                    }
+                });
+                let _ = proxy.send_event(answer);
             })
             .with_navigation_handler(|url| allowed_url(&url))
             .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)

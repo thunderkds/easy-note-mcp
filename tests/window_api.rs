@@ -12,7 +12,9 @@ use easy_note_mcp::core::ai;
 use easy_note_mcp::core::store::Store;
 use easy_note_mcp::surfaces::dashboard::use_window;
 use easy_note_mcp::surfaces::window::{
-    allowed_url, api::handle, asset, ipc, reply_script, CSP, REFRESH,
+    allowed_url,
+    api::{handle, handle_with},
+    asset, ipc, ipc_with, reply_script, CSP, REFRESH,
 };
 use serde_json::{json, Value};
 
@@ -1349,4 +1351,73 @@ fn the_capture_keys_and_save_follow_the_guide() {
     assert!(app.contains("$('cap').addEventListener('mousedown'"));
     // The focus refresh rebuilds the list only; it never touches the dialog.
     assert!(!js_function(app, "loadBoard").contains("Capture"));
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-280 follow-up: a window `add` starts the AI enrich step like `easy-note add` (owner, 2026-11-20)
+// The hook is the seam: the shell passes `enrich::after_save` when `[ai] enrich` and `after_save`
+// are on. A test cannot call that itself: it would start the test binary as `ai enrich <id>`.
+// ---------------------------------------------------------------------------------------------
+
+/// Run one request with a recording hook; returns the reply and the ids the hook got.
+fn with_hook(store: &Store, request: &Value) -> (Value, Vec<String>) {
+    let seen = std::cell::RefCell::new(vec![]);
+    let out = handle_with(store, &request.to_string(), &|id| {
+        seen.borrow_mut().push(id.to_string())
+    });
+    (serde_json::from_str(&out).unwrap(), seen.into_inner())
+}
+
+#[test]
+fn add_hands_the_new_id_to_the_hook_once() {
+    let sb = Sandbox::new("hook-on");
+    let store = sb.store();
+    let (reply, seen) = with_hook(&store, &json!({"cmd": "add", "text": "buy a hub"}));
+    assert_eq!(seen, vec![reply["id"].as_str().unwrap().to_string()]);
+    assert_eq!(written(&sb, &seen[0]).matches("buy a hub").count(), 1);
+}
+
+#[test]
+fn a_failed_add_and_every_other_command_start_nothing() {
+    let sb = Sandbox::new("hook-none");
+    let store = sb.store();
+    last_cli(&sb);
+    for request in [
+        json!({"cmd": "add", "text": "   "}),
+        json!({"cmd": "add"}),
+        json!({"cmd": "board"}),
+        json!({"cmd": "context"}),
+        json!({"cmd": "nope"}),
+    ] {
+        let (_, seen) = with_hook(&store, &request);
+        assert!(seen.is_empty(), "{request}: {seen:?}");
+    }
+}
+
+#[test]
+fn without_a_hook_add_saves_the_same_reply() {
+    // `handle` and `ipc` are the flag-off path: the same note, no hook to call.
+    let sb = Sandbox::new("hook-off");
+    let store = sb.store();
+    let plain = call(&store, &json!({"cmd": "add", "text": "plain"}));
+    assert!(plain["id"].is_string());
+    let via_ipc: Value =
+        serde_json::from_str(&ipc(&store, r#"{"req": 1, "cmd": "add", "text": "again"}"#)).unwrap();
+    assert_eq!(via_ipc["req"], 1);
+    assert!(via_ipc["id"].is_string());
+}
+
+#[test]
+fn ipc_hands_the_new_id_to_the_hook_and_keeps_the_req() {
+    let sb = Sandbox::new("hook-ipc");
+    let store = sb.store();
+    let seen = std::cell::RefCell::new(vec![]);
+    let out = ipc_with(
+        &store,
+        r#"{"req": 5, "cmd": "add", "text": "via ipc"}"#,
+        &|id| seen.borrow_mut().push(id.to_string()),
+    );
+    let reply: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(reply["req"], 5);
+    assert_eq!(seen.into_inner(), vec![reply["id"].as_str().unwrap()]);
 }

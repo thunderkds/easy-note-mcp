@@ -46,12 +46,18 @@ const CONTEXT: [&str; 3] = ["branch", "commit", "session"];
 
 /// Answer one IPC request.
 pub fn handle(store: &Store, request: &str) -> String {
-    let mut answer = answer(store, request).unwrap_or_else(|e| json!({ "error": e }));
+    handle_with(store, request, &|_| {})
+}
+
+/// `handle`, and `on_added` gets the id of each note `add` saved, after the save. The shell passes
+/// `enrich::after_save` there when `[ai] enrich` and `after_save` are on; this module reads no config.
+pub fn handle_with(store: &Store, request: &str, on_added: &dyn Fn(&str)) -> String {
+    let mut answer = answer(store, request, on_added).unwrap_or_else(|e| json!({ "error": e }));
     mask_all(&mut answer);
     answer.to_string()
 }
 
-fn answer(store: &Store, request: &str) -> Result<Value, &'static str> {
+fn answer(store: &Store, request: &str, on_added: &dyn Fn(&str)) -> Result<Value, &'static str> {
     let request: Value = serde_json::from_str(request).map_err(|_| "bad request")?;
     let id = || {
         request
@@ -67,7 +73,7 @@ fn answer(store: &Store, request: &str) -> Result<Value, &'static str> {
         Some("restore") => restore(store, id()?),
         Some("open_in_editor") => open_in_editor(store, id()?),
         Some("context") => Ok(json!({ "context": context(store) })),
-        Some("add") => add(store, &request),
+        Some("add") => add(store, &request, on_added),
         Some(_) => Err("unknown command"),
         None => Err("missing cmd"),
     }
@@ -154,7 +160,7 @@ fn context(store: &Store) -> Value {
 }
 
 /// `easy-note add` with the `quick` context rule: one new note, `source: quick`.
-fn add(store: &Store, request: &Value) -> Result<Value, &'static str> {
+fn add(store: &Store, request: &Value, on_added: &dyn Fn(&str)) -> Result<Value, &'static str> {
     let text = request
         .get("text")
         .and_then(Value::as_str)
@@ -172,6 +178,7 @@ fn add(store: &Store, request: &Value) -> Result<Value, &'static str> {
     let added = store
         .add(text, "quick", &tags::extract(text), &context.fields())
         .map_err(store_error)?;
+    on_added(&added.id);
     detail(store, &added.id)
 }
 
