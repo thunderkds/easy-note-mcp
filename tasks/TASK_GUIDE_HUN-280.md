@@ -191,3 +191,4 @@ cargo fmt --check \
 ## Questions Log
 
 * 2026-11-19 DECIDED window capture writes `source: quick`; no new source value (Supervisor, RULE `docs/NOTE_FORMAT.md:55,80`, DDR 0002)
+- 2026-11-20 DECIDED a note saved from the window dialog starts `enrich::after_save` when `[ai] enrich` and `after_save` are on, as `easy-note add` does (owner: "yes, should be")
