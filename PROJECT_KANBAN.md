@@ -17,9 +17,9 @@
 - [ ] **HUN-284** — Dashboard window hardening: stricter CSP, pinned origin, sticky detail panel at 800 px (HUN-278 reviews) | Frontend-Implementer + Backend-Implementer | C1 | Risk: Medium | P2 | @hungnh1110 | Guide: none yet (Stage 2)
 
 ### In Progress
-- [ ] **HUN-279** — Dashboard window actions: Add as tags, Move to trash with Undo, Open in editor, Copy id | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-279.md` | In Progress 2026-11-20: backend slice, worktree ../easy-note-mcp-HUN-279
 
 ### Ready for Review
+- [ ] **HUN-279** — Dashboard window actions: Add as tags, Move to trash with Undo, Open in editor, Copy id | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-279.md` | Ready for Review 2026-11-20: branch feat/HUN-279-actions @ d592093; code-review 0 P0/P1 (4 P2), security-review no findings
 
 ### Done
 - [x] **HUN-278** — Dashboard window, read-only board: easy-note dashboard opens our own window (wry webview, feature window) | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-278.md` | Done 2026-11-20: merged 996fe74 by the owner (auto verify pass; companion score 74 false-positive fail, owner override)
