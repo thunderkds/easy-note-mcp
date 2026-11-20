@@ -195,7 +195,8 @@ pub enum Command {
     Hotkey,
     /// Show an icon in the system tray (needs a build with `--features tray`).
     Tray,
-    /// Open the notes dashboard (`easy-note.base`) in Obsidian. Run `install obsidian` first.
+    /// Open the dashboard: easy-note's own window in a `window` build on a desktop, else
+    /// `easy-note.base` in Obsidian (run `install obsidian` first).
     Dashboard,
     /// Set up the launcher, the Obsidian dashboard and vault, and the tray login item in one go.
     Setup,

@@ -156,7 +156,7 @@ search and read notes; only the person edits or deletes them. Everything stays o
 - Automatic capture from transcripts (easy-memory's job). The round 2 prompt hook captures only what the person types after the prefix.
 - A key-listener daemon; macOS/Windows tray autostart (v1.1); a model call inside easy-note other than the opt-in `claude` CLI child of FR-037 (no API key, no SDK, no HTTP client); AI edits of note files; network capture from a phone (the `inbox/` folder plus the person's sync tool covers it).
 - Zero-model-call capture in Codex/Cursor (no hook system there).
-- A web UI or a window of easy-note's own (round 4: the dashboard is an Obsidian Bases file, DDR 0006; easy-personal shows counts and links, follow-up F1).
+- A web UI served on a local port (round 4: the dashboard was an Obsidian Bases file, DDR 0006; round 5: easy-note's own window replaces it where a desktop is present, DDR 0009, FR-042; easy-personal shows counts and links, follow-up F1).
 - Kernel skills or hooks for notes (follow-up F2 only lists easy-note in `companion-setup`).
 
 ---
