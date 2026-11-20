@@ -15,6 +15,7 @@
 - Suite: `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked`, then clippy + test with `--features tray` and `--features window` — EXIT=0, 72 `test result: ok`, 1613 passed, 0 failed (the first run died on `No space left on device`; rerun after freeing disk).
 - Real run: `env -i PATH=/usr/bin:/bin HOME=<tmp> EASY_NOTE_DIR=<tmp>/notes DISPLAY=:99317 ./target/debug/easy-note dashboard` — printed `easy-note: no dashboard yet: run easy-note install obsidian`, exit=1, no panic.
 - Simplify: skipped: under 20 lines outside tests and docs.
+- verify: ☑ pass — auto-run by hook, session 32c2c9f3-8854-4ab9-8d4f-01fbd9738954, commit bef099a958473b511e75dbcd9e27a08593445ab2, log .claude/verify-runs/HUN-281-bef099a95847.log
 **Files:** `src/surfaces/window/mod.rs`, `src/surfaces/dashboard.rs`, `tests/dashboard.rs`, `tasks/MINIMAL_LOG.md`
 **Not done:** merge (the user decides)
 
