@@ -9,9 +9,8 @@
 ## Board
 
 ### Todo
-- [ ] **HUN-278** — Dashboard window, read-only board: easy-note dashboard opens our own window (wry webview, feature window) | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-278.md`
-- [ ] **HUN-279** — Dashboard window actions: Add as tags, Move to trash with Undo, Open in editor, Copy id | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-279.md` | Blocked by HUN-278
-- [ ] **HUN-280** — Dashboard window capture dialog: + New note in the window (Enter save, Esc cancel) | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-280.md` | Blocked by HUN-278
+- [ ] **HUN-279** — Dashboard window actions: Add as tags, Move to trash with Undo, Open in editor, Copy id | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-279.md`
+- [ ] **HUN-280** — Dashboard window capture dialog: + New note in the window (Enter save, Esc cancel) | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-280.md`
 - [ ] **HUN-266** — Manual run: measure how Cursor starts a stdio MCP server (HUN-251 follow-up) | Owner | C0 | Risk: Low | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-266.md`
 
 ### In Progress
@@ -19,6 +18,7 @@
 ### Ready for Review
 
 ### Done
+- [x] **HUN-278** — Dashboard window, read-only board: easy-note dashboard opens our own window (wry webview, feature window) | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-278.md` | Done 2026-11-20: merged 996fe74 by the owner (auto verify pass; companion score 74 false-positive fail, owner override)
 - [x] **HUN-273** — Obsidian dashboard: easy-note dashboard + install/uninstall obsidian (easy-note.base) | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-273.md` | Done 2026-11-19 (owner moved: merged, auto verify pass)
 - [x] **HUN-274** — AI detail visible in Obsidian: <notes dir>/ai/<id>.md views + easy-note ai render | Backend-Implementer | C1 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-274.md` | Done 2026-11-19 (owner moved: merged, auto verify pass)
 - [x] **HUN-275** — AI detail from the local claude CLI: easy-note ai enrich (claude -p) + [ai] settings section | Backend-Implementer | C2 | Risk: High | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-275.md` | Done 2026-11-19 (owner moved: merged, auto verify pass)
