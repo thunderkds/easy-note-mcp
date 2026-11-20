@@ -982,3 +982,75 @@ fn no_planted_secret_leaves_through_the_actions() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// HUN-279 frontend slice: the page calls only commands `handle` knows, and shows the actions
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn the_page_asks_only_for_commands_the_api_answers() {
+    let ipc_js = std::str::from_utf8(asset("/ipc.js").unwrap().1).unwrap();
+    let asked = regex::Regex::new(r"request\('([a-z_]+)'").unwrap();
+    let cmds: std::collections::BTreeSet<&str> = asked
+        .captures_iter(ipc_js)
+        .map(|c| c.get(1).unwrap().as_str())
+        .collect();
+    let all = [
+        "board",
+        "detail",
+        "accept_ai",
+        "trash",
+        "restore",
+        "open_in_editor",
+    ];
+    assert_eq!(cmds, all.into_iter().collect(), "commands in ipc.js");
+    let sb = Sandbox::new("page-cmds");
+    let store = sb.store();
+    for cmd in &cmds {
+        let out = call(&store, &json!({"cmd": cmd}));
+        assert_ne!(out["error"], "unknown command", "{cmd}: {out}");
+        // The contract comment at the top of ipc.js names each request and its result.
+        assert!(
+            ipc_js.contains(&format!(r#""cmd": "{cmd}""#)),
+            "ipc.js contract comment lacks {cmd}"
+        );
+    }
+}
+
+#[test]
+fn the_page_has_the_design_actions_and_the_undo_window() {
+    let app = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
+    // Labels from docs/design/Main.dc.html, board "Dashboard (clickable)", and the AC 5 toast.
+    for label in [
+        "'Add as tags'",
+        "'Open in editor'",
+        "'Copy id'",
+        "'Move to trash'",
+        "'Copied'",
+    ] {
+        assert!(app.contains(label), "app.js lacks {label}");
+    }
+    let html = std::str::from_utf8(asset("/").unwrap().1).unwrap();
+    assert!(html.contains(r#"id="toast-undo" hidden>Undo</button>"#));
+    // AC 5: Copy id uses the page clipboard API, not IPC. AC 2/3: Undo is offered for 6 s.
+    assert!(app.contains("navigator.clipboard.writeText("));
+    assert!(app.contains("var UNDO_MS = 6000;"));
+    // AC 7: each IPC action asks for the board again.
+    for call in [
+        "easyNoteIpc.acceptAi(",
+        "easyNoteIpc.trash(",
+        "easyNoteIpc.restore(",
+        "easyNoteIpc.openInEditor(",
+    ] {
+        let at = app
+            .find(call)
+            .unwrap_or_else(|| panic!("app.js lacks {call}"));
+        let rest = &app[at..];
+        let end = rest.find("\n  }\n").unwrap_or(rest.len());
+        assert!(
+            rest[..end].contains("afterAction"),
+            "{call} is not followed by afterAction (board reload)"
+        );
+    }
+    assert!(app.contains("function afterAction("));
+}

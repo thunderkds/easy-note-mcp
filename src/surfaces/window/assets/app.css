@@ -100,3 +100,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .ai-tag { padding: 2px 8px; border: 1px dashed #2C3230; border-radius: 4px; font: 400 12px 'IBM Plex Mono', monospace; color: #8C9590; }
 .no-ai { margin: 0; padding: 12px 14px; border: 1px dashed #2C3230; border-radius: 6px; font-size: 13px; line-height: 1.5; color: #8C9590; }
 .no-ai code { font-family: 'IBM Plex Mono', monospace; color: #DCE0DD; }
+.ai-accept { margin-left: auto; height: 30px; padding: 0 12px; background: transparent; color: #DCE0DD; border: 1px solid #2C3230; border-radius: 6px; font: 500 12.5px 'IBM Plex Sans', sans-serif; cursor: pointer; }
+
+/* Actions (HUN-279) */
+.actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; border-top: 1px solid #1F2321; }
+.act { height: 34px; padding: 0 14px; background: transparent; color: #DCE0DD; border: 1px solid #2C3230; border-radius: 6px; font: 500 13px 'IBM Plex Sans', sans-serif; cursor: pointer; }
+.act.danger { margin-left: auto; color: #E8968F; }
+
+/* Toast */
+.toast { position: fixed; right: 24px; bottom: 24px; z-index: 6; display: flex; align-items: center; gap: 14px; max-width: 420px; box-sizing: border-box; padding: 12px 16px; background: #181B1A; border: 1px solid #3CF5A859; border-radius: 6px; box-shadow: 0 0 0 1px #3CF5A840, 0 0 18px #3CF5A840; font-size: 13px; color: #EAEDEA; }
+.toast-text { font-family: 'IBM Plex Mono', monospace; overflow-wrap: anywhere; user-select: text; }
+.toast-undo { background: none; border: 0; padding: 0; color: #7EDDB0; font: 500 13px 'IBM Plex Sans', sans-serif; cursor: pointer; }

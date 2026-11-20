@@ -165,8 +165,12 @@ quick box. Neither reads the other's folder.
 ## Dashboard window
 
 A build with the `window` feature has its own dashboard window: counts, search, kind filters, notes by day and a
-detail panel with the AI detail. It only reads your notes. The page is inside the binary and loads nothing from the
-network. Building it needs the WebKitGTK headers (Debian/Ubuntu: `sudo apt install libwebkit2gtk-4.1-dev`).
+detail panel with the AI detail. The page is inside the binary and loads nothing from the network.
+
+Window actions on the selected note: `Add as tags` does what `easy-note tag <id> --accept-ai` does; `Open in editor`
+runs `xdg-open` on the note file; `Copy id` copies the id; `Move to trash` does what `easy-note rm <id>` does, and its
+toast offers `Undo` (`easy-note restore <id>`) for 6 seconds. The AI file moves with the note. Nothing else in the
+window changes a note file. Building it needs the WebKitGTK headers (Debian/Ubuntu: `sudo apt install libwebkit2gtk-4.1-dev`).
 
 ```
 cargo install --path . --locked --features "tray window"
