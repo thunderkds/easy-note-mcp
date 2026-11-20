@@ -12,9 +12,9 @@
 - [ ] **HUN-266** — Manual run: measure how Cursor starts a stdio MCP server (HUN-251 follow-up) | Owner | C0 | Risk: Low | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-266.md`
 
 ### In Progress
-- [ ] **HUN-280** — Dashboard window capture dialog: + New note in the window (Enter save, Esc cancel) | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-280.md` | In Progress 2026-11-20: backend slice, worktree ../easy-note-mcp-HUN-280 (from feat/HUN-279-actions)
 
 ### Ready for Review
+- [ ] **HUN-280** — Dashboard window capture dialog: + New note in the window (Enter save, Esc cancel) | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-280.md` | Ready for Review 2026-11-20: branch feat/HUN-280-capture (from feat/HUN-279-actions); code-review 0 P0/P1 (3 P2), security-review no findings
 - [ ] **HUN-284** — Dashboard window hardening: stricter CSP, pinned origin, sticky detail panel at 800 px (HUN-278 reviews) | Frontend-Implementer + Backend-Implementer | C1 | Risk: Medium | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-284.md` | Ready for Review 2026-11-20: branch feat/HUN-284-harden @ 9bc91c6 (from feat/HUN-279-actions); code-review 0 P0/P1/P2 (1 P3), security-review no findings
 - [ ] **HUN-282** — Dashboard window page: load the board once at start, faster search render, slimmer board payload (HUN-278 review P2) | Frontend-Implementer + Backend-Implementer | C1 | Risk: Low | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-282.md` | Ready for Review 2026-11-20: branch feat/HUN-282-perf @ e825ce0 (from feat/HUN-279-actions); code-review 0 P0/P1 (2 P2)
 - [ ] **HUN-281** — Dashboard window: an unusable display makes tao panic instead of falling back to Obsidian (HUN-278 review P2) | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Branch fix/HUN-281-display | Track: minimal | Record: tasks/MINIMAL_LOG.md
