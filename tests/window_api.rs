@@ -12,7 +12,9 @@ use easy_note_mcp::core::ai;
 use easy_note_mcp::core::store::Store;
 use easy_note_mcp::surfaces::dashboard::use_window;
 use easy_note_mcp::surfaces::window::{
-    allowed_url, api::handle, asset, ipc, ipc_from, reply_script, CSP, REFRESH,
+    allowed_url,
+    api::{handle, handle_with},
+    asset, ipc, ipc_from, ipc_from_with, ipc_with, reply_script, CSP, REFRESH,
 };
 use serde_json::{json, Value};
 
@@ -1093,6 +1095,8 @@ fn the_page_asks_only_for_commands_the_api_answers() {
         "trash",
         "restore",
         "open_in_editor",
+        "context",
+        "add",
     ];
     assert_eq!(cmds, all.into_iter().collect(), "commands in ipc.js");
     let sb = Sandbox::new("page-cmds");
@@ -1308,4 +1312,387 @@ fn typing_in_search_renders_once_and_shows_the_same_rows() {
         b["none"]["noneText"], "No note matches “zzzz-nothing”.",
         "{b}"
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-280: capture from the window (`context`, `add`; FR-044, FR-027, FR-001, FR-014, NFR-002)
+// ---------------------------------------------------------------------------------------------
+
+/// One note file of any `source`, written by hand; `extra` holds front matter lines.
+fn sourced(sb: &Sandbox, id: &str, created: &str, source: &str, extra: &str) {
+    let folder = sb.notes().join(&id[..4]).join(&id[4..6]);
+    std::fs::create_dir_all(&folder).unwrap();
+    let text = format!(
+        "---\neasy-note: 1\nid: \"{id}\"\ncreated: \"{created}\"\n{extra}tags: []\nsource: \"{source}\"\n---\nx\n"
+    );
+    std::fs::write(folder.join(format!("{id}.md")), text).unwrap();
+}
+
+/// A `cli` note 30 min before the frozen now, in repo `r` on task `T1`, with remote and branch.
+fn last_cli(sb: &Sandbox) {
+    sourced(
+        sb,
+        "20261119-093000-c1c1",
+        "2026-11-19T09:30:00+07:00",
+        "cli",
+        "repo: \"r\"\nremote: \"github.com/o/r\"\nbranch: \"fix/t1-x\"\ntask: \"T1\"\ncommit: \"abc1234\"\n",
+    );
+}
+
+/// The note file `add` wrote for `id`.
+fn written(sb: &Sandbox, id: &str) -> String {
+    std::fs::read_to_string(
+        sb.notes()
+            .join(format!("{}/{}/{id}.md", &id[..4], &id[4..6])),
+    )
+    .unwrap()
+}
+
+#[test]
+fn context_is_the_newest_cli_or_hook_note_under_two_hours() {
+    let sb = Sandbox::new("ctx");
+    let store = sb.store();
+    assert_eq!(
+        call(&store, &json!({"cmd": "context"})),
+        json!({"context": null})
+    );
+    last_cli(&sb);
+    // A newer note of another source is not a context source (FR-027).
+    sourced(
+        &sb,
+        "20261119-094500-q1q1",
+        "2026-11-19T09:45:00+07:00",
+        "quick",
+        "repo: \"other\"\n",
+    );
+    assert_eq!(
+        call(&store, &json!({"cmd": "context"})),
+        json!({"context": {"repo": "r", "task": "T1"}})
+    );
+    // A hook note is a source too, and the newest one wins.
+    sourced(
+        &sb,
+        "20261119-095000-h1h1",
+        "2026-11-19T09:50:00+07:00",
+        "hook",
+        "repo: \"h\"\n",
+    );
+    assert_eq!(
+        call(&store, &json!({"cmd": "context"})),
+        json!({"context": {"repo": "h", "task": null}})
+    );
+}
+
+#[test]
+fn context_is_null_when_the_last_note_is_two_hours_old() {
+    let sb = Sandbox::new("ctx-old");
+    sourced(
+        &sb,
+        "20261119-080000-o1o1",
+        "2026-11-19T08:00:00+07:00",
+        "cli",
+        "repo: \"r\"\ntask: \"T1\"\n",
+    );
+    assert_eq!(
+        call(&sb.store(), &json!({"cmd": "context"})),
+        json!({"context": null})
+    );
+}
+
+#[test]
+fn add_keeps_the_last_context_like_quick_and_returns_the_new_item() {
+    let sb = Sandbox::new("add-ctx");
+    sb.four();
+    last_cli(&sb);
+    let store = sb.store();
+    let out = call(
+        &store,
+        &json!({"cmd": "add", "text": "  retry on firefox #flaky\nsecond line  ", "keep_context": true}),
+    );
+    let id = out["id"].as_str().unwrap_or_else(|| panic!("{out}"));
+    assert!(id.starts_with("20261119-100000-"), "{out}");
+    assert_eq!(out["source"], "quick");
+    assert_eq!(out["repo"], "r");
+    assert_eq!(out["task"], "T1");
+    assert_eq!(out["tags"], json!(["flaky"]));
+    assert_eq!(out["day"], "today");
+    // Trimmed on save; the store ends the body with one line end, as for every note.
+    assert_eq!(out["text"], "retry on firefox #flaky\nsecond line\n");
+    assert_eq!(out["masked"], false);
+    let file = written(&sb, id);
+    for line in [
+        "easy-note: 1\n",
+        "repo: \"r\"\n",
+        "remote: \"github.com/o/r\"\n",
+        "branch: \"fix/t1-x\"\n",
+        "task: \"T1\"\n",
+        "source: \"quick\"\n",
+    ] {
+        assert!(file.contains(line), "{line:?} not in {file}");
+    }
+    // A commit belongs to the moment of the old note, not to this one (as in `quick`).
+    assert!(!file.contains("commit:"), "{file}");
+    // The new note is the first one on the board, in `today`.
+    let board = call(&store, &json!({"cmd": "board"}));
+    assert_eq!(ids(&board)[0], id);
+    assert_eq!(board["notes"][0]["day"], "today");
+}
+
+#[test]
+fn add_without_keep_context_writes_no_context() {
+    let sb = Sandbox::new("add-bare");
+    last_cli(&sb);
+    let store = sb.store();
+    for request in [
+        json!({"cmd": "add", "text": "buy a hub", "keep_context": false}),
+        json!({"cmd": "add", "text": "buy a hub"}),
+    ] {
+        let out = call(&store, &request);
+        let id = out["id"].as_str().unwrap_or_else(|| panic!("{out}"));
+        assert_eq!(out["repo"], Value::Null, "{out}");
+        assert_eq!(out["task"], Value::Null, "{out}");
+        assert_eq!(out["source"], "quick");
+        let file = written(&sb, id);
+        for key in ["repo:", "remote:", "branch:", "task:", "commit:"] {
+            assert!(!file.contains(key), "{key} in {file}");
+        }
+    }
+}
+
+#[test]
+fn add_with_keep_context_and_no_last_context_saves_the_note() {
+    let sb = Sandbox::new("add-none");
+    let out = call(
+        &sb.store(),
+        &json!({"cmd": "add", "text": "first note ever", "keep_context": true}),
+    );
+    let id = out["id"].as_str().unwrap_or_else(|| panic!("{out}"));
+    assert_eq!(out["repo"], Value::Null);
+    assert!(written(&sb, id).contains("first note ever"));
+}
+
+#[test]
+fn add_of_empty_text_is_an_error_and_writes_nothing() {
+    let sb = Sandbox::new("add-empty");
+    last_cli(&sb);
+    let store = sb.store();
+    let before = snapshot(&sb.notes());
+    for text in ["", "   ", "\n\t \n"] {
+        let out = call(
+            &store,
+            &json!({"cmd": "add", "text": text, "keep_context": true}),
+        );
+        assert_eq!(out, json!({"error": "empty"}), "{text:?}");
+    }
+    for request in [
+        json!({"cmd": "add"}),
+        json!({"cmd": "add", "text": 5}),
+        json!({"cmd": "add", "text": null}),
+    ] {
+        assert_eq!(
+            call(&store, &request),
+            json!({"error": "missing text"}),
+            "{request}"
+        );
+    }
+    assert_eq!(snapshot(&sb.notes()), before, "no change on disk");
+}
+
+#[test]
+fn add_masks_a_planted_secret_on_write() {
+    let sb = Sandbox::new("add-leak");
+    let store = sb.store();
+    for (text, secret) in planted() {
+        let raw = handle(
+            &store,
+            &json!({"cmd": "add", "text": format!("note {text}"), "keep_context": false})
+                .to_string(),
+        );
+        assert!(!raw.contains(secret.as_str()), "secret in {raw}");
+        let out: Value = serde_json::from_str(&raw).unwrap();
+        let id = out["id"].as_str().unwrap_or_else(|| panic!("{raw}"));
+        assert_eq!(out["masked"], true, "{raw}");
+        let file = written(&sb, id);
+        assert!(!file.contains(secret.as_str()), "secret in the file {id}");
+        assert!(file.contains("[masked:"), "{file}");
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-280 frontend slice: the capture dialog of docs/design/Main.dc.html in the page
+// ---------------------------------------------------------------------------------------------
+
+/// The body of the named `function <name>(` in app.js, up to the next two-space `}` line.
+fn js_function<'a>(app: &'a str, name: &str) -> &'a str {
+    let at = app
+        .find(&format!("function {name}("))
+        .unwrap_or_else(|| panic!("app.js lacks function {name}"));
+    let rest = &app[at..];
+    &rest[..rest.find("\n  }\n").unwrap_or(rest.len())]
+}
+
+#[test]
+fn the_page_has_the_design_capture_dialog() {
+    let html = std::str::from_utf8(asset("/").unwrap().1).unwrap();
+    // Labels and texts from the board "Dashboard (clickable)": header button, dialog, key hints.
+    for must in [
+        r#"id="new-note">+ New note</button>"#,
+        r#"role="dialog" aria-modal="true" aria-label="New note""#,
+        r#"id="cap-chip-text""#,
+        r#"aria-label="Drop context""#,
+        "from your last note",
+        r#"placeholder="Note…" aria-label="Note text""#,
+        "<kbd>Enter</kbd> save",
+        "<kbd>Shift+Enter</kbd> new line",
+        "<kbd>Esc</kbd> cancel",
+        "<kbd>Backspace</kbd> on empty: drop context",
+    ] {
+        assert!(html.contains(must), "index.html lacks {must}");
+    }
+    // The dialog starts closed.
+    assert!(
+        html.contains(r#"id="cap" hidden"#),
+        "dialog not hidden at start"
+    );
+    let css = std::str::from_utf8(asset("/app.css").unwrap().1).unwrap();
+    // Dialog values copied from the design.
+    for must in [
+        "width: 560px; max-width: calc(100% - 32px)",
+        "padding-top: 14vh",
+        "background: rgba(8, 10, 9, 0.6)",
+        "font: 400 18px/1.5 'IBM Plex Sans', sans-serif",
+    ] {
+        assert!(css.contains(must), "app.css lacks {must}");
+    }
+}
+
+#[test]
+fn the_capture_keys_and_save_follow_the_guide() {
+    let app = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
+    let keys = js_function(app, "capKey");
+    // AC 3: Enter saves, Shift+Enter is a new line, Esc closes, Backspace on empty drops the chip.
+    // IME composition: Enter while composing does not save.
+    for must in [
+        "e.isComposing",
+        "e.key === 'Enter' && !e.shiftKey",
+        "e.key === 'Escape'",
+        "e.key === 'Backspace' && box.value === '' && keepContext",
+    ] {
+        assert!(keys.contains(must), "capKey lacks {must}");
+    }
+    let save = js_function(app, "saveCapture");
+    // AC 4: empty or whitespace-only text sends no request.
+    let guard = save
+        .find("if (!text.trim()) return;")
+        .expect("no empty guard");
+    let ask = save
+        .find("easyNoteIpc.add(text, keepContext)")
+        .expect("no add request");
+    assert!(guard < ask, "the empty guard comes after the request");
+    // AC 5: close, saved toast, board reload, select the new note. An error keeps the dialog.
+    for must in [
+        "closeCapture()",
+        "'✓ noted'",
+        "loadBoard()",
+        "select(d.id)",
+        "'could not save: ' + err.message",
+    ] {
+        assert!(save.contains(must), "saveCapture lacks {must}");
+    }
+    let open = js_function(app, "openCapture");
+    assert!(open.contains("easyNoteIpc.context()"), "{open}");
+    assert!(open.contains(".focus()"), "{open}");
+    // A click on the backdrop keeps focus in the text box, so the keys above still reach capKey.
+    assert!(app.contains("$('cap').addEventListener('mousedown'"));
+    // The focus refresh rebuilds the list only; it never touches the dialog.
+    assert!(!js_function(app, "loadBoard").contains("Capture"));
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-280 follow-up: a window `add` starts the AI enrich step like `easy-note add` (owner, 2026-11-20)
+// The hook is the seam: the shell passes `enrich::after_save` when `[ai] enrich` and `after_save`
+// are on. A test cannot call that itself: it would start the test binary as `ai enrich <id>`.
+// ---------------------------------------------------------------------------------------------
+
+/// Run one request with a recording hook; returns the reply and the ids the hook got.
+fn with_hook(store: &Store, request: &Value) -> (Value, Vec<String>) {
+    let seen = std::cell::RefCell::new(vec![]);
+    let out = handle_with(store, &request.to_string(), &|id| {
+        seen.borrow_mut().push(id.to_string())
+    });
+    (serde_json::from_str(&out).unwrap(), seen.into_inner())
+}
+
+#[test]
+fn add_hands_the_new_id_to_the_hook_once() {
+    let sb = Sandbox::new("hook-on");
+    let store = sb.store();
+    let (reply, seen) = with_hook(&store, &json!({"cmd": "add", "text": "buy a hub"}));
+    assert_eq!(seen, vec![reply["id"].as_str().unwrap().to_string()]);
+    assert_eq!(written(&sb, &seen[0]).matches("buy a hub").count(), 1);
+}
+
+#[test]
+fn a_failed_add_and_every_other_command_start_nothing() {
+    let sb = Sandbox::new("hook-none");
+    let store = sb.store();
+    last_cli(&sb);
+    for request in [
+        json!({"cmd": "add", "text": "   "}),
+        json!({"cmd": "add"}),
+        json!({"cmd": "board"}),
+        json!({"cmd": "context"}),
+        json!({"cmd": "nope"}),
+    ] {
+        let (_, seen) = with_hook(&store, &request);
+        assert!(seen.is_empty(), "{request}: {seen:?}");
+    }
+}
+
+#[test]
+fn without_a_hook_add_saves_the_same_reply() {
+    // `handle` and `ipc` are the flag-off path: the same note, no hook to call.
+    let sb = Sandbox::new("hook-off");
+    let store = sb.store();
+    let plain = call(&store, &json!({"cmd": "add", "text": "plain"}));
+    assert!(plain["id"].is_string());
+    let via_ipc: Value =
+        serde_json::from_str(&ipc(&store, r#"{"req": 1, "cmd": "add", "text": "again"}"#)).unwrap();
+    assert_eq!(via_ipc["req"], 1);
+    assert!(via_ipc["id"].is_string());
+}
+
+#[test]
+fn ipc_hands_the_new_id_to_the_hook_and_keeps_the_req() {
+    let sb = Sandbox::new("hook-ipc");
+    let store = sb.store();
+    let seen = std::cell::RefCell::new(vec![]);
+    let out = ipc_with(
+        &store,
+        r#"{"req": 5, "cmd": "add", "text": "via ipc"}"#,
+        &|id| seen.borrow_mut().push(id.to_string()),
+    );
+    let reply: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(reply["req"], 5);
+    assert_eq!(seen.into_inner(), vec![reply["id"].as_str().unwrap()]);
+}
+
+/// The shell's path (merge of HUN-280 with HUN-284): the origin check runs first, so a page
+/// outside `easy-note://localhost` gets no answer, saves nothing and starts no hook.
+#[test]
+fn ipc_from_with_runs_the_hook_only_for_the_apps_own_page() {
+    let sb = Sandbox::new("hook-origin");
+    let store = sb.store();
+    let body = r#"{"req": 7, "cmd": "add", "text": "from a page"}"#;
+    let seen = std::cell::RefCell::new(vec![]);
+    let hook = |id: &str| seen.borrow_mut().push(id.to_string());
+    assert_eq!(
+        ipc_from_with(&store, "https://evil.example/", body, &hook),
+        None
+    );
+    assert!(seen.borrow().is_empty());
+    let out = ipc_from_with(&store, "easy-note://localhost/", body, &hook).expect("own page");
+    let reply: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(reply["req"], 7);
+    assert_eq!(seen.into_inner(), vec![reply["id"].as_str().unwrap()]);
 }

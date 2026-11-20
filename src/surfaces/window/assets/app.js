@@ -1,4 +1,4 @@
-/* easy-note dashboard page (HUN-278 read, HUN-279 actions). Port of docs/design/Main.dc.html, board "Dashboard (clickable)".
+/* easy-note dashboard page (HUN-278 read, HUN-279 actions, HUN-280 capture). Port of docs/design/Main.dc.html, board "Dashboard (clickable)".
  * Every note-derived string goes into the DOM with textContent / createElement only. */
 (function () {
   'use strict';
@@ -382,6 +382,101 @@
   var loading = null;
   var loadedAt = 0;
 
+  // ---- capture dialog (HUN-280): `+ New note`, the design's dialog, `add` like `easy-note add` ----
+  var keepContext = false;
+  var capOpenNo = 0;
+  var saving = false;
+
+  function setInert(on) {
+    document.querySelector('.header').inert = on;
+    document.querySelector('.main').inert = on;
+  }
+
+  function openCapture() {
+    var box = $('cap-text');
+    if (!$('cap').hidden) {
+      box.focus();
+      return;
+    }
+    capOpenNo += 1;
+    var no = capOpenNo;
+    box.value = '';
+    dropChip();
+    $('cap').hidden = false;
+    setInert(true);
+    box.focus();
+    // The chip shows the FR-027 last context; `context` never fails, and no chip is shown when it is null.
+    window.easyNoteIpc.context().then(function (r) {
+      var c = r && r.context;
+      if (no !== capOpenNo || $('cap').hidden || !c) return;
+      var label = [str(c.repo), str(c.task)].filter(Boolean).join(' · ');
+      if (!label) return;
+      $('cap-chip-text').textContent = label;
+      $('cap-ctx').hidden = false;
+      keepContext = true;
+    }, function () {});
+  }
+
+  function dropChip() {
+    keepContext = false;
+    $('cap-ctx').hidden = true;
+    $('cap-chip-text').textContent = '';
+  }
+
+  function closeCapture() {
+    capOpenNo += 1;
+    $('cap').hidden = true;
+    $('cap-text').value = '';
+    dropChip();
+    setInert(false);
+    $('new-note').focus();
+  }
+
+  function capKey(e) {
+    var box = $('cap-text');
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeCapture();
+      toast('cancelled · nothing saved');
+      return;
+    }
+    if (e.target !== box) return;
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      saveCapture();
+    } else if (e.key === 'Backspace' && box.value === '' && keepContext) {
+      e.preventDefault();
+      dropChip();
+    }
+  }
+
+  // AC 4: empty or whitespace-only text sends nothing. On an error the dialog and its text stay.
+  function saveCapture() {
+    var text = $('cap-text').value;
+    if (!text.trim()) return;
+    if (saving) return;
+    saving = true;
+    window.easyNoteIpc.add(text, keepContext).then(function (d) {
+      saving = false;
+      closeCapture();
+      var where = [str(d.repo), str(d.task)].filter(Boolean).join(' · ');
+      toast('✓ noted' + (where ? ' · ' + where : ''));
+      // The new note is at the top of today: clear search and filter so it is in view, then select it.
+      clearTimeout(searchTimer);
+      state.query = '';
+      $('search').value = '';
+      state.filter = 'all';
+      return loadBoard().then(function () {
+        select(d.id);
+        focusRow(d.id);
+      });
+    }, function (err) {
+      saving = false;
+      toast('could not save: ' + err.message, '', UNDO_MS);
+    });
+  }
+
   function loadBoard() {
     var p = window.easyNoteIpc.board().then(function (b) {
       loadedAt = Date.now();
@@ -432,6 +527,18 @@
   }
 
   $('toast-undo').addEventListener('click', undoTrash);
+  $('new-note').addEventListener('click', openCapture);
+  $('cap-dialog').addEventListener('keydown', capKey);
+  // A click on the backdrop or the dialog's own padding would move focus to the page, where keys reach no handler.
+  $('cap').addEventListener('mousedown', function (e) {
+    if (e.target.closest('button, textarea')) return;
+    e.preventDefault();
+    $('cap-text').focus();
+  });
+  $('cap-drop').addEventListener('click', function () {
+    dropChip();
+    $('cap-text').focus();
+  });
   var searchTimer = 0;
   $('search').addEventListener('input', function (e) {
     var value = e.target.value;
