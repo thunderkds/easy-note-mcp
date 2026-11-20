@@ -68,8 +68,43 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE**: captured by the frontend agent on branch `feat/HUN-284-harden` at `f2e77d9` (no implementation commit yet; only the new tests and a no-op `ipc_from` stub that keeps today's behaviour — the shell answers every IPC message — were in the working tree).
+
+```
+$ date -u +%FT%TZ; grep -n "pub const CSP\|fn allowed_url" -A2 src/surfaces/window/mod.rs; grep -n "Content-Security-Policy" src/surfaces/window/assets/index.html; grep -n "select(n.id)\|scrollIntoView" src/surfaces/window/assets/app.js; grep -n "with_ipc_handler" -A3 src/surfaces/window/mod.rs
+2026-11-20T03:24:30Z
+14:pub const CSP: &str = "default-src easy-note:; style-src easy-note: 'unsafe-inline'";
+57:pub fn allowed_url(url: &str) -> bool {
+58-    url.starts_with("easy-note://")
+59-}
+5:<meta http-equiv="Content-Security-Policy" content="default-src easy-note:">
+156:    b.addEventListener('click', function () { select(n.id); });
+160:            .with_ipc_handler(move |request| {
+161-                // The answer goes back through the event loop, where the webview lives.
+162-                let _ = proxy.send_event(ipc(&store, request.body()));
+163-            })
+
+$ date -u +%FT%TZ; cargo test --locked --test window_api   (new HUN-284 tests, red)
+2026-11-20T03:24:39Z
+test a_row_click_brings_the_detail_into_view_only_when_it_wraps ... FAILED
+test navigation_stays_on_the_app_scheme ... FAILED
+test the_csp_allows_only_the_app_scheme ... FAILED
+test ipc_is_answered_only_from_the_app_origin ... FAILED
+thread 'the_csp_allows_only_the_app_scheme' panicked at tests/window_api.rs:479:5:
+  left: "default-src easy-note:; style-src easy-note: 'unsafe-inline'"
+ right: "default-src easy-note:"
+thread 'navigation_stays_on_the_app_scheme' panicked at tests/window_api.rs:536:9:
+easy-note://other/                       <- allowed_url("easy-note://other/") is true today
+thread 'ipc_is_answered_only_from_the_app_origin' panicked at tests/window_api.rs:684:9:
+assertion `left == right` failed: easy-note://localhost.evil/
+  left: Some("{\"notes_dir\":...,\"total\":4,...,\"req\":1}")   <- a message from easy-note://localhost.evil/ gets the board
+ right: None
+thread 'a_row_click_brings_the_detail_into_view_only_when_it_wraps' panicked at tests/window_api.rs:696:5:
+the row click does not call revealDetail
+test result: FAILED. 21 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+```
+
+Real window (pre-change `cargo build --locked --features window` binary, private Xvfb `:184`, `GDK_BACKEND=x11`, temp `HOME` / `XDG_CONFIG_HOME` / `EASY_NOTE_DIR` with 11 sample notes, window resized to 800×820 with `XMoveResizeWindow`, click by XTest at (400, 487) = the third row `write the release notes for 0.2 #docs`, 2026-11-20T03:24:14Z): `<scratchpad>/hun284/shots/before-800-click3.png` — the third row is highlighted (`aria-current`), the page did not scroll: the view still shows the header, counts and the `// today` rows; the detail panel (below the list, at the end of the page) is not in view. Scratchpad = `/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-easy-note-mcp/8458b2db-536a-4fdc-a075-2bb8f587ea77/scratchpad`.
 
 **AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
 
