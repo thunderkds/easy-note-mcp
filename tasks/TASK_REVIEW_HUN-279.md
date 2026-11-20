@@ -68,8 +68,46 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE**: `date -u; git rev-parse --short HEAD; cargo test --locked --test window_api` with the new HUN-279 tests in
+`tests/window_api.rs` and no implementation (every action command answers `unknown command`), captured by the
+backend implementer before the first implementation commit:
+
+```
+2026-11-20T02:07:23Z
+1cb5eb2
+test every_reference_in_the_page_is_served ... ok
+test every_served_asset_is_scanned_and_safe ... ok
+test an_empty_or_missing_notes_dir_gives_zeros ... ok
+test accept_ai_without_ai_detail_is_an_error_and_writes_nothing ... FAILED
+test navigation_stays_on_the_app_scheme ... ok
+test inbox_notes_are_on_the_board_and_have_a_detail ... ok
+test bad_requests_answer_an_error_object ... ok
+test accept_ai_adds_the_suggested_tags_like_the_cli ... FAILED
+test the_csp_allows_only_the_app_scheme ... ok
+test no_planted_secret_leaves_through_the_actions ... FAILED
+test the_focus_refresh_calls_a_function_the_page_defines ... ok
+test the_reply_is_a_quoted_js_string ... ok
+test the_window_opens_only_when_built_and_a_display_is_set ... ok
+test board_counts_orders_and_marks_the_notes ... ok
+test open_in_editor_runs_xdg_open_once_with_the_note_path ... FAILED
+test actions_refuse_bad_and_unknown_ids_and_change_nothing ... FAILED
+test trash_then_restore_brings_back_the_note_and_its_ai_file ... FAILED
+test detail_has_the_ai_detail_and_the_context ... ok
+test ipc_echoes_req_on_answers_and_errors ... ok
+test top_projects_keep_three_ties_by_name ... ok
+test no_planted_secret_leaves_through_board_or_detail ... ok
+  left: Object {"error": String("unknown command")}
+ right: Object {"error": String("no AI detail")}
+  left: Null
+ right: "20261119-090000-acdc"
+  left: Object {"error": String("unknown command")}
+ right: Object {"opened": String("20261119-090000-acdc")}
+  left: Object {"error": String("unknown command")}
+ right: Object {"error": String("missing id")}
+  left: Object {"error": String("unknown command")}
+ right: Object {"trashed": String("20261119-090000-acdc")}
+test result: FAILED. 15 passed; 6 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+```
 
 **AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
 
