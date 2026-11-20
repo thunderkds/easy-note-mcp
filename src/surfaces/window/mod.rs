@@ -90,6 +90,10 @@ pub fn ipc(store: &Store, body: &str) -> String {
     }
 }
 
+/// `open`'s error when the display cannot be used (GTK does not start): `dashboard` then takes
+/// the FR-034 Obsidian path instead (HUN-281).
+pub const NO_DISPLAY: &str = "the display cannot be used";
+
 /// Without the feature, `dashboard` never asks for the window (`dashboard::use_window`).
 #[cfg(not(feature = "window"))]
 pub fn open() -> Result<(), String> {
@@ -142,7 +146,14 @@ mod shell {
             // Before any GTK or WebKit code runs; still one thread here.
             std::env::set_var(DMABUF, "1");
         }
-        let event_loop = EventLoopBuilder::<String>::with_user_event().build();
+        // tao panics ("Failed to initialize gtk backend!") when GTK cannot open the display,
+        // for example `DISPLAY` set to a display that is gone. Catch that one panic, quietly.
+        let quiet = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let built =
+            std::panic::catch_unwind(|| EventLoopBuilder::<String>::with_user_event().build());
+        std::panic::set_hook(quiet);
+        let event_loop = built.map_err(|_| super::NO_DISPLAY.to_string())?;
         let proxy = event_loop.create_proxy();
         let window = WindowBuilder::new()
             .with_title("easy-note")

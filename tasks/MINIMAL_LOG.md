@@ -3,6 +3,21 @@
 > One Decision record per minimal-track task (`docs/claude-md/tracks.md`), **newest first**: insert each
 > new record directly under this note.
 
+## HUN-281 — Dashboard window: an unusable display makes tao panic instead of falling back to Obsidian · minimal
+**Asked:** "start all the tasks as parallel" (HUN-281: Linear issue from the HUN-278 code review, P2 reliability)
+**Decisions:**
+- Track minimal — C1, Risk Low, Rust only, no UI, no user data.
+- Catch the one tao panic at the event-loop build with `std::panic::catch_unwind`, with a silent panic hook for that call only — tao 0.37.3 has no fallible builder: `platform_impl/linux/event_loop.rs:219` `.expect("Failed to initialize gtk backend!")`; the panic is raised in Rust after `gtk::init()` returned `Err`, so no FFI frame is unwound.
+- `window::open` returns the new `window::NO_DISPLAY` error; `dashboard::run` then takes the FR-034 Obsidian path, so the person still gets a dashboard (or the install hint) instead of a crash.
+- Assumed: a display that GTK cannot open is the only case to catch — any other window error still returns as before.
+**Checked:**
+- New test `hun281_unusable_display_falls_back_to_obsidian_without_a_panic` (tests/dashboard.rs, `window` build, `DISPLAY=:99317`) — failed before the change (`thread 'main' panicked at .../tao-0.37.3/src/platform_impl/linux/event_loop.rs:219:53: Failed to initialize gtk backend!`), passes after.
+- Suite: `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked`, then clippy + test with `--features tray` and `--features window` — EXIT=0, 72 `test result: ok`, 1613 passed, 0 failed (the first run died on `No space left on device`; rerun after freeing disk).
+- Real run: `env -i PATH=/usr/bin:/bin HOME=<tmp> EASY_NOTE_DIR=<tmp>/notes DISPLAY=:99317 ./target/debug/easy-note dashboard` — printed `easy-note: no dashboard yet: run easy-note install obsidian`, exit=1, no panic.
+- Simplify: skipped: under 20 lines outside tests and docs.
+**Files:** `src/surfaces/window/mod.rs`, `src/surfaces/dashboard.rs`, `tests/dashboard.rs`, `tasks/MINIMAL_LOG.md`
+**Not done:** merge (the user decides)
+
 ## HUN-264 — README, RUNBOOK, client config snippets, install guide · minimal
 Mode: auto
 **Asked:** "continue [admin]" (session tag loop; HUN-262 paused for owner approval, so the next ready ticket at P1)
