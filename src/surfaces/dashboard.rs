@@ -170,7 +170,10 @@ pub fn run() -> Result<(), String> {
         wayland.as_deref(),
         display.as_deref(),
     ) {
-        return super::window::open();
+        match super::window::open() {
+            Err(e) if e == super::window::NO_DISPLAY => {}
+            done => return done,
+        }
     }
     let dir = config::notes_dir().map_err(|e| e.to_string())?;
     let base: PathBuf = std::path::absolute(dir.join(BASE_NAME)).map_err(|e| e.to_string())?;

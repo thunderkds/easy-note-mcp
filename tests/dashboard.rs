@@ -181,3 +181,32 @@ fn hun277_ac9_dashboard_hints_when_the_notes_dir_is_not_a_vault_yet() {
     let o = sb.run(&["dashboard"], "obsidian.desktop");
     assert!(!text(&o.stderr).contains(hint), "{}", text(&o.stderr));
 }
+
+/// HUN-281: a `window` build with `DISPLAY` set to a display that does not answer must not
+/// panic in GTK start-up; it falls back to the FR-034 Obsidian path (here: no file yet, so the
+/// install hint and exit 1).
+#[cfg(feature = "window")]
+#[test]
+fn hun281_unusable_display_falls_back_to_obsidian_without_a_panic() {
+    let sb = with_stubs("baddisplay");
+    let o = Command::new(env!("CARGO_BIN_EXE_easy-note"))
+        .arg("dashboard")
+        .env_clear()
+        .env("PATH", sb.root().join("bin"))
+        .env("HOME", sb.root().join("home"))
+        .env("EASY_NOTE_DIR", sb.notes())
+        .env("STUB_LOG", sb.root().join("log"))
+        .env("STUB_HANDLER", "obsidian.desktop")
+        .env("DISPLAY", ":99317")
+        .current_dir(sb.root().join("home"))
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    let err = text(&o.stderr);
+    assert!(!err.contains("panicked"), "{err}");
+    assert_eq!(o.status.code(), Some(1), "{err}");
+    assert!(
+        err.contains("no dashboard yet: run easy-note install obsidian"),
+        "{err}"
+    );
+}
