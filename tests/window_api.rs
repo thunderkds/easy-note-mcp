@@ -12,7 +12,7 @@ use easy_note_mcp::core::ai;
 use easy_note_mcp::core::store::Store;
 use easy_note_mcp::surfaces::dashboard::use_window;
 use easy_note_mcp::surfaces::window::{
-    allowed_url, api::handle, asset, ipc, reply_script, CSP, REFRESH,
+    allowed_url, api::handle, asset, ipc, ipc_from, reply_script, CSP, REFRESH,
 };
 use serde_json::{json, Value};
 
@@ -474,11 +474,17 @@ fn the_window_opens_only_when_built_and_a_display_is_set() {
 
 #[test]
 fn the_csp_allows_only_the_app_scheme() {
-    assert_eq!(
-        CSP,
-        "default-src easy-note:; style-src easy-note: 'unsafe-inline'"
-    );
+    // HUN-284 AC 1: no 'unsafe-inline' (it was `style-src easy-note: 'unsafe-inline'`); the
+    // header and the page's own <meta> policy are the same string.
+    assert_eq!(CSP, "default-src easy-note:");
+    assert!(!CSP.contains("unsafe"), "{CSP}");
     let (mime, body) = asset("/").expect("the page");
+    assert!(
+        std::str::from_utf8(body).unwrap().contains(&format!(
+            r#"http-equiv="Content-Security-Policy" content="{CSP}""#
+        )),
+        "index.html <meta> CSP differs from the header CSP"
+    );
     assert_eq!(mime, "text/html; charset=utf-8");
     assert!(std::str::from_utf8(body).unwrap().contains("app.js"));
     assert_eq!(asset("/index.html").unwrap().1, body);
@@ -506,7 +512,18 @@ fn the_csp_allows_only_the_app_scheme() {
 fn navigation_stays_on_the_app_scheme() {
     assert!(allowed_url("easy-note://localhost/"));
     assert!(allowed_url("easy-note://localhost/index.html"));
+    assert!(allowed_url("easy-note://localhost"));
+    // HUN-284 AC 3: only the exact origin `easy-note://localhost`, not the whole scheme.
     for url in [
+        "easy-note://other/",
+        "easy-note://localhost.evil/",
+        "easy-note://localhost.evil",
+        "easy-note://localhost:8080/",
+        "easy-note://localhost@evil/",
+        "easy-note://evil/localhost/",
+        "easy-note:///index.html",
+        "easy-note://",
+        "https://x/",
         "https://example.com/",
         "http://127.0.0.1:8769/",
         "file:///etc/passwd",
@@ -538,6 +555,10 @@ fn every_served_asset_is_scanned_and_safe() {
         r"innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\s*\(|new\s+Function\b|setTimeout\s*\(\s*['`]|setInterval\s*\(\s*['`]",
     )
     .unwrap();
+    let inline_style = regex::Regex::new(
+        r#"(?i)\sstyle\s*=\s*["']|<style\b|setAttribute\(\s*['"]style|\.cssText\b|\.style\s*=[^=]|<script>"#,
+    )
+    .unwrap();
     let mut scanned = 0;
     for path in files(&dir) {
         let rel = path
@@ -566,6 +587,13 @@ fn every_served_asset_is_scanned_and_safe() {
         assert!(
             !text.contains("http:") && !text.contains("https:") && !text.contains("//cdn"),
             "remote URL in {rel}"
+        );
+        // HUN-284 AC 1: nothing the CSP `default-src easy-note:` blocks as inline style. A CSSOM
+        // property write (`el.style.width = ...`) is not blocked and stays allowed.
+        assert!(
+            inline_style.find(&text).is_none(),
+            "inline style in {rel}: {:?}",
+            inline_style.find(&text)
         );
         if ext != "css" {
             assert!(
@@ -631,6 +659,71 @@ fn the_focus_refresh_calls_a_function_the_page_defines() {
         ipc_at < app_at,
         "ipc.js defines window.__easyNote before app.js"
     );
+}
+
+#[test]
+fn ipc_is_answered_only_from_the_app_origin() {
+    // HUN-284 AC 4: wry passes the source page URL as the IPC request URI (WebKitGTK: the main
+    // frame URL); a message from any other origin gets no answer and reaches no command.
+    let sb = Sandbox::new("ipc-origin");
+    sb.four();
+    let store = sb.store();
+    let body = r#"{"req": 1, "cmd": "board"}"#;
+    for source in ["easy-note://localhost/", "easy-note://localhost/index.html"] {
+        let out: Value =
+            serde_json::from_str(&ipc_from(&store, source, body).expect(source)).unwrap();
+        assert_eq!(out["total"], 4, "{source}");
+    }
+    let before = snapshot(&sb.notes());
+    for source in [
+        "easy-note://localhost.evil/",
+        "easy-note://other/",
+        "https://x/",
+        "about:blank",
+        "",
+    ] {
+        assert_eq!(ipc_from(&store, source, body), None, "{source}");
+        let trash = r#"{"req": 2, "cmd": "trash", "id": "20261112-080000-cccc"}"#;
+        assert_eq!(ipc_from(&store, source, trash), None, "{source}");
+    }
+    assert_eq!(
+        snapshot(&sb.notes()),
+        before,
+        "a refused source changed the notes dir"
+    );
+}
+
+#[test]
+fn a_row_click_brings_the_detail_into_view_only_when_it_wraps() {
+    // HUN-284 AC 5: at 800 px the detail panel sits below the list; a row click scrolls its top
+    // into view. Two columns (1280 px): the panel is beside the list, nothing scrolls.
+    let app = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
+    assert!(
+        app.contains("b.addEventListener('click', function () { select(n.id, true); });"),
+        "the row click does not ask select to reveal the panel"
+    );
+    // After the detail (or its error) is rendered, not before: the panel's height is known then.
+    let at = app
+        .find("function select(id, reveal)")
+        .expect("select(id, reveal)");
+    let select = &app[at..at + app[at..].find("\n  }\n").expect("end of select")];
+    assert_eq!(
+        select
+            .matches("renderDetail();\n      if (reveal) revealDetail();")
+            .count(),
+        2,
+        "select reveals after both the detail and the error render"
+    );
+    let at = app.find("function revealDetail(").expect("revealDetail");
+    let body = &app[at..at + app[at..].find("\n  }\n").expect("end of revealDetail")];
+    for part in [
+        "offsetTop",
+        "scrollIntoView(",
+        "block: 'start'",
+        "(prefers-reduced-motion: reduce)",
+    ] {
+        assert!(body.contains(part), "revealDetail lacks {part}");
+    }
 }
 
 // ---------------------------------------------------------------------------------------------

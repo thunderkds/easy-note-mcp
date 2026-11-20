@@ -10,8 +10,11 @@ use serde_json::Value;
 
 use crate::core::store::Store;
 
-/// The Content-Security-Policy of every page response: nothing but the app's own scheme.
-pub const CSP: &str = "default-src easy-note:; style-src easy-note: 'unsafe-inline'";
+/// The Content-Security-Policy of every page response: nothing but the app's own scheme, and no
+/// inline style or script (the same string as the page's own `<meta>` policy).
+pub const CSP: &str = "default-src easy-note:";
+/// The page's origin: the only one that may be navigated to or send IPC.
+pub const ORIGIN: &str = "easy-note://localhost";
 /// The page's address.
 pub const START: &str = "easy-note://localhost/";
 /// What the shell runs when the window gets focus: the page asks `board` again.
@@ -53,9 +56,11 @@ pub fn asset(path: &str) -> Option<(&'static str, &'static [u8])> {
     }
 }
 
-/// Navigation is allowed only inside the app's own scheme.
+/// Navigation is allowed only to the exact origin `easy-note://localhost` (not another host on the
+/// scheme, not `easy-note://localhost.evil/`, not a port or user part).
 pub fn allowed_url(url: &str) -> bool {
-    url.starts_with("easy-note://")
+    url.strip_prefix(ORIGIN)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
 }
 
 /// The script that hands one `api::handle` answer to the page: the JSON goes in as one JS string
@@ -90,6 +95,12 @@ pub fn ipc(store: &Store, body: &str) -> String {
     }
 }
 
+/// One IPC message with its source: wry gives the sending page's URL as the request URI (on
+/// WebKitGTK the main frame URL). A message from any page outside `ORIGIN` gets no answer.
+pub fn ipc_from(store: &Store, source: &str, body: &str) -> Option<String> {
+    allowed_url(source).then(|| ipc(store, body))
+}
+
 /// Without the feature, `dashboard` never asks for the window (`dashboard::use_window`).
 #[cfg(not(feature = "window"))]
 pub fn open() -> Result<(), String> {
@@ -111,7 +122,7 @@ mod shell {
     use wry::http::{header, Response, StatusCode};
     use wry::{NewWindowResponse, WebViewBuilder, WebViewBuilderExtUnix};
 
-    use super::{allowed_url, asset, ipc, reply_script, CSP, REFRESH, START};
+    use super::{allowed_url, asset, ipc_from, reply_script, CSP, REFRESH, START};
     use crate::core::store::Store;
 
     /// Some GPU / Wayland setups draw a blank WebKitGTK window without it (DDR 0009).
@@ -159,7 +170,10 @@ mod shell {
             })
             .with_ipc_handler(move |request| {
                 // The answer goes back through the event loop, where the webview lives.
-                let _ = proxy.send_event(ipc(&store, request.body()));
+                let source = request.uri().to_string();
+                if let Some(answer) = ipc_from(&store, &source, request.body()) {
+                    let _ = proxy.send_event(answer);
+                }
             })
             .with_navigation_handler(|url| allowed_url(&url))
             .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
