@@ -1,5 +1,5 @@
 /*
- * IPC contract between this page and the Rust window (HUN-278). All of it lives in this file.
+ * IPC contract between this page and the Rust window (HUN-278 read, HUN-279 actions). All of it lives in this file.
  *
  * Request (page -> Rust):
  *   window.ipc.postMessage(JSON.stringify({ req: <number>, cmd: <string>, ...args }))
@@ -7,6 +7,10 @@
  *   - the rest is exactly the `window::api::handle` request:
  *       { "req": 1, "cmd": "board" }
  *       { "req": 2, "cmd": "detail", "id": "20261119-104212-3f0a" }
+ *       { "req": 3, "cmd": "accept_ai", "id": "<note id>" }
+ *       { "req": 4, "cmd": "trash", "id": "<note id>" }
+ *       { "req": 5, "cmd": "restore", "id": "<note id>" }
+ *       { "req": 6, "cmd": "open_in_editor", "id": "<note id>" }
  *   The correlation key is `req`, not `id`, because `id` is already the note id in the `detail`
  *   request and in every note object of a reply.
  *
@@ -22,6 +26,19 @@
  *   board  -> { notes_dir, today, total, projects, top_projects: [{ name, n }],
  *               notes: [{ id, created, time, day, first, text, repo, task, tags, source, kind, ai, stale }] }
  *   detail -> the note item plus { masked, context, ai: { title, kind, summary, tags_suggested, model, at, stale } | null }
+ *   accept_ai      -> the updated `detail` (the AI tags_suggested added to the note's tags, `easy-note tag <id> --accept-ai`)
+ *                     errors: "no AI detail", "no such note", "bad id", "missing id", "inbox notes are read-only",
+ *                     "cannot use the note"
+ *   trash          -> { trashed: <id> } (`easy-note rm`; the AI file moves too)
+ *                     errors: "no such note", "bad id", "missing id", "a file of that name is in the way",
+ *                     "cannot use the note"
+ *   restore        -> { restored: <id> } (`easy-note restore`; the page's Undo)
+ *                     errors: as trash; "no such note" also when the note is already back
+ *   open_in_editor -> { opened: <id> } (`xdg-open <note file>`, an argv list, no shell)
+ *                     errors: "no such note", "bad id", "missing id", "xdg-open failed", "cannot run xdg-open",
+ *                     "cannot read the note"
+ *   A trashed id is "no such note" for detail, accept_ai and open_in_editor.
+ *   Copy id needs no request: the page uses navigator.clipboard.
  */
 (function () {
   'use strict';
@@ -63,6 +80,10 @@
   window.__easyNote = { reply: reply };
   window.easyNoteIpc = {
     board: function () { return request('board'); },
-    detail: function (noteId) { return request('detail', { id: noteId }); }
+    detail: function (noteId) { return request('detail', { id: noteId }); },
+    acceptAi: function (noteId) { return request('accept_ai', { id: noteId }); },
+    trash: function (noteId) { return request('trash', { id: noteId }); },
+    restore: function (noteId) { return request('restore', { id: noteId }); },
+    openInEditor: function (noteId) { return request('open_in_editor', { id: noteId }); }
   };
 })();

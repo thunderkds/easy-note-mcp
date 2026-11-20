@@ -1,4 +1,4 @@
-/* easy-note dashboard page (read-only, HUN-278). Port of docs/design/Main.dc.html, board "Dashboard (clickable)".
+/* easy-note dashboard page (HUN-278 read, HUN-279 actions). Port of docs/design/Main.dc.html, board "Dashboard (clickable)".
  * Every note-derived string goes into the DOM with textContent / createElement only. */
 (function () {
   'use strict';
@@ -15,6 +15,8 @@
   ];
 
   var state = { board: null, notes: [], query: '', filter: 'all', sel: '', detail: null, detailError: '' };
+  var UNDO_MS = 6000;
+  var TOAST_MS = 2800;
 
   function $(id) { return document.getElementById(id); }
 
@@ -93,10 +95,14 @@
     });
   }
 
-  function renderList() {
-    var notes = state.notes;
+  function shownNotes() {
     var words = state.query.toLowerCase().split(/\s+/).filter(Boolean);
     var active = FILTER_DEFS.filter(function (f) { return f[0] === state.filter; })[0] || FILTER_DEFS[0];
+    return state.notes.filter(function (n) { return active[2](n) && matches(n, words); });
+  }
+
+  function renderList() {
+    var notes = state.notes;
 
     // Filter buttons are built once (buildFilters) and updated in place, so keyboard focus stays on them.
     FILTER_DEFS.forEach(function (f, i) {
@@ -105,7 +111,7 @@
       b.lastChild.textContent = String(notes.filter(f[2]).length);
     });
 
-    var shown = notes.filter(function (n) { return active[2](n) && matches(n, words); });
+    var shown = shownNotes();
 
     var none = $('no-results');
     none.hidden = shown.length > 0 || !state.board;
@@ -116,6 +122,8 @@
     none.querySelector('.empty-hint').hidden = !q;
     $('clear-search').hidden = !q;
 
+    // Rows are rebuilt on each render (and each board reload), so keyboard focus moves to the new button of the same note.
+    var focused = Object.keys(rowButtons).filter(function (k) { return rowButtons[k] === document.activeElement; })[0];
     rowButtons = Object.create(null);
     var frag = document.createDocumentFragment();
     ['today', 'yesterday', 'earlier'].forEach(function (d) {
@@ -129,6 +137,7 @@
       frag.appendChild(g);
     });
     $('groups').replaceChildren(frag);
+    if (focused) focusRow(focused);
   }
 
   function renderRow(n) {
@@ -181,17 +190,30 @@
     if (!tags.length) tagBox.appendChild(el('span', 'no-tags', 'no tags'));
     card.appendChild(tagBox);
 
-    if (d.ai) card.appendChild(renderAi(d.ai));
+    if (d.ai) card.appendChild(renderAi(d.ai, d));
     else {
       var none = el('p', 'no-ai', 'No AI detail yet. In Claude Code, run the ');
       none.appendChild(el('code', null, 'enrich_notes'));
       none.appendChild(document.createTextNode(' prompt; your own AI writes it in a separate file.'));
       card.appendChild(none);
     }
+
+    var acts = el('div', 'actions');
+    acts.appendChild(button('act', 'Open in editor', function () { openInEditor(d.id); }));
+    acts.appendChild(button('act', 'Copy id', function () { copyId(d.id); }));
+    acts.appendChild(button('act danger', 'Move to trash', function () { trashNote(d.id); }));
+    card.appendChild(acts);
     aside.replaceChildren(card);
   }
 
-  function renderAi(ai) {
+  function button(cls, label, onClick) {
+    var b = el('button', cls, label);
+    b.type = 'button';
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function renderAi(ai, d) {
     var sec = el('section', 'ai');
     sec.setAttribute('aria-label', 'AI detail, not your words');
     var head = el('div', 'ai-head');
@@ -213,6 +235,12 @@
       var row = el('div', 'ai-suggest');
       row.appendChild(el('span', 'ai-suggest-label', 'suggested'));
       sug.forEach(function (t) { row.appendChild(el('span', 'ai-tag', '#' + str(t))); });
+      // Inbox notes are read-only (the CLI refuses `tag` on them too), so they get no button.
+      var tags = tagsOf(d);
+      var missing = sug.map(str).filter(function (t) { return tags.indexOf(t) < 0; });
+      if (missing.length && d.source !== 'inbox') {
+        row.appendChild(button('ai-accept', 'Add as tags', function () { acceptAi(d.id); }));
+      }
       sec.appendChild(row);
     }
     return sec;
@@ -223,6 +251,116 @@
     var e = $('error');
     e.textContent = msg ? 'Could not load notes: ' + msg : '';
     e.hidden = !msg;
+  }
+
+  // ---- toast ----
+  var toastTimer = 0;
+  var undoId = '';
+
+  function toast(msg, undo, ms) {
+    $('toast-text').textContent = msg;
+    undoId = undo || '';
+    $('toast-undo').hidden = !undoId;
+    $('toast').hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, ms || (undoId ? UNDO_MS : TOAST_MS));
+  }
+
+  function hideToast() {
+    clearTimeout(toastTimer);
+    undoId = '';
+    $('toast-undo').hidden = true;
+    $('toast').hidden = true;
+  }
+
+  // ---- actions (HUN-279): each IPC action asks for the board again, so counts and filters update ----
+  var busy = false;
+
+  function afterAction() {
+    busy = false;
+    return loadBoard();
+  }
+
+  function focusRow(id) {
+    if (rowButtons[id]) rowButtons[id].focus();
+  }
+
+  function acceptAi(id) {
+    if (busy) return;
+    busy = true;
+    var before = state.detail ? tagsOf(state.detail) : [];
+    window.easyNoteIpc.acceptAi(id).then(function (d) {
+      var added = tagsOf(d).filter(function (t) { return before.indexOf(t) < 0; });
+      if (state.sel === id) {
+        state.detail = d;
+        renderDetail();
+      }
+      toast(added.length ? 'tags added: ' + added.map(function (t) { return '#' + t; }).join(' ') : 'no new tags');
+    }, function (err) {
+      toast('could not add tags: ' + err.message, '', UNDO_MS);
+    }).then(afterAction);
+  }
+
+  function openInEditor(id) {
+    if (busy) return;
+    busy = true;
+    window.easyNoteIpc.openInEditor(id).then(function () {
+      toast('opened ' + id + '.md');
+    }, function (err) {
+      toast('could not open: ' + err.message, '', UNDO_MS);
+    }).then(afterAction);
+  }
+
+  // AC 5: the page clipboard API, no IPC. When it is missing or refused, the toast shows the id to copy by hand.
+  function copyId(id) {
+    function refused() { toast('copy it by hand: ' + id, '', UNDO_MS); }
+    try {
+      navigator.clipboard.writeText(id).then(function () { toast('Copied'); }, refused);
+    } catch (e) {
+      refused();
+    }
+  }
+
+  function trashNote(id) {
+    if (busy) return;
+    busy = true;
+    var shown = shownNotes().map(function (n) { return n.id; });
+    var at = shown.indexOf(id);
+    window.easyNoteIpc.trash(id).then(function () {
+      // The row goes at once; the next row in view (as in the design) becomes the selection.
+      state.notes = state.notes.filter(function (n) { return n.id !== id; });
+      var rest = shown.filter(function (k) { return k !== id; });
+      var next = rest.length ? rest[Math.min(Math.max(at, 0), rest.length - 1)] : '';
+      state.detail = null;
+      state.sel = '';
+      renderDetail();
+      renderList();
+      if (next) {
+        select(next);
+        focusRow(next);
+      }
+      toast('moved to trash', id);
+    }, function (err) {
+      toast('could not move to trash: ' + err.message, '', UNDO_MS);
+    }).then(afterAction);
+  }
+
+  // Undo is offered only while the toast shows it (UNDO_MS after Move to trash).
+  function undoTrash() {
+    var id = undoId;
+    if (!id || busy) return;
+    busy = true;
+    hideToast();
+    window.easyNoteIpc.restore(id).then(function () {
+      toast('restored');
+      return afterAction().then(function () {
+        select(id);
+        focusRow(id);
+      });
+    }, function (err) {
+      toast('could not undo: ' + err.message, '', UNDO_MS);
+      return afterAction();
+    });
   }
 
   function loadBoard() {
@@ -258,6 +396,7 @@
     });
   }
 
+  $('toast-undo').addEventListener('click', undoTrash);
   $('search').addEventListener('input', function (e) { state.query = e.target.value; renderList(); });
   $('clear-search').addEventListener('click', function () {
     state.query = '';

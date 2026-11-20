@@ -666,3 +666,391 @@ fn ipc_echoes_req_on_answers_and_errors() {
         assert!(out["error"].is_string(), "{body}: {out}");
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// HUN-279: actions on the selected note (FR-043, FR-032, NFR-001, DDR 0009 item 5)
+// ---------------------------------------------------------------------------------------------
+
+const BIN: &str = env!("CARGO_BIN_EXE_easy-note");
+const ACTED: &str = "20261119-090000-acdc";
+
+/// Serializes the tests that put a fake `xdg-open` on `PATH` (the process environment is shared).
+static PATH_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// `PATH` holds only a temp dir with a fake `xdg-open` that logs `<argc>:<arg 1>` per call and
+/// exits with `code`; the old `PATH` comes back on drop.
+struct FakeOpener {
+    log: PathBuf,
+    old: Option<std::ffi::OsString>,
+    _bin: tempfile::TempDir,
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+impl FakeOpener {
+    fn new(code: i32) -> FakeOpener {
+        use std::os::unix::fs::PermissionsExt;
+        let lock = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let bin = tempfile::Builder::new()
+            .prefix("easy-note-window-bin-")
+            .tempdir()
+            .unwrap();
+        let log = bin.path().join("calls.log");
+        let script = bin.path().join("xdg-open");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\nprintf '%s:%s\\n' \"$#\" \"$1\" >> '{}'\nexit {code}\n",
+                log.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let old = std::env::var_os("PATH");
+        std::env::set_var("PATH", bin.path());
+        FakeOpener {
+            log,
+            old,
+            _bin: bin,
+            _lock: lock,
+        }
+    }
+    fn calls(&self) -> Vec<String> {
+        std::fs::read_to_string(&self.log)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+}
+
+impl Drop for FakeOpener {
+    fn drop(&mut self) {
+        match &self.old {
+            Some(v) => std::env::set_var("PATH", v),
+            None => std::env::remove_var("PATH"),
+        }
+    }
+}
+
+/// Every file under `dir` with its bytes, by path relative to `dir`.
+fn snapshot(dir: &Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
+    if !dir.exists() {
+        return Default::default();
+    }
+    files(dir)
+        .into_iter()
+        .map(|p| {
+            let bytes = std::fs::read(&p).unwrap();
+            (p.strip_prefix(dir).unwrap().to_path_buf(), bytes)
+        })
+        .collect()
+}
+
+/// The text after the front matter, byte for byte.
+fn body_of(file: &str) -> &str {
+    let end = file[4..].find("\n---\n").expect("front matter end") + 4;
+    &file[end + 5..]
+}
+
+/// One note `ACTED` with tags `["y"]` and an AI file suggesting `["x", "y"]`.
+fn acted(sb: &Sandbox) -> PathBuf {
+    sb.note(
+        ACTED,
+        "2026-11-19T09:00:00+07:00",
+        "repo: \"easy-ui-mcp\"\ntags: [\"y\"]\n",
+        "Retry bug only on Firefox\n\n  keep   these bytes  ",
+    );
+    let tags = vec!["x".to_string(), "y".to_string()];
+    let input = ai::Input {
+        title: "Firefox-only timeout",
+        kind: "bug",
+        summary: "Times out after a second navigation.",
+        tags_suggested: &tags,
+        model: "claude-sonnet-4-5",
+    };
+    ai::enrich(&sb.store(), ACTED, &input).unwrap();
+    sb.notes().join(format!("2026/11/{ACTED}.md"))
+}
+
+fn ai_path(sb: &Sandbox, id: &str) -> PathBuf {
+    sb.notes().join(format!(".easy-note/ai/{id}.json"))
+}
+
+#[test]
+fn accept_ai_adds_the_suggested_tags_like_the_cli() {
+    // AC 1, Success Criterion 1.
+    let sb = Sandbox::new("accept");
+    let path = acted(&sb);
+    let before = std::fs::read_to_string(&path).unwrap();
+    let out = call(&sb.store(), &json!({"cmd": "accept_ai", "id": ACTED}));
+    assert_eq!(out["id"], ACTED, "the updated detail: {out}");
+    assert_eq!(out["tags"], json!(["y", "x"]), "{out}");
+    assert_eq!(out["ai"]["tags_suggested"], json!(["x", "y"]), "{out}");
+    assert_eq!(out["ai"]["stale"], false, "the text did not change: {out}");
+    let after = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(body_of(&after), body_of(&before), "the text is unchanged");
+    assert!(after.contains("tags: [\"y\", \"x\"]"), "{after}");
+    // A second press adds nothing (no duplicate tags).
+    let again = call(&sb.store(), &json!({"cmd": "accept_ai", "id": ACTED}));
+    assert_eq!(again["tags"], json!(["y", "x"]), "{again}");
+
+    // The CLI on the same start state writes the same note (but for its `updated` stamp).
+    let twin = Sandbox::new("accept-cli");
+    let twin_path = acted(&twin);
+    let home = twin.dir.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let o = std::process::Command::new(BIN)
+        .args(["tag", ACTED, "--accept-ai"])
+        .env("HOME", &home)
+        .env("XDG_CONFIG_HOME", home.join(".config"))
+        .env("EASY_NOTE_DIR", twin.notes())
+        .current_dir(&home)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let strip = |t: &str| -> String {
+        t.lines()
+            .filter(|l| !l.starts_with("updated:"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let window_file = std::fs::read_to_string(&path).unwrap();
+    let cli_file = std::fs::read_to_string(&twin_path).unwrap();
+    assert_eq!(strip(&window_file), strip(&cli_file));
+}
+
+#[test]
+fn accept_ai_without_ai_detail_is_an_error_and_writes_nothing() {
+    let sb = Sandbox::new("accept-none");
+    sb.four();
+    let store = sb.store();
+    let id = "20261112-080000-cccc";
+    let before = snapshot(&sb.notes());
+    let out = call(&store, &json!({"cmd": "accept_ai", "id": id}));
+    assert_eq!(out, json!({"error": "no AI detail"}));
+    assert_eq!(snapshot(&sb.notes()), before);
+}
+
+#[test]
+fn trash_then_restore_brings_back_the_note_and_its_ai_file() {
+    // AC 2, AC 3, AC 7, Success Criterion 2.
+    let sb = Sandbox::new("trash");
+    sb.four();
+    let path = acted(&sb);
+    let store = sb.store();
+    let note = std::fs::read(&path).unwrap();
+    let detail = std::fs::read(ai_path(&sb, ACTED)).unwrap();
+
+    let out = call(&store, &json!({"cmd": "trash", "id": ACTED}));
+    assert_eq!(out, json!({"trashed": ACTED}));
+    assert!(!path.exists() && !ai_path(&sb, ACTED).exists());
+    let board = call(&store, &json!({"cmd": "board"}));
+    assert!(!ids(&board).contains(&ACTED), "the row is gone");
+    assert_eq!(board["total"], 4);
+    // A trashed note is refused by accept_ai and open_in_editor; a second trash too.
+    for cmd in ["accept_ai", "open_in_editor", "trash", "detail"] {
+        let out = call(&store, &json!({"cmd": cmd, "id": ACTED}));
+        assert_eq!(out, json!({"error": "no such note"}), "{cmd}");
+    }
+
+    let out = call(&store, &json!({"cmd": "restore", "id": ACTED}));
+    assert_eq!(out, json!({"restored": ACTED}));
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        note,
+        "note file back, same bytes"
+    );
+    assert_eq!(
+        std::fs::read(ai_path(&sb, ACTED)).unwrap(),
+        detail,
+        "AI file back, same bytes"
+    );
+    let board = call(&store, &json!({"cmd": "board"}));
+    assert!(ids(&board).contains(&ACTED), "the row is back");
+    assert_eq!(board["total"], 5);
+
+    // Undo after the note came back another way: an error, nothing changes.
+    let before = snapshot(&sb.notes());
+    let out = call(&store, &json!({"cmd": "restore", "id": ACTED}));
+    assert_eq!(out, json!({"error": "no such note"}));
+    assert_eq!(snapshot(&sb.notes()), before);
+}
+
+#[test]
+fn open_in_editor_runs_xdg_open_once_with_the_note_path() {
+    // AC 4, Success Criterion 3.
+    let sb = Sandbox::new("open");
+    let path = acted(&sb);
+    let store = sb.store();
+    let before = snapshot(&sb.notes());
+    {
+        let fake = FakeOpener::new(0);
+        let out = call(&store, &json!({"cmd": "open_in_editor", "id": ACTED}));
+        assert_eq!(out, json!({"opened": ACTED}));
+        assert_eq!(fake.calls(), vec![format!("1:{}", path.display())]);
+    }
+    {
+        let fake = FakeOpener::new(4);
+        let out = call(&store, &json!({"cmd": "open_in_editor", "id": ACTED}));
+        assert_eq!(out, json!({"error": "xdg-open failed"}));
+        assert_eq!(fake.calls().len(), 1);
+    }
+    {
+        let fake = FakeOpener::new(0);
+        std::fs::remove_file(fake._bin.path().join("xdg-open")).unwrap();
+        let out = call(&store, &json!({"cmd": "open_in_editor", "id": ACTED}));
+        assert_eq!(out, json!({"error": "cannot run xdg-open"}));
+    }
+    assert_eq!(snapshot(&sb.notes()), before, "opening writes nothing");
+}
+
+#[test]
+fn actions_refuse_bad_and_unknown_ids_and_change_nothing() {
+    // AC 6, Success Criterion 4.
+    let sb = Sandbox::new("action-errors");
+    sb.four();
+    acted(&sb);
+    let inbox = sb.notes().join("inbox");
+    std::fs::create_dir_all(&inbox).unwrap();
+    std::fs::write(inbox.join("p.md"), "phone note\n").unwrap();
+    let store = sb.store();
+    let fake = FakeOpener::new(0);
+    let before = snapshot(&sb.notes());
+    for cmd in ["accept_ai", "trash", "restore", "open_in_editor"] {
+        for (id, want) in [
+            (json!(null), "missing id"),
+            (json!(7), "missing id"),
+            (json!("../../etc/passwd"), "bad id"),
+            (json!("2026/11/20261119-090000-aaaa"), "bad id"),
+            (json!("20261119-090000-ffff"), "no such note"),
+        ] {
+            let mut request = json!({"cmd": cmd});
+            if !id.is_null() {
+                request["id"] = id.clone();
+            }
+            let out = call(&store, &request);
+            assert_eq!(out, json!({"error": want}), "{request}");
+        }
+    }
+    // A live note is not in the trash.
+    let out = call(&store, &json!({"cmd": "restore", "id": ACTED}));
+    assert_eq!(out, json!({"error": "no such note"}));
+    // Inbox notes are read-only, as in the CLI.
+    let out = call(&store, &json!({"cmd": "accept_ai", "id": "inbox/p"}));
+    assert_eq!(out, json!({"error": "inbox notes are read-only"}));
+    assert_eq!(snapshot(&sb.notes()), before, "no change on disk");
+    assert!(fake.calls().is_empty(), "xdg-open never ran");
+}
+
+#[test]
+fn no_planted_secret_leaves_through_the_actions() {
+    let sb = Sandbox::new("action-leak");
+    let cases = planted();
+    let body: Vec<&str> = cases.iter().map(|(t, _)| t.as_str()).collect();
+    let id = "20261119-090000-5ec8";
+    sb.note(
+        id,
+        "2026-11-19T09:00:00+07:00",
+        "tags: [\"t\"]\n",
+        &body.join("\n"),
+    );
+    sb.ai_file(
+        id,
+        &json!({
+            "easy-note-ai": 1,
+            "id": id,
+            "title": format!("title {}", cases[0].1),
+            "kind": "bug",
+            "summary": format!("summary {}", cases[1].0),
+            "tags_suggested": ["ok"],
+            "based_on": "sha256:0",
+            "model": "claude-sonnet-4-5",
+            "at": "2026-11-19T09:30:00+07:00"
+        }),
+    );
+    let store = sb.store();
+    let mut raws = vec![];
+    for cmd in ["accept_ai", "trash", "restore"] {
+        raws.push(handle(&store, &json!({"cmd": cmd, "id": id}).to_string()));
+    }
+    let accepted: Value = serde_json::from_str(&raws[0]).unwrap();
+    assert!(accepted["ai"].is_object(), "{accepted}");
+    for raw in &raws {
+        for (_, secret) in &cases {
+            assert!(!raw.contains(secret.as_str()), "secret in {raw}");
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-279 frontend slice: the page calls only commands `handle` knows, and shows the actions
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn the_page_asks_only_for_commands_the_api_answers() {
+    let ipc_js = std::str::from_utf8(asset("/ipc.js").unwrap().1).unwrap();
+    let asked = regex::Regex::new(r"request\('([a-z_]+)'").unwrap();
+    let cmds: std::collections::BTreeSet<&str> = asked
+        .captures_iter(ipc_js)
+        .map(|c| c.get(1).unwrap().as_str())
+        .collect();
+    let all = [
+        "board",
+        "detail",
+        "accept_ai",
+        "trash",
+        "restore",
+        "open_in_editor",
+    ];
+    assert_eq!(cmds, all.into_iter().collect(), "commands in ipc.js");
+    let sb = Sandbox::new("page-cmds");
+    let store = sb.store();
+    for cmd in &cmds {
+        let out = call(&store, &json!({"cmd": cmd}));
+        assert_ne!(out["error"], "unknown command", "{cmd}: {out}");
+        // The contract comment at the top of ipc.js names each request and its result.
+        assert!(
+            ipc_js.contains(&format!(r#""cmd": "{cmd}""#)),
+            "ipc.js contract comment lacks {cmd}"
+        );
+    }
+}
+
+#[test]
+fn the_page_has_the_design_actions_and_the_undo_window() {
+    let app = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
+    // Labels from docs/design/Main.dc.html, board "Dashboard (clickable)", and the AC 5 toast.
+    for label in [
+        "'Add as tags'",
+        "'Open in editor'",
+        "'Copy id'",
+        "'Move to trash'",
+        "'Copied'",
+    ] {
+        assert!(app.contains(label), "app.js lacks {label}");
+    }
+    let html = std::str::from_utf8(asset("/").unwrap().1).unwrap();
+    assert!(html.contains(r#"id="toast-undo" hidden>Undo</button>"#));
+    // AC 5: Copy id uses the page clipboard API, not IPC. AC 2/3: Undo is offered for 6 s.
+    assert!(app.contains("navigator.clipboard.writeText("));
+    assert!(app.contains("var UNDO_MS = 6000;"));
+    // AC 7: each IPC action asks for the board again.
+    for call in [
+        "easyNoteIpc.acceptAi(",
+        "easyNoteIpc.trash(",
+        "easyNoteIpc.restore(",
+        "easyNoteIpc.openInEditor(",
+    ] {
+        let at = app
+            .find(call)
+            .unwrap_or_else(|| panic!("app.js lacks {call}"));
+        let rest = &app[at..];
+        let end = rest.find("\n  }\n").unwrap_or(rest.len());
+        assert!(
+            rest[..end].contains("afterAction"),
+            "{call} is not followed by afterAction (board reload)"
+        );
+    }
+    assert!(app.contains("function afterAction("));
+}

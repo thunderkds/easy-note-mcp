@@ -163,7 +163,7 @@ cargo fmt --check \
 | `src/surfaces/window/assets/*` | buttons, toast, Undo |
 | `tests/window_api.rs` | AC 1–7 |
 | `README.md` | window actions line |
-| Pre-existing pin tests | `tests/window_api.rs` (slice 1), `tests/cli.rs`, `tests/readme.rs` — list each and how it is handled |
+| Pre-existing pin tests | `tests/window_api.rs` (slice 1): kept unchanged, new tests appended; `bad_requests_answer_an_error_object` still pins `unknown command` / `missing id` / `bad id` and stays green. `tests/cli.rs`, `tests/ai.rs` (`tag --accept-ai`, `rm`/`restore`): CLI code not touched, stay green; the window's `accept_ai` is checked against the CLI's file output. `tests/readme.rs`: README not changed by the backend slice (left to the frontend slice) |
 
 ## Files Must NOT Touch
 
