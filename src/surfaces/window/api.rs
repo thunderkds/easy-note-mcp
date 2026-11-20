@@ -4,7 +4,9 @@
 //! `{"error": ...}` object, never a panic.
 //! Every string in every response passes `guard::mask_for_output` (NFR-002).
 //!
-//! - `{"cmd": "board"}` → `{notes_dir, today, total, projects, top_projects, notes}`
+//! - `{"cmd": "board"}` → `{notes_dir, today, total, projects, top_projects, notes}`; a note item
+//!   has no full text, only `search`: the masked body's distinct words, so the page's search
+//!   matches the same words as before (HUN-282)
 //! - `{"cmd": "detail", "id": "<note id>"}` → one note with `masked`, `context` and `ai`
 //!
 //! Actions (FR-043), each through the same core calls as its CLI command, nothing else writes:
@@ -18,7 +20,7 @@
 //! is the store's clock in the store's zone.
 
 use std::cmp::Reverse;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::process::{Command, Stdio};
 
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
@@ -140,7 +142,8 @@ fn board(store: &Store) -> Value {
         };
         let mark = ai::of(&details, note.id())
             .map(|d| (d.kind.as_str(), Some(&d.based_on) != hash.as_ref()));
-        let row = item(&note, stamp, today, mark);
+        let mut row = item(&note, stamp, today, mark);
+        row.insert("search".into(), json!(search_words(&note.body)));
         rows.push((stamp, note.id().to_string(), row));
     }
     rows.sort_by(|a, b| {
@@ -190,6 +193,7 @@ fn detail(store: &Store, id: &str) -> Result<Value, &'static str> {
     let detail = ai::read(store, id);
     let mark = detail.as_ref().map(|(d, stale)| (d.kind.as_str(), *stale));
     let mut out = item(&note, stamp, today(store), mark);
+    out.insert("text".into(), json!(note.body));
     out.insert("masked".into(), json!(note.body.contains("[masked:")));
     let context: Map<String, Value> = CONTEXT
         .iter()
@@ -215,7 +219,20 @@ fn detail(store: &Store, id: &str) -> Result<Value, &'static str> {
     Ok(Value::Object(out))
 }
 
-/// One row of the board. `mark` is the AI kind and stale flag when the note has AI detail.
+/// The board's search field: the distinct whitespace-separated words of the masked body, in first
+/// seen order. A search word has no whitespace, so it lies inside one word of the body: matching
+/// it against this field gives the same answer as matching it against the whole body.
+fn search_words(body: &str) -> String {
+    let masked = guard::mask_for_output(body);
+    let mut seen = HashSet::new();
+    let words: Vec<&str> = masked
+        .split_whitespace()
+        .filter(|w| seen.insert(*w))
+        .collect();
+    words.join(" ")
+}
+
+/// One row of the board and of the detail (the detail adds the text). `mark` is the AI kind and stale flag when the note has AI detail.
 fn item(
     note: &Note,
     stamp: DateTime<FixedOffset>,
@@ -240,7 +257,6 @@ fn item(
         "time": stamp.format("%H:%M").to_string(),
         "day": day,
         "first": note.title(),
-        "text": note.body,
         "repo": note.get_str("repo"),
         "task": note.get_str("task"),
         "tags": tags,
