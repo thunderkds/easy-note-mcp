@@ -1,5 +1,5 @@
 # PROJECT_KANBAN.md
-**Last updated**: 2026-11-19
+**Last updated**: 2026-11-20
 
 > Board cache, pulled from the board by `python3 scripts/board_sync.py pull`. Do not edit it by hand:
 > the board is the source of truth, and the next pull overwrites this file.
@@ -14,9 +14,9 @@
 ### In Progress
 
 ### Ready for Review
-- [ ] **HUN-280** — Dashboard window capture dialog: + New note in the window (Enter save, Esc cancel) | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-280.md` | Ready for Review 2026-11-20: branch feat/HUN-280-capture (from feat/HUN-279-actions); code-review 0 P0/P1 (3 P2), security-review no findings; auto verify pass
 
 ### Done
+- [x] **HUN-280** — Dashboard window capture dialog: + New note in the window (Enter save, Esc cancel) | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-280.md` | Done 2026-11-20: merged 06cf56a by the Supervisor under [admin] (auto verify pass; app.js, window/mod.rs, tests/window_api.rs conflicts with HUN-282/HUN-284 resolved by the Supervisor, both kept; cargo test default and --features window pass, clippy clean)
 - [x] **HUN-284** — Dashboard window hardening: stricter CSP, pinned origin, sticky detail panel at 800 px (HUN-278 reviews) | Frontend-Implementer + Backend-Implementer | C1 | Risk: Medium | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-284.md` | Done 2026-11-20: merged efd6780 by the owner (auto verify pass; mod.rs conflict with HUN-281 resolved by the Supervisor, both kept, window tests 554 passed)
 - [x] **HUN-282** — Dashboard window page: load the board once at start, faster search render, slimmer board payload (HUN-278 review P2) | Frontend-Implementer + Backend-Implementer | C1 | Risk: Low | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-282.md` | Done 2026-11-20: merged d48b6c0 by the owner (auto verify pass; mod.rs conflict with HUN-281 resolved by the Supervisor, both kept, window tests 554 passed)
 - [x] **HUN-283** — Docs out of date after the dashboard window: CLI help and PRD non-goal (HUN-278 review P2) | Backend-Implementer | C0 | Risk: Low | P2 | @hungnh1110 | Done 2026-11-20: merged b729aec by the owner (auto verify pass)
