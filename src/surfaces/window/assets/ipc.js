@@ -24,8 +24,9 @@
  *
  * Results (handle output):
  *   board  -> { notes_dir, today, total, projects, top_projects: [{ name, n }],
- *               notes: [{ id, created, time, day, first, text, repo, task, tags, source, kind, ai, stale }] }
- *   detail -> the note item plus { masked, context, ai: { title, kind, summary, tags_suggested, model, at, stale } | null }
+ *               notes: [{ id, created, time, day, first, search, repo, task, tags, source, kind, ai, stale }] }
+ *               `search` is the masked body's distinct words (the board has no full text, HUN-282)
+ *   detail -> the note item plus { text, masked, context, ai: { title, kind, summary, tags_suggested, model, at, stale } | null }
  *   accept_ai      -> the updated `detail` (the AI tags_suggested added to the note's tags, `easy-note tag <id> --accept-ai`)
  *                     errors: "no AI detail", "no such note", "bad id", "missing id", "inbox notes are read-only",
  *                     "cannot use the note"

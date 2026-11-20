@@ -16,6 +16,8 @@
 
   var state = { board: null, notes: [], query: '', filter: 'all', sel: '', detail: null, detailError: '' };
   var UNDO_MS = 6000;
+  var SEARCH_MS = 120;  // HUN-282: the list renders this long after the last key press, not on each one
+  var FRESH_MS = 1000;  // HUN-282: a focus refresh this soon after a board answer is the start-up focus, not news
   var TOAST_MS = 2800;
 
   function $(id) { return document.getElementById(id); }
@@ -48,9 +50,13 @@
 
   function kindLabel(k) { return k === 'todo' ? 'to-do' : str(k); }
 
+  // The board has no full text, only `search` (the body's distinct words); the haystack is built once per load.
+  function hayOf(n) {
+    return (str(n.search) + ' ' + str(n.repo) + ' ' + str(n.task) + ' ' + tagsOf(n).join(' ')).toLowerCase();
+  }
+
   function matches(n, words) {
-    var hay = (str(n.text) + ' ' + str(n.repo) + ' ' + str(n.task) + ' ' + tagsOf(n).join(' ')).toLowerCase();
-    return words.every(function (w) { return hay.indexOf(w) >= 0; });
+    return words.every(function (w) { return n.hay.indexOf(w) >= 0; });
   }
 
   // ---- counts strip and header ----
@@ -147,7 +153,7 @@
     b.setAttribute('aria-current', n.id === state.sel ? 'true' : 'false');
     b.appendChild(el('span', 'row-time', rowTime(n)));
     var body = el('span', 'row-body');
-    body.appendChild(el('span', 'row-first', n.first !== undefined ? n.first : str(n.text).split('\n')[0]));
+    body.appendChild(el('span', 'row-first', str(n.first)));
     var tags = tagsOf(n).map(function (t) { return '#' + t; }).join(' ');
     body.appendChild(el('span', 'row-where', [str(n.repo) || 'no project', str(n.task), tags].filter(Boolean).join(' · ')));
     b.appendChild(body);
@@ -363,10 +369,15 @@
     });
   }
 
+  var loading = null;
+  var loadedAt = 0;
+
   function loadBoard() {
-    return window.easyNoteIpc.board().then(function (b) {
+    var p = window.easyNoteIpc.board().then(function (b) {
+      loadedAt = Date.now();
       state.board = b;
       state.notes = Array.isArray(b.notes) ? b.notes : [];
+      state.notes.forEach(function (n) { n.hay = hayOf(n); });
       showError('');
       if (state.sel && !state.notes.some(function (n) { return n.id === state.sel; })) {
         state.sel = '';
@@ -378,6 +389,17 @@
     }, function (err) {
       showError(err.message);
     });
+    loading = p;
+    p.then(function () { if (loading === p) loading = null; });
+    return p;
+  }
+
+  // The shell's focus refresh. At window open it comes with the page's own start-up load, so it joins
+  // a load in flight, and is skipped right after an answer; actions call loadBoard and always ask.
+  function refreshBoard() {
+    if (loading) return loading;
+    if (loadedAt && Date.now() - loadedAt < FRESH_MS) return Promise.resolve();
+    return loadBoard();
   }
 
   function select(id) {
@@ -397,14 +419,20 @@
   }
 
   $('toast-undo').addEventListener('click', undoTrash);
-  $('search').addEventListener('input', function (e) { state.query = e.target.value; renderList(); });
+  var searchTimer = 0;
+  $('search').addEventListener('input', function (e) {
+    var value = e.target.value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () { state.query = value; renderList(); }, SEARCH_MS);
+  });
   $('clear-search').addEventListener('click', function () {
+    clearTimeout(searchTimer);
     state.query = '';
     $('search').value = '';
     renderList();
   });
   // The Rust shell calls window.__easyNote.refresh() on each window focus (mod.rs REFRESH).
-  window.__easyNote.refresh = loadBoard;
+  window.__easyNote.refresh = refreshBoard;
   buildFilters();
   renderList();
   loadBoard();

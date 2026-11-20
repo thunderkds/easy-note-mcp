@@ -252,10 +252,8 @@ fn board_counts_orders_and_marks_the_notes() {
     assert_eq!(first["time"], "09:00");
     assert_eq!(first["created"], "2026-11-19T09:00:00+07:00");
     assert_eq!(first["first"], "Retry bug only on Firefox");
-    assert_eq!(
-        first["text"],
-        "Retry bug only on Firefox\n\nui_wait_for times out.\n"
-    );
+    // HUN-282: the board no longer carries the full body; `detail` does (below).
+    assert!(first.get("text").is_none(), "{first}");
     assert_eq!(first["repo"], "easy-ui-mcp");
     assert_eq!(first["task"], "T120");
     assert_eq!(first["tags"], json!(["flaky", "firefox"]));
@@ -621,8 +619,8 @@ fn the_focus_refresh_calls_a_function_the_page_defines() {
     assert_eq!(REFRESH, "window.__easyNote && window.__easyNote.refresh()");
     let page = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
     assert!(
-        page.contains("window.__easyNote.refresh = loadBoard;"),
-        "app.js must set window.__easyNote.refresh to the board load"
+        page.contains("window.__easyNote.refresh = refreshBoard;"),
+        "app.js must set window.__easyNote.refresh to the focus refresh (HUN-282: it joins the start-up load)"
     );
     let html = std::str::from_utf8(asset("/").unwrap().1).unwrap();
     let ipc_at = html.find(r#"src="ipc.js""#).expect("ipc.js script");
@@ -1053,4 +1051,168 @@ fn the_page_has_the_design_actions_and_the_undo_window() {
         );
     }
     assert!(app.contains("function afterAction("));
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-282: the board's payload, the page's single start-up load and its debounced search
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn board_items_carry_a_search_field_not_the_full_text() {
+    let sb = Sandbox::new("payload");
+    sb.four();
+    let store = sb.store();
+    let board = call(&store, &json!({"cmd": "board"}));
+    for n in board["notes"].as_array().unwrap() {
+        assert!(
+            n.get("text").is_none(),
+            "the board carries no full body: {n}"
+        );
+        assert!(n["search"].is_string(), "{n}");
+    }
+    // Search still finds every word of the body: the field holds each distinct word once.
+    let first = &board["notes"][0];
+    let words: std::collections::BTreeSet<&str> =
+        first["search"].as_str().unwrap().split(' ').collect();
+    for w in [
+        "Retry",
+        "bug",
+        "only",
+        "on",
+        "Firefox",
+        "ui_wait_for",
+        "times",
+        "out.",
+    ] {
+        assert!(words.contains(w), "{w} missing from {first}");
+    }
+    // The detail panel still gets the whole text.
+    let id = first["id"].as_str().unwrap();
+    let d = call(&store, &json!({"cmd": "detail", "id": id}));
+    assert_eq!(
+        d["text"],
+        "Retry bug only on Firefox\n\nui_wait_for times out.\n"
+    );
+}
+
+#[test]
+fn a_long_repetitive_body_gives_a_smaller_board_reply() {
+    let sb = Sandbox::new("payload-size");
+    let body = "the quick brown fox jumps over the lazy dog\n".repeat(200);
+    sb.note(
+        "20261119-090000-0001",
+        "2026-11-19T09:00:00+07:00",
+        "tags: []\n",
+        &body,
+    );
+    let board = handle(&sb.store(), r#"{"cmd": "board"}"#);
+    assert!(
+        board.len() < body.len() / 4,
+        "{} bytes for a {} byte body",
+        board.len(),
+        body.len()
+    );
+}
+
+#[test]
+fn the_search_field_is_masked() {
+    let sb = Sandbox::new("payload-mask");
+    let cases = planted();
+    let body: Vec<&str> = cases.iter().map(|(t, _)| t.as_str()).collect();
+    sb.note(
+        "20261119-090000-5ec8",
+        "2026-11-19T09:00:00+07:00",
+        "tags: []\n",
+        &body.join("\n"),
+    );
+    let raw = handle(&sb.store(), r#"{"cmd": "board"}"#);
+    let board: Value = serde_json::from_str(&raw).unwrap();
+    assert!(board["notes"][0]["search"]
+        .as_str()
+        .unwrap()
+        .contains("[masked:"));
+    for (_, secret) in &cases {
+        assert!(!raw.contains(secret.as_str()), "secret in {raw}");
+    }
+}
+
+/// The page contract, run for real: `ipc.js` and `app.js` in node over a fake DOM and a stub
+/// `window.ipc` that counts requests (`tests/fixtures/window/page_harness.js`). Skipped, with a
+/// printed note, when `node` is not installed.
+fn run_page(board: &Value) -> Option<Value> {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("board.json");
+    std::fs::write(&file, board.to_string()).unwrap();
+    let harness =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/window/page_harness.js");
+    let out = match std::process::Command::new("node")
+        .arg(harness)
+        .arg(assets_dir())
+        .arg(&file)
+        .output()
+    {
+        Ok(out) => out,
+        Err(e) => {
+            eprintln!("skipped: no node to run the page ({e})");
+            return None;
+        }
+    };
+    assert!(
+        out.status.success(),
+        "page harness failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    Some(serde_json::from_slice(&out.stdout).unwrap())
+}
+
+#[test]
+fn the_page_asks_for_the_board_once_when_the_window_opens() {
+    let sb = Sandbox::new("page-once");
+    sb.four();
+    let board = call(&sb.store(), &json!({"cmd": "board"}));
+    let Some(run) = run_page(&board) else { return };
+    // AC 1: the shell's focus refresh and the page's own start-up load are one request ...
+    assert_eq!(run["focus_before_answer"]["boards"], 1, "{run}");
+    assert_eq!(run["focus_after_answer"]["boards"], 1, "{run}");
+    // ... and a later focus still refreshes.
+    assert_eq!(run["refresh_much_later"]["boards"], 2, "{run}");
+}
+
+#[test]
+fn typing_in_search_renders_once_and_shows_the_same_rows() {
+    let sb = Sandbox::new("page-search");
+    sb.four();
+    let board = call(&sb.store(), &json!({"cmd": "board"}));
+    let Some(run) = run_page(&board) else { return };
+    let s = &run["search_typing"];
+    // AC 2: ten key presses in a row are one render of the one matching row.
+    assert_eq!(s["rebuilt"], 1, "{s}");
+    assert_eq!(
+        s["typed"]["rows"],
+        json!(["Retry bug only on Firefox"]),
+        "{s}"
+    );
+    assert_eq!(
+        s["bugs"]["rows"],
+        json!(["Retry bug only on Firefox"]),
+        "{s}"
+    );
+    assert_eq!(s["cleared"]["rows"].as_array().unwrap().len(), 4, "{s}");
+    assert_eq!(
+        s["all"]["filters"],
+        json!(["4", "1", "0", "0", "1", "2", "1"]),
+        "{s}"
+    );
+    // A word that is only in the body still matches (the search field), a missing one does not.
+    let b = &run["search_body_word"];
+    assert_eq!(
+        b["body"]["rows"],
+        json!(["Retry bug only on Firefox"]),
+        "{b}"
+    );
+    assert_eq!(b["none"]["rows"], json!([]), "{b}");
+    assert_eq!(
+        b["none"]["noneText"], "No note matches “zzzz-nothing”.",
+        "{b}"
+    );
 }
