@@ -3,6 +3,21 @@
 > One Decision record per minimal-track task (`docs/claude-md/tracks.md`), **newest first**: insert each
 > new record directly under this note.
 
+## HUN-283 — Docs out of date after the dashboard window: CLI help and PRD non-goal · minimal
+**Asked:** "start all the tasks as parallel" (HUN-283: Linear issue from the HUN-278 code review, 2 P2 docs findings)
+**Decisions:**
+- Track minimal — C0, Risk Low, docs and one help string, no UI, no user data.
+- The `dashboard` help names the own window first and Obsidian as the fallback — matches `src/surfaces/dashboard.rs` `run()`: window when `use_window`, else the Obsidian plan.
+- PRD non-goal narrowed to "a web UI served on a local port" — DDR 0009 brought the own window in scope (FR-042); a port-served page stays out (BRAINSTORMING_LOG_dashboard-window.md, option C).
+- README needed no change — its "Dashboard window" section already says the window opens when a desktop is running, else Obsidian.
+**Checked:**
+- New test `dashboard_help_names_the_own_window_and_the_obsidian_fallback` (tests/cli.rs) — failed before the change (`dashboard    Open the notes dashboard (`easy-note.base`) in Obsidian. Run `install obsidian` first`), passes after.
+- Suite: `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` — EXIT=0, 24 `test result: ok`, 536 passed, 0 failed.
+- Real run: `./target/debug/easy-note --help` — printed `dashboard    Open the dashboard: easy-note's own window in a `window` build on a desktop, else `easy-note.base` in Obsidian (run `install obsidian` first)`.
+- Simplify: skipped: under 20 lines outside tests and docs.
+**Files:** `src/surfaces/cli.rs`, `PRD.md`, `tests/cli.rs`, `tasks/MINIMAL_LOG.md`
+**Not done:** merge (the user decides)
+
 ## HUN-264 — README, RUNBOOK, client config snippets, install guide · minimal
 Mode: auto
 **Asked:** "continue [admin]" (session tag loop; HUN-262 paused for owner approval, so the next ready ticket at P1)

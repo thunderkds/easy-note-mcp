@@ -1295,3 +1295,17 @@ fn ac6_tray_source_uses_ksni_and_zbus_only_under_the_feature() {
         .collect();
     assert!(before.is_empty(), "outside the gate: {before:?}");
 }
+
+/// HUN-283: `dashboard` help names easy-note's own window first and Obsidian as the fallback
+/// (DDR 0009), not the Obsidian file alone.
+#[test]
+fn dashboard_help_names_the_own_window_and_the_obsidian_fallback() {
+    let home = sandbox("dashboard-help");
+    let help = text(&easy(&home, &["--help"]).stdout);
+    let line = help
+        .lines()
+        .find(|l| l.trim_start().starts_with("dashboard"))
+        .unwrap_or_else(|| panic!("dashboard in help: {help}"));
+    assert!(line.contains("window"), "{line}");
+    assert!(line.contains("Obsidian"), "{line}");
+}
