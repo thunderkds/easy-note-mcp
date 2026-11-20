@@ -15,6 +15,7 @@
 - Suite: `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` — EXIT=0, 24 `test result: ok`, 536 passed, 0 failed.
 - Real run: `./target/debug/easy-note --help` — printed `dashboard    Open the dashboard: easy-note's own window in a `window` build on a desktop, else `easy-note.base` in Obsidian (run `install obsidian` first)`.
 - Simplify: skipped: under 20 lines outside tests and docs.
+- verify: ☑ pass — auto-run by hook, session 38128e9c-3550-4e04-b14c-a67bafa4c3b0, commit 5450be1692face9d7fb6da2269ff061e23e07617, log .claude/verify-runs/HUN-283-5450be1692fa.log
 **Files:** `src/surfaces/cli.rs`, `PRD.md`, `tests/cli.rs`, `tasks/MINIMAL_LOG.md`
 **Not done:** merge (the user decides)
 
