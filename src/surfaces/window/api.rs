@@ -1,23 +1,32 @@
 //! The window's IPC API (FR-042, DDR 0009 item 3): one JSON request in, one JSON response out,
-//! over a `Store`. Pure: no window, no display, no write. A page bug can send anything, so every
-//! command and id is checked and a bad request is an `{"error": ...}` object, never a panic.
+//! over a `Store`. No window, no display; only the actions below write, through the core. A page
+//! bug can send anything, so every command and id is checked and a bad request is an
+//! `{"error": ...}` object, never a panic.
 //! Every string in every response passes `guard::mask_for_output` (NFR-002).
 //!
 //! - `{"cmd": "board"}` → `{notes_dir, today, total, projects, top_projects, notes}`
 //! - `{"cmd": "detail", "id": "<note id>"}` → one note with `masked`, `context` and `ai`
+//!
+//! Actions (FR-043), each through the same core calls as its CLI command, nothing else writes:
+//! - `{"cmd": "accept_ai", "id"}` → the updated `detail` (`easy-note tag <id> --accept-ai`)
+//! - `{"cmd": "trash", "id"}` → `{"trashed": id}` (`easy-note rm`, the AI file moves too)
+//! - `{"cmd": "restore", "id"}` → `{"restored": id}` (`easy-note restore`)
+//! - `{"cmd": "open_in_editor", "id"}` → `{"opened": id}`: `xdg-open <note file>`, an argv list
+//!   (NFR-001); writes nothing
 //!
 //! A note's day is the date in the UTC offset written in its `created`, as in `query`; "today"
 //! is the store's clock in the store's zone.
 
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
+use std::process::{Command, Stdio};
 
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use serde_json::{json, Map, Value};
 
 use crate::core::format::{Note, Value as Field};
 use crate::core::store::{Item, Store, StoreError};
-use crate::core::{ai, guard};
+use crate::core::{ai, ai_view, guard, tags};
 
 /// How many projects the counts strip shows as bars.
 const TOP: usize = 3;
@@ -33,18 +42,91 @@ pub fn handle(store: &Store, request: &str) -> String {
 
 fn answer(store: &Store, request: &str) -> Result<Value, &'static str> {
     let request: Value = serde_json::from_str(request).map_err(|_| "bad request")?;
+    let id = || {
+        request
+            .get("id")
+            .and_then(Value::as_str)
+            .ok_or("missing id")
+    };
     match request.get("cmd").and_then(Value::as_str) {
         Some("board") => Ok(board(store)),
-        Some("detail") => {
-            let id = request
-                .get("id")
-                .and_then(Value::as_str)
-                .ok_or("missing id")?;
-            detail(store, id)
-        }
+        Some("detail") => detail(store, id()?),
+        Some("accept_ai") => accept_ai(store, id()?),
+        Some("trash") => trash(store, id()?),
+        Some("restore") => restore(store, id()?),
+        Some("open_in_editor") => open_in_editor(store, id()?),
         Some(_) => Err("unknown command"),
         None => Err("missing cmd"),
     }
+}
+
+/// The page's short text for a store error; never the id or a path.
+fn store_error(e: StoreError) -> &'static str {
+    match e {
+        StoreError::NotFound(_) => "no such note",
+        StoreError::BadId(_) => "bad id",
+        StoreError::ReadOnly => "inbox notes are read-only",
+        StoreError::Exists(_) => "a file of that name is in the way",
+        _ => "cannot use the note",
+    }
+}
+
+/// `tag <id> --accept-ai` (`cli::write::tag`): the valid suggested tags are added after the
+/// note's own, each once; the text is not touched.
+fn accept_ai(store: &Store, id: &str) -> Result<Value, &'static str> {
+    let note = store.read(id).map_err(store_error)?;
+    store.ensure_writable(note.id()).map_err(store_error)?;
+    let (ai_detail, _) = ai::read(store, note.id()).ok_or("no AI detail")?;
+    let mut now: Vec<String> = match note.fields.get("tags") {
+        Some(Field::List(tags)) => tags.clone(),
+        _ => vec![],
+    };
+    for tag in ai_detail
+        .tags_suggested
+        .iter()
+        .filter_map(|t| tags::normalize(t))
+    {
+        if !now.contains(&tag) {
+            now.push(tag);
+        }
+    }
+    store.update(id, None, Some(&now)).map_err(store_error)?;
+    ai_view::sync(store, id);
+    detail(store, id)
+}
+
+/// `rm <id>` (`cli::write::rm`).
+fn trash(store: &Store, id: &str) -> Result<Value, &'static str> {
+    let live = store.canonical_id(id).ok();
+    store.rm_with_ai(id).map_err(store_error)?;
+    if let Some(live) = live {
+        ai_view::sync_remove(store, &live);
+    }
+    Ok(json!({ "trashed": id }))
+}
+
+/// `restore <id>` (`cli::write::restore`).
+fn restore(store: &Store, id: &str) -> Result<Value, &'static str> {
+    store.restore_with_ai(id).map_err(store_error)?;
+    if let Ok(live) = store.canonical_id(id) {
+        ai_view::sync(store, &live);
+    }
+    Ok(json!({ "restored": id }))
+}
+
+/// `xdg-open <note file>`: the path comes only from the store's read of a valid, live id.
+fn open_in_editor(store: &Store, id: &str) -> Result<Value, &'static str> {
+    let note = store.read(id).map_err(store_error)?;
+    let path = note.path.ok_or("cannot read the note")?;
+    let status = Command::new("xdg-open")
+        .arg(path)
+        .stdin(Stdio::null())
+        .status()
+        .map_err(|_| "cannot run xdg-open")?;
+    if !status.success() {
+        return Err("xdg-open failed");
+    }
+    Ok(json!({ "opened": id }))
 }
 
 fn board(store: &Store) -> Value {

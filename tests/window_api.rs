@@ -856,7 +856,11 @@ fn trash_then_restore_brings_back_the_note_and_its_ai_file() {
 
     let out = call(&store, &json!({"cmd": "restore", "id": ACTED}));
     assert_eq!(out, json!({"restored": ACTED}));
-    assert_eq!(std::fs::read(&path).unwrap(), note, "note file back, same bytes");
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        note,
+        "note file back, same bytes"
+    );
     assert_eq!(
         std::fs::read(ai_path(&sb, ACTED)).unwrap(),
         detail,
