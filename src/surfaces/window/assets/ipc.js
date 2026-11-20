@@ -1,5 +1,5 @@
 /*
- * IPC contract between this page and the Rust window (HUN-278 read, HUN-279 actions). All of it lives in this file.
+ * IPC contract between this page and the Rust window (HUN-278 read, HUN-279 actions, HUN-280 capture). All of it lives in this file.
  *
  * Request (page -> Rust):
  *   window.ipc.postMessage(JSON.stringify({ req: <number>, cmd: <string>, ...args }))
@@ -11,6 +11,8 @@
  *       { "req": 4, "cmd": "trash", "id": "<note id>" }
  *       { "req": 5, "cmd": "restore", "id": "<note id>" }
  *       { "req": 6, "cmd": "open_in_editor", "id": "<note id>" }
+ *       { "req": 7, "cmd": "context" }
+ *       { "req": 8, "cmd": "add", "text": "<the typed text>", "keep_context": true }
  *   The correlation key is `req`, not `id`, because `id` is already the note id in the `detail`
  *   request and in every note object of a reply.
  *
@@ -37,6 +39,10 @@
  *   open_in_editor -> { opened: <id> } (`xdg-open <note file>`, an argv list, no shell)
  *                     errors: "no such note", "bad id", "missing id", "xdg-open failed", "cannot run xdg-open",
  *                     "cannot read the note"
+ *   context        -> { context: { repo, task } | null } (the `easy-note quick` last context, FR-027); never fails
+ *   add            -> the new note's `detail` (`easy-note add` with `source: quick`; the last context when
+ *                     keep_context is true, else none; a secret is masked on write)
+ *                     errors: "empty", "missing text", "the text is too long", "cannot use the note"
  *   A trashed id is "no such note" for detail, accept_ai and open_in_editor.
  *   Copy id needs no request: the page uses navigator.clipboard.
  */
@@ -84,6 +90,8 @@
     acceptAi: function (noteId) { return request('accept_ai', { id: noteId }); },
     trash: function (noteId) { return request('trash', { id: noteId }); },
     restore: function (noteId) { return request('restore', { id: noteId }); },
-    openInEditor: function (noteId) { return request('open_in_editor', { id: noteId }); }
+    openInEditor: function (noteId) { return request('open_in_editor', { id: noteId }); },
+    context: function () { return request('context'); },
+    add: function (text, keepContext) { return request('add', { text: text, keep_context: !!keepContext }); }
   };
 })();

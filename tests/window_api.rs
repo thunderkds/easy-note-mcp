@@ -1002,6 +1002,8 @@ fn the_page_asks_only_for_commands_the_api_answers() {
         "trash",
         "restore",
         "open_in_editor",
+        "context",
+        "add",
     ];
     assert_eq!(cmds, all.into_iter().collect(), "commands in ipc.js");
     let sb = Sandbox::new("page-cmds");
@@ -1257,4 +1259,94 @@ fn add_masks_a_planted_secret_on_write() {
         assert!(!file.contains(secret.as_str()), "secret in the file {id}");
         assert!(file.contains("[masked:"), "{file}");
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-280 frontend slice: the capture dialog of docs/design/Main.dc.html in the page
+// ---------------------------------------------------------------------------------------------
+
+/// The body of the named `function <name>(` in app.js, up to the next two-space `}` line.
+fn js_function<'a>(app: &'a str, name: &str) -> &'a str {
+    let at = app
+        .find(&format!("function {name}("))
+        .unwrap_or_else(|| panic!("app.js lacks function {name}"));
+    let rest = &app[at..];
+    &rest[..rest.find("\n  }\n").unwrap_or(rest.len())]
+}
+
+#[test]
+fn the_page_has_the_design_capture_dialog() {
+    let html = std::str::from_utf8(asset("/").unwrap().1).unwrap();
+    // Labels and texts from the board "Dashboard (clickable)": header button, dialog, key hints.
+    for must in [
+        r#"id="new-note">+ New note</button>"#,
+        r#"role="dialog" aria-modal="true" aria-label="New note""#,
+        r#"id="cap-chip-text""#,
+        r#"aria-label="Drop context""#,
+        "from your last note",
+        r#"placeholder="Note…" aria-label="Note text""#,
+        "<kbd>Enter</kbd> save",
+        "<kbd>Shift+Enter</kbd> new line",
+        "<kbd>Esc</kbd> cancel",
+        "<kbd>Backspace</kbd> on empty: drop context",
+    ] {
+        assert!(html.contains(must), "index.html lacks {must}");
+    }
+    // The dialog starts closed.
+    assert!(
+        html.contains(r#"id="cap" hidden"#),
+        "dialog not hidden at start"
+    );
+    let css = std::str::from_utf8(asset("/app.css").unwrap().1).unwrap();
+    // Dialog values copied from the design.
+    for must in [
+        "width: 560px; max-width: calc(100% - 32px)",
+        "padding-top: 14vh",
+        "background: rgba(8, 10, 9, 0.6)",
+        "font: 400 18px/1.5 'IBM Plex Sans', sans-serif",
+    ] {
+        assert!(css.contains(must), "app.css lacks {must}");
+    }
+}
+
+#[test]
+fn the_capture_keys_and_save_follow_the_guide() {
+    let app = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
+    let keys = js_function(app, "capKey");
+    // AC 3: Enter saves, Shift+Enter is a new line, Esc closes, Backspace on empty drops the chip.
+    // IME composition: Enter while composing does not save.
+    for must in [
+        "e.isComposing",
+        "e.key === 'Enter' && !e.shiftKey",
+        "e.key === 'Escape'",
+        "e.key === 'Backspace' && box.value === '' && keepContext",
+    ] {
+        assert!(keys.contains(must), "capKey lacks {must}");
+    }
+    let save = js_function(app, "saveCapture");
+    // AC 4: empty or whitespace-only text sends no request.
+    let guard = save
+        .find("if (!text.trim()) return;")
+        .expect("no empty guard");
+    let ask = save
+        .find("easyNoteIpc.add(text, keepContext)")
+        .expect("no add request");
+    assert!(guard < ask, "the empty guard comes after the request");
+    // AC 5: close, saved toast, board reload, select the new note. An error keeps the dialog.
+    for must in [
+        "closeCapture()",
+        "'✓ noted'",
+        "loadBoard()",
+        "select(d.id)",
+        "'could not save: ' + err.message",
+    ] {
+        assert!(save.contains(must), "saveCapture lacks {must}");
+    }
+    let open = js_function(app, "openCapture");
+    assert!(open.contains("easyNoteIpc.context()"), "{open}");
+    assert!(open.contains(".focus()"), "{open}");
+    // A click on the backdrop keeps focus in the text box, so the keys above still reach capKey.
+    assert!(app.contains("$('cap').addEventListener('mousedown'"));
+    // The focus refresh rebuilds the list only; it never touches the dialog.
+    assert!(!js_function(app, "loadBoard").contains("Capture"));
 }

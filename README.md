@@ -170,7 +170,11 @@ detail panel with the AI detail. The page is inside the binary and loads nothing
 Window actions on the selected note: `Add as tags` does what `easy-note tag <id> --accept-ai` does; `Open in editor`
 runs `xdg-open` on the note file; `Copy id` copies the id; `Move to trash` does what `easy-note rm <id>` does, and its
 toast offers `Undo` (`easy-note restore <id>`) for 6 seconds. The AI file moves with the note. Nothing else in the
-window changes a note file. Building it needs the WebKitGTK headers (Debian/Ubuntu: `sudo apt install libwebkit2gtk-4.1-dev`).
+window changes a note file.
+
+Window capture: `+ New note` opens a box. Enter saves the note as `easy-note add` does (`source: quick`), with the
+context of your last note as `easy-note quick` takes it; Shift+Enter adds a line, Esc closes without saving, and
+Backspace in the empty box drops the context. The new note is selected at the top of today. Building it needs the WebKitGTK headers (Debian/Ubuntu: `sudo apt install libwebkit2gtk-4.1-dev`).
 
 ```
 cargo install --path . --locked --features "tray window"
