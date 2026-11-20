@@ -159,13 +159,23 @@
     b.appendChild(body);
     if (n.ai && n.kind) b.appendChild(el('span', 'chip', kindLabel(n.kind)));
     b.appendChild(el('span', 'row-mark' + (n.ai && n.stale ? ' stale' : ''), n.ai ? (n.stale ? 'stale' : 'AI') : ''));
-    b.addEventListener('click', function () { select(n.id); });
+    b.addEventListener('click', function () { select(n.id, true); });
     rowButtons[n.id] = b;
     li.appendChild(b);
     return li;
   }
 
   // ---- detail panel ----
+  // HUN-284: when the window is narrow the panel wraps below the list; after a row click the
+  // rendered panel's top is brought into view. In two columns the panel is beside the list and
+  // nothing scrolls.
+  function revealDetail() {
+    var aside = $('detail');
+    if (aside.offsetTop <= aside.previousElementSibling.offsetTop) return;
+    var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    aside.scrollIntoView({ block: 'start', behavior: still ? 'auto' : 'smooth' });
+  }
+
   function renderDetail() {
     var aside = $('detail');
     var d = state.detail;
@@ -402,7 +412,8 @@
     return loadBoard();
   }
 
-  function select(id) {
+  // `reveal` (a row click only): bring the panel into view once the detail is rendered.
+  function select(id, reveal) {
     state.sel = id;
     state.detailError = '';
     Object.keys(rowButtons).forEach(function (k) { rowButtons[k].setAttribute('aria-current', k === id ? 'true' : 'false'); });
@@ -410,11 +421,13 @@
       if (state.sel !== id) return;
       state.detail = d;
       renderDetail();
+      if (reveal) revealDetail();
     }, function (err) {
       if (state.sel !== id) return;
       state.detail = null;
       state.detailError = err.message;
       renderDetail();
+      if (reveal) revealDetail();
     });
   }
 
