@@ -48,8 +48,8 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | Backend slice (AC 1, 2, 4 at the API, 6): 7 new tests in `tests/window_api.rs` (section `HUN-280: capture from the window`): `context_is_the_newest_cli_or_hook_note_under_two_hours` (AC 1, Success 1), `context_is_null_when_the_last_note_is_two_hours_old` (AC 1), `add_keeps_the_last_context_like_quick_and_returns_the_new_item` (AC 2, Success 2; new note first on the board in `today`), `add_without_keep_context_writes_no_context` (AC 2, Success 2), `add_with_keep_context_and_no_last_context_saves_the_note` (FR-001), `add_of_empty_text_is_an_error_and_writes_nothing` (AC 4, Success 4), `add_masks_a_planted_secret_on_write` (AC 6, Success 3). Red before the change (Demonstration BEFORE: 7 failed, `{"error":"unknown command"}`); green after: `cargo test --locked --features window` 2026-11-20T11:02 → `Running tests/window_api.rs` … `test result: ok. 30 passed; 0 failed`. AC 3 and AC 5 (dialog keys, toast, selection) belong to the frontend slice. |
+| Verification command run | ☑ pass | Run 2 (2026-11-20T10:41:13, load average 44.84): `cargo fmt --check`, `clippy` default, `cargo test --locked`, `clippy --features tray`, `cargo test --locked --features tray`, `clippy --features window` all passed (48 `test result: ok`, 0 warnings); its last step `cargo test --locked --features window` did not compile: `error: couldn't create a temp dir: No space left on device (os error 28)` (disk full, freed by the Supervisor). That last step rerun 2026-11-20T10:59:09 → 11:02:53: every suite `test result: ok` (lib 65, ai 38, cli 46, context 32, dashboard 5, enrich 24, format 13, guard 37, hook 16, hotkey 4, inbox 19, install 33, leak 46, mcp 20, perf 1 + 6 ignored, query 45, quick 26, readme 3, setup 19, store 30, tray 0, window_api 30), `EXIT 0`. Note: run 1 (10:27, load 44) and the first rerun of the last step (10:56) each failed only `tests/enrich.rs:642` `the save waited: 3.097666435s` / `4.503368899s` (a 3 s timing bound in `after_save_enriches_a_note_saved_by_{add,quick,mcp_note_add}`) under machine load; these tests do not reach `window::api` and passed in the default run and in the final run. |
 | Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
@@ -68,8 +68,44 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE**: The guide's Demonstration section is a `> **Moved.**` pointer and names no command, so the
+backend agent used the new AC tests as the observable: `(date -Iseconds; cargo test --locked --test window_api 2>&1 | tail -30)`,
+run in the worktree at `af06283` (no implementation commit yet; only the 7 new tests appended to
+`tests/window_api.rs`). `context` and `add` are unknown commands:
+
+```
+2026-11-20T10:19:03+07:00
+thread 'add_keeps_the_last_context_like_quick_and_returns_the_new_item' (645038) panicked at tests/window_api.rs:1146:51:
+{"error":"unknown command"}
+
+---- context_is_the_newest_cli_or_hook_note_under_two_hours stdout ----
+
+thread 'context_is_the_newest_cli_or_hook_note_under_two_hours' (645048) panicked at tests/window_api.rs:1092:5:
+assertion `left == right` failed
+  left: Object {"error": String("unknown command")}
+ right: Object {"context": Null}
+
+---- context_is_null_when_the_last_note_is_two_hours_old stdout ----
+
+thread 'context_is_null_when_the_last_note_is_two_hours_old' (645047) panicked at tests/window_api.rs:1130:5:
+assertion `left == right` failed
+  left: Object {"error": String("unknown command")}
+ right: Object {"context": Null}
+
+
+failures:
+    add_keeps_the_last_context_like_quick_and_returns_the_new_item
+    add_masks_a_planted_secret_on_write
+    add_of_empty_text_is_an_error_and_writes_nothing
+    add_with_keep_context_and_no_last_context_saves_the_note
+    add_without_keep_context_writes_no_context
+    context_is_null_when_the_last_note_is_two_hours_old
+    context_is_the_newest_cli_or_hook_note_under_two_hours
+
+test result: FAILED. 23 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+error: test failed, to rerun pass `--test window_api`
+```
 
 **AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
 

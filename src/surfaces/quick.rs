@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use chrono::{DateTime, Datelike, Local};
+use chrono::{DateTime, Datelike, FixedOffset, Local};
 use wait_timeout::ChildExt;
 
 use super::cli::{confirmation, safe};
@@ -37,7 +37,7 @@ pub fn run(cwd: Option<&Path>) -> Result<(), String> {
     let store = Store::system(dir);
     let context = match cwd.filter(|c| !c.as_os_str().is_empty()) {
         Some(dir) => context::capture(None, Some(dir), &[]),
-        None => last_context(&store.root, Local::now()).unwrap_or_default(),
+        None => last_context(&store.root, Local::now().fixed_offset()).unwrap_or_default(),
     };
     let chip = chip(&context);
     let label = match &chip {
@@ -111,7 +111,8 @@ fn drop_marker(text: &str) -> Option<&str> {
 /// The context of the newest `cli` or `hook` note made less than two hours before `now`.
 /// Notes of other sources and the inbox are not read as a source. Notes are read newest first
 /// (the id starts with the local time), so the first one that is too old ends the search.
-fn last_context(root: &Path, now: DateTime<Local>) -> Option<Context> {
+/// The window's `context` and `add` use it too (FR-044).
+pub(crate) fn last_context(root: &Path, now: DateTime<FixedOffset>) -> Option<Context> {
     let (year, month) = (now.year(), now.month());
     let before = if month == 1 {
         (year - 1, 12)

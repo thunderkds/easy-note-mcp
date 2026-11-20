@@ -1054,3 +1054,207 @@ fn the_page_has_the_design_actions_and_the_undo_window() {
     }
     assert!(app.contains("function afterAction("));
 }
+
+// ---------------------------------------------------------------------------------------------
+// HUN-280: capture from the window (`context`, `add`; FR-044, FR-027, FR-001, FR-014, NFR-002)
+// ---------------------------------------------------------------------------------------------
+
+/// One note file of any `source`, written by hand; `extra` holds front matter lines.
+fn sourced(sb: &Sandbox, id: &str, created: &str, source: &str, extra: &str) {
+    let folder = sb.notes().join(&id[..4]).join(&id[4..6]);
+    std::fs::create_dir_all(&folder).unwrap();
+    let text = format!(
+        "---\neasy-note: 1\nid: \"{id}\"\ncreated: \"{created}\"\n{extra}tags: []\nsource: \"{source}\"\n---\nx\n"
+    );
+    std::fs::write(folder.join(format!("{id}.md")), text).unwrap();
+}
+
+/// A `cli` note 30 min before the frozen now, in repo `r` on task `T1`, with remote and branch.
+fn last_cli(sb: &Sandbox) {
+    sourced(
+        sb,
+        "20261119-093000-c1c1",
+        "2026-11-19T09:30:00+07:00",
+        "cli",
+        "repo: \"r\"\nremote: \"github.com/o/r\"\nbranch: \"fix/t1-x\"\ntask: \"T1\"\ncommit: \"abc1234\"\n",
+    );
+}
+
+/// The note file `add` wrote for `id`.
+fn written(sb: &Sandbox, id: &str) -> String {
+    std::fs::read_to_string(
+        sb.notes()
+            .join(format!("{}/{}/{id}.md", &id[..4], &id[4..6])),
+    )
+    .unwrap()
+}
+
+#[test]
+fn context_is_the_newest_cli_or_hook_note_under_two_hours() {
+    let sb = Sandbox::new("ctx");
+    let store = sb.store();
+    assert_eq!(
+        call(&store, &json!({"cmd": "context"})),
+        json!({"context": null})
+    );
+    last_cli(&sb);
+    // A newer note of another source is not a context source (FR-027).
+    sourced(
+        &sb,
+        "20261119-094500-q1q1",
+        "2026-11-19T09:45:00+07:00",
+        "quick",
+        "repo: \"other\"\n",
+    );
+    assert_eq!(
+        call(&store, &json!({"cmd": "context"})),
+        json!({"context": {"repo": "r", "task": "T1"}})
+    );
+    // A hook note is a source too, and the newest one wins.
+    sourced(
+        &sb,
+        "20261119-095000-h1h1",
+        "2026-11-19T09:50:00+07:00",
+        "hook",
+        "repo: \"h\"\n",
+    );
+    assert_eq!(
+        call(&store, &json!({"cmd": "context"})),
+        json!({"context": {"repo": "h", "task": null}})
+    );
+}
+
+#[test]
+fn context_is_null_when_the_last_note_is_two_hours_old() {
+    let sb = Sandbox::new("ctx-old");
+    sourced(
+        &sb,
+        "20261119-080000-o1o1",
+        "2026-11-19T08:00:00+07:00",
+        "cli",
+        "repo: \"r\"\ntask: \"T1\"\n",
+    );
+    assert_eq!(
+        call(&sb.store(), &json!({"cmd": "context"})),
+        json!({"context": null})
+    );
+}
+
+#[test]
+fn add_keeps_the_last_context_like_quick_and_returns_the_new_item() {
+    let sb = Sandbox::new("add-ctx");
+    sb.four();
+    last_cli(&sb);
+    let store = sb.store();
+    let out = call(
+        &store,
+        &json!({"cmd": "add", "text": "  retry on firefox #flaky\nsecond line  ", "keep_context": true}),
+    );
+    let id = out["id"].as_str().unwrap_or_else(|| panic!("{out}"));
+    assert!(id.starts_with("20261119-100000-"), "{out}");
+    assert_eq!(out["source"], "quick");
+    assert_eq!(out["repo"], "r");
+    assert_eq!(out["task"], "T1");
+    assert_eq!(out["tags"], json!(["flaky"]));
+    assert_eq!(out["day"], "today");
+    // Trimmed on save; the store ends the body with one line end, as for every note.
+    assert_eq!(out["text"], "retry on firefox #flaky\nsecond line\n");
+    assert_eq!(out["masked"], false);
+    let file = written(&sb, id);
+    for line in [
+        "easy-note: 1\n",
+        "repo: \"r\"\n",
+        "remote: \"github.com/o/r\"\n",
+        "branch: \"fix/t1-x\"\n",
+        "task: \"T1\"\n",
+        "source: \"quick\"\n",
+    ] {
+        assert!(file.contains(line), "{line:?} not in {file}");
+    }
+    // A commit belongs to the moment of the old note, not to this one (as in `quick`).
+    assert!(!file.contains("commit:"), "{file}");
+    // The new note is the first one on the board, in `today`.
+    let board = call(&store, &json!({"cmd": "board"}));
+    assert_eq!(ids(&board)[0], id);
+    assert_eq!(board["notes"][0]["day"], "today");
+}
+
+#[test]
+fn add_without_keep_context_writes_no_context() {
+    let sb = Sandbox::new("add-bare");
+    last_cli(&sb);
+    let store = sb.store();
+    for request in [
+        json!({"cmd": "add", "text": "buy a hub", "keep_context": false}),
+        json!({"cmd": "add", "text": "buy a hub"}),
+    ] {
+        let out = call(&store, &request);
+        let id = out["id"].as_str().unwrap_or_else(|| panic!("{out}"));
+        assert_eq!(out["repo"], Value::Null, "{out}");
+        assert_eq!(out["task"], Value::Null, "{out}");
+        assert_eq!(out["source"], "quick");
+        let file = written(&sb, id);
+        for key in ["repo:", "remote:", "branch:", "task:", "commit:"] {
+            assert!(!file.contains(key), "{key} in {file}");
+        }
+    }
+}
+
+#[test]
+fn add_with_keep_context_and_no_last_context_saves_the_note() {
+    let sb = Sandbox::new("add-none");
+    let out = call(
+        &sb.store(),
+        &json!({"cmd": "add", "text": "first note ever", "keep_context": true}),
+    );
+    let id = out["id"].as_str().unwrap_or_else(|| panic!("{out}"));
+    assert_eq!(out["repo"], Value::Null);
+    assert!(written(&sb, id).contains("first note ever"));
+}
+
+#[test]
+fn add_of_empty_text_is_an_error_and_writes_nothing() {
+    let sb = Sandbox::new("add-empty");
+    last_cli(&sb);
+    let store = sb.store();
+    let before = snapshot(&sb.notes());
+    for text in ["", "   ", "\n\t \n"] {
+        let out = call(
+            &store,
+            &json!({"cmd": "add", "text": text, "keep_context": true}),
+        );
+        assert_eq!(out, json!({"error": "empty"}), "{text:?}");
+    }
+    for request in [
+        json!({"cmd": "add"}),
+        json!({"cmd": "add", "text": 5}),
+        json!({"cmd": "add", "text": null}),
+    ] {
+        assert_eq!(
+            call(&store, &request),
+            json!({"error": "missing text"}),
+            "{request}"
+        );
+    }
+    assert_eq!(snapshot(&sb.notes()), before, "no change on disk");
+}
+
+#[test]
+fn add_masks_a_planted_secret_on_write() {
+    let sb = Sandbox::new("add-leak");
+    let store = sb.store();
+    for (text, secret) in planted() {
+        let raw = handle(
+            &store,
+            &json!({"cmd": "add", "text": format!("note {text}"), "keep_context": false})
+                .to_string(),
+        );
+        assert!(!raw.contains(secret.as_str()), "secret in {raw}");
+        let out: Value = serde_json::from_str(&raw).unwrap();
+        let id = out["id"].as_str().unwrap_or_else(|| panic!("{raw}"));
+        assert_eq!(out["masked"], true, "{raw}");
+        let file = written(&sb, id);
+        assert!(!file.contains(secret.as_str()), "secret in the file {id}");
+        assert!(file.contains("[masked:"), "{file}");
+    }
+}

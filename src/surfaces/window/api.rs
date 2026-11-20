@@ -14,6 +14,15 @@
 //! - `{"cmd": "open_in_editor", "id"}` → `{"opened": id}`: `xdg-open <note file>`, an argv list
 //!   (NFR-001); writes nothing
 //!
+//! Capture (FR-044), the same rule as `easy-note quick` (FR-027) and the same core call as
+//! `easy-note add`:
+//! - `{"cmd": "context"}` → `{"context": {repo, task} | null}`: the context of the newest `cli` or
+//!   `hook` note made less than two hours ago; null when there is none or it has no repo and no task
+//! - `{"cmd": "add", "text", "keep_context": bool}` → the new note's `detail`. The text is trimmed;
+//!   empty text is `{"error": "empty"}` and writes nothing. `source` is `quick`; the context is the
+//!   one `context` names (with its remote and branch) when `keep_context` is true, else none. A
+//!   missing `keep_context` is false. Tags come from `#words` as in `add`; a secret is masked on write
+//!
 //! A note's day is the date in the UTC offset written in its `created`, as in `query`; "today"
 //! is the store's clock in the store's zone.
 
@@ -24,9 +33,11 @@ use std::process::{Command, Stdio};
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use serde_json::{json, Map, Value};
 
+use crate::core::context::Context;
 use crate::core::format::{Note, Value as Field};
 use crate::core::store::{Item, Store, StoreError};
 use crate::core::{ai, ai_view, guard, tags};
+use crate::surfaces::quick::last_context;
 
 /// How many projects the counts strip shows as bars.
 const TOP: usize = 3;
@@ -55,6 +66,8 @@ fn answer(store: &Store, request: &str) -> Result<Value, &'static str> {
         Some("trash") => trash(store, id()?),
         Some("restore") => restore(store, id()?),
         Some("open_in_editor") => open_in_editor(store, id()?),
+        Some("context") => Ok(json!({ "context": context(store) })),
+        Some("add") => add(store, &request),
         Some(_) => Err("unknown command"),
         None => Err("missing cmd"),
     }
@@ -67,6 +80,7 @@ fn store_error(e: StoreError) -> &'static str {
         StoreError::BadId(_) => "bad id",
         StoreError::ReadOnly => "inbox notes are read-only",
         StoreError::Exists(_) => "a file of that name is in the way",
+        StoreError::TextTooLong(_) => "the text is too long",
         _ => "cannot use the note",
     }
 }
@@ -127,6 +141,38 @@ fn open_in_editor(store: &Store, id: &str) -> Result<Value, &'static str> {
         return Err("xdg-open failed");
     }
     Ok(json!({ "opened": id }))
+}
+
+/// The last context for the dialog's chip: repo and task, or null when it holds neither.
+fn context(store: &Store) -> Value {
+    match last_context(&store.root, now(store)) {
+        Some(c) if c.repo.is_some() || c.task.is_some() => {
+            json!({ "repo": c.repo, "task": c.task })
+        }
+        _ => Value::Null,
+    }
+}
+
+/// `easy-note add` with the `quick` context rule: one new note, `source: quick`.
+fn add(store: &Store, request: &Value) -> Result<Value, &'static str> {
+    let text = request
+        .get("text")
+        .and_then(Value::as_str)
+        .ok_or("missing text")?
+        .trim();
+    if text.is_empty() {
+        return Err("empty");
+    }
+    let keep = request.get("keep_context").and_then(Value::as_bool) == Some(true);
+    let context = if keep {
+        last_context(&store.root, now(store)).unwrap_or_default()
+    } else {
+        Context::default()
+    };
+    let added = store
+        .add(text, "quick", &tags::extract(text), &context.fields())
+        .map_err(store_error)?;
+    detail(store, &added.id)
 }
 
 fn board(store: &Store) -> Value {
@@ -269,13 +315,17 @@ fn created(note: &Note) -> Option<DateTime<FixedOffset>> {
 
 /// The store's "now" as a local date in the store's zone.
 fn today(store: &Store) -> NaiveDate {
+    now(store).date_naive()
+}
+
+/// The store's clock in the store's zone, to the second.
+fn now(store: &Store) -> DateTime<FixedOffset> {
     let secs = i64::try_from((store.now_ns)() / 1_000_000_000).unwrap_or(0);
     let offset = FixedOffset::east_opt((store.utc_offset)(secs))
         .unwrap_or_else(|| FixedOffset::east_opt(0).expect("zero offset"));
     DateTime::<Utc>::from_timestamp(secs, 0)
         .unwrap_or_default()
         .with_timezone(&offset)
-        .date_naive()
 }
 
 /// Mask every string in the answer: ids, paths and errors as well as the note text.
