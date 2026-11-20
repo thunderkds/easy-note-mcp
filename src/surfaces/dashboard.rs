@@ -1,5 +1,6 @@
-//! `dashboard`: open `<notes dir>/easy-note.base` in Obsidian (FR-034, DDR 0006). Obsidian draws
-//! the window; easy-note draws none. `install obsidian` writes the file (FR-035). The programs
+//! `dashboard`: in a build with the `window` feature and a display, open easy-note's own window
+//! (FR-042, DDR 0009). Otherwise open `<notes dir>/easy-note.base` in Obsidian (FR-034, DDR 0006):
+//! Obsidian draws the window. `install obsidian` writes the file (FR-035). The programs
 //! `xdg-mime` and `xdg-open` run as argv lists, never through a shell (NFR-001).
 
 use std::path::{Path, PathBuf};
@@ -155,7 +156,22 @@ fn open(target: &str) -> Result<(), String> {
     }
 }
 
+/// The own window opens only in a `window` build with `WAYLAND_DISPLAY` or `DISPLAY` set (non-empty).
+pub fn use_window(built: bool, wayland: Option<&str>, display: Option<&str>) -> bool {
+    let set = |v: Option<&str>| v.is_some_and(|v| !v.is_empty());
+    built && (set(wayland) || set(display))
+}
+
 pub fn run() -> Result<(), String> {
+    let wayland = std::env::var("WAYLAND_DISPLAY").ok();
+    let display = std::env::var("DISPLAY").ok();
+    if use_window(
+        cfg!(feature = "window"),
+        wayland.as_deref(),
+        display.as_deref(),
+    ) {
+        return super::window::open();
+    }
     let dir = config::notes_dir().map_err(|e| e.to_string())?;
     let base: PathBuf = std::path::absolute(dir.join(BASE_NAME)).map_err(|e| e.to_string())?;
     match choose(&handler(), base.is_file()) {

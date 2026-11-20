@@ -162,9 +162,23 @@ They do different jobs. easy-memory saves agent turns automatically (a "memory n
 saves only what you ask it to save (a "note"): your words, typed with `n`, `/note`, `note:` or the
 quick box. Neither reads the other's folder.
 
+## Dashboard window
+
+A build with the `window` feature has its own dashboard window: counts, search, kind filters, notes by day and a
+detail panel with the AI detail. It only reads your notes. The page is inside the binary and loads nothing from the
+network. Building it needs the WebKitGTK headers (Debian/Ubuntu: `sudo apt install libwebkit2gtk-4.1-dev`).
+
+```
+cargo install --path . --locked --features "tray window"
+easy-note dashboard
+```
+
+`dashboard` opens the window when a desktop is running (`WAYLAND_DISPLAY` or `DISPLAY` is set). In a build without
+`window`, or with no desktop, it opens the Obsidian dashboard below instead.
+
 ## Obsidian dashboard
 
-easy-note draws no window of its own. Obsidian shows the notes: by day, project, task, tag and source.
+In a build without the `window` feature, Obsidian shows the notes: by day, project, task, tag and source.
 `easy-note setup` (or `easy-note install obsidian` alone) writes the dashboard file, `easy-note.base`, in your notes
 folder (the path `easy-note path` prints). It also makes the notes folder an Obsidian vault: it creates
 `<notes folder>/.obsidian/` and adds the folder to Obsidian's vault list,

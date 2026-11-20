@@ -225,3 +225,6 @@ cargo fmt --check \
 * 2026-11-19 DECIDED own window, not Obsidian (owner pick "Build own window")
 * 2026-11-19 DECIDED wry + tao webview behind feature `window`, read-only first (Supervisor under `[admin]`, tracks.md row 4, ⚠)
 * 2026-11-19 DECIDED bundle IBM Plex; hide status and hotkey chips in this slice (Supervisor, BRAINSTORMING_LOG_dashboard-window.md)
+
+- 2026-11-20 DEBATE empty-notes-dir text on the board? → `No notes yet. Your first one appears here.` (Advocate 1: tray design text, TrayMenu.dc.html:42; Advocate 2: same) ⚠ decided for you — please review
+- 2026-11-20 DEBATE board load error text? → `Could not load notes: <error>` (Advocate 1: short text, board has no notes-dir error path; Advocate 2: same) ⚠ decided for you — please review

@@ -6,6 +6,8 @@
 //! `perf <name>: ...` before they assert the budget. Run them by hand with
 //! `cargo test --release --test perf -- --ignored --nocapture --test-threads=1`.
 //! Each test uses a temp HOME and EASY_NOTE_DIR (NFR-003) and a temp git repo as cwd.
+//! HUN-278 adds `perf_window_board` (NFR-013): the window's `board` handler, in process, over
+//! 5,000 notes; the handler gets 300 ms of the 1 s first-paint budget.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -14,6 +16,8 @@ use std::time::{Duration, Instant};
 
 use chrono::{Datelike, Local, SecondsFormat, TimeDelta, TimeZone};
 use easy_note_mcp::core::format::parse;
+use easy_note_mcp::core::store::Store;
+use easy_note_mcp::surfaces::window::api::handle;
 use rmcp::model::{CallToolRequestParams, ClientCapabilities, ClientConfig, Implementation};
 use rmcp::transport::TokioChildProcess;
 use rmcp::ServiceExt;
@@ -29,6 +33,8 @@ const BUDGET_NOTE_ADD_MS: u64 = 150;
 const BUDGET_HOOK_PASS_MS: u64 = 50;
 const BUDGET_HOOK_SAVE_MS: u64 = 150;
 const BUDGET_N_COLD_START_MS: u64 = 150;
+const WINDOW_NOTES: usize = 5_000;
+const BUDGET_WINDOW_BOARD_MS: u64 = 300;
 
 // ---------------------------------------------------------------------------------------------
 // Helpers
@@ -385,4 +391,22 @@ fn perf_n_cold_start() {
     }
     let first = runs.remove(0);
     report("n_cold_start", first, runs, BUDGET_N_COLD_START_MS);
+}
+
+#[test]
+#[ignore]
+fn perf_window_board() {
+    let sb = Sandbox::new("window_board");
+    fixture(&sb.notes, WINDOW_NOTES);
+    let store = Store::system(sb.notes.clone());
+    let mut runs: Vec<Duration> = vec![];
+    for _ in 0..=RUNS {
+        let start = Instant::now();
+        let out = handle(&store, r#"{"cmd": "board"}"#);
+        runs.push(start.elapsed());
+        let board: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(board["total"], WINDOW_NOTES, "every note on the board");
+    }
+    let first = runs.remove(0);
+    report("window_board", first, runs, BUDGET_WINDOW_BOARD_MS);
 }

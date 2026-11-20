@@ -8,3 +8,4 @@ pub mod install;
 pub mod mcp;
 pub mod quick;
 pub mod tray;
+pub mod window;
