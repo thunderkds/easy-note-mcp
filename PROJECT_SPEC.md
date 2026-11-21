@@ -14,7 +14,7 @@
 - **Repo**: `thunderkds/easy-note-mcp` (to be created; not created by this plan)
 - **Primary tech**: Rust (stable), one binary; official Rust MCP SDK (`rmcp`), `clap`; crates confirmed per task guide (DDR 0005)
 - **Type**: MCP server (stdio default, streamable HTTP opt-in on `127.0.0.1:8769`) + CLI
-- **Deployment target**: the owner's machine, Linux only, native install (`cargo install`), no Docker (DDR 0001, DDR 0005)
+- **Deployment target**: the owner's machine, Linux only, native install (`cargo install`, or a `.deb` from `scripts/build_deb.sh` on Debian and Ubuntu, HUN-287), no Docker (DDR 0001, DDR 0005)
 - **Key stakeholders**: thunderkds (owner)
 - **Family place**: plug-in. Usable with or without the kernel (easy-kit). Read by easy-personal through the file format only (DDR 0002).
 
