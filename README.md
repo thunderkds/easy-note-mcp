@@ -253,11 +253,13 @@ build, so the default `easy-note` links no tray code. Install a build that has i
 cargo install --path . --locked --features tray
 ```
 
-Then run `easy-note tray`. The menu holds New note (opens the quick box with the last context), Open
-dashboard, your 5 newest notes (click one to open it), Open notes folder and Quit. It needs a desktop with a
+Then run `easy-note tray`. The menu holds New note · Ctrl+Alt+N (opens the quick box with the last
+context), Open dashboard, your 5 newest notes (click one to open it), Open notes folder and Quit. It needs a desktop with a
 StatusNotifier host: KDE has one; GNOME needs the AppIndicator extension. Without a host,
 `easy-note tray` exits with 1 and prints the hotkey hint, and `easy-note doctor` says
-`tray: no tray host`. Only one tray runs at a time. After `install launcher` the tray shows the
+`tray: no tray host`. At login the panel may start after the tray, so the tray checks again every
+second for up to 60 seconds before it gives up. In a build with `tray` and `window`, opening the
+dashboard window starts the tray when it is not running. Only one tray runs at a time. After `install launcher` the tray shows the
 easy-note outline icon, and a check badge for 3 seconds after a note is saved.
 
 To start it at login, `easy-note install tray` writes one file,
