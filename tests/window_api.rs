@@ -941,8 +941,8 @@ fn trash_then_restore_brings_back_the_note_and_its_ai_file() {
     let board = call(&store, &json!({"cmd": "board"}));
     assert!(!ids(&board).contains(&ACTED), "the row is gone");
     assert_eq!(board["total"], 4);
-    // A trashed note is refused by accept_ai and open_in_editor; a second trash too.
-    for cmd in ["accept_ai", "open_in_editor", "trash", "detail"] {
+    // A trashed note is refused by accept_ai; a second trash too (edit: `edit_errors_write_nothing`).
+    for cmd in ["accept_ai", "trash", "detail"] {
         let out = call(&store, &json!({"cmd": cmd, "id": ACTED}));
         assert_eq!(out, json!({"error": "no such note"}), "{cmd}");
     }
@@ -971,34 +971,6 @@ fn trash_then_restore_brings_back_the_note_and_its_ai_file() {
 }
 
 #[test]
-fn open_in_editor_runs_xdg_open_once_with_the_note_path() {
-    // AC 4, Success Criterion 3.
-    let sb = Sandbox::new("open");
-    let path = acted(&sb);
-    let store = sb.store();
-    let before = snapshot(&sb.notes());
-    {
-        let fake = FakeOpener::new(0);
-        let out = call(&store, &json!({"cmd": "open_in_editor", "id": ACTED}));
-        assert_eq!(out, json!({"opened": ACTED}));
-        assert_eq!(fake.calls(), vec![format!("1:{}", path.display())]);
-    }
-    {
-        let fake = FakeOpener::new(4);
-        let out = call(&store, &json!({"cmd": "open_in_editor", "id": ACTED}));
-        assert_eq!(out, json!({"error": "xdg-open failed"}));
-        assert_eq!(fake.calls().len(), 1);
-    }
-    {
-        let fake = FakeOpener::new(0);
-        std::fs::remove_file(fake._bin.path().join("xdg-open")).unwrap();
-        let out = call(&store, &json!({"cmd": "open_in_editor", "id": ACTED}));
-        assert_eq!(out, json!({"error": "cannot run xdg-open"}));
-    }
-    assert_eq!(snapshot(&sb.notes()), before, "opening writes nothing");
-}
-
-#[test]
 fn actions_refuse_bad_and_unknown_ids_and_change_nothing() {
     // AC 6, Success Criterion 4.
     let sb = Sandbox::new("action-errors");
@@ -1010,7 +982,7 @@ fn actions_refuse_bad_and_unknown_ids_and_change_nothing() {
     let store = sb.store();
     let fake = FakeOpener::new(0);
     let before = snapshot(&sb.notes());
-    for cmd in ["accept_ai", "trash", "restore", "open_in_editor"] {
+    for cmd in ["accept_ai", "trash", "restore", "edit"] {
         for (id, want) in [
             (json!(null), "missing id"),
             (json!(7), "missing id"),
@@ -1018,7 +990,7 @@ fn actions_refuse_bad_and_unknown_ids_and_change_nothing() {
             (json!("2026/11/20261119-090000-aaaa"), "bad id"),
             (json!("20261119-090000-ffff"), "no such note"),
         ] {
-            let mut request = json!({"cmd": cmd});
+            let mut request = json!({"cmd": cmd, "text": "x", "tags": [], "base": "x"});
             if !id.is_null() {
                 request["id"] = id.clone();
             }
@@ -1094,7 +1066,7 @@ fn the_page_asks_only_for_commands_the_api_answers() {
         "accept_ai",
         "trash",
         "restore",
-        "open_in_editor",
+        "edit",
         "context",
         "add",
     ];
@@ -1116,13 +1088,7 @@ fn the_page_asks_only_for_commands_the_api_answers() {
 fn the_page_has_the_design_actions_and_the_undo_window() {
     let app = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
     // Labels from docs/design/Main.dc.html, board "Dashboard (clickable)", and the AC 5 toast.
-    for label in [
-        "'Add as tags'",
-        "'Open in editor'",
-        "'Copy id'",
-        "'Move to trash'",
-        "'Copied'",
-    ] {
+    for label in ["'Add as tags'", "'Copy id'", "'Move to trash'", "'Copied'"] {
         assert!(app.contains(label), "app.js lacks {label}");
     }
     let html = std::str::from_utf8(asset("/").unwrap().1).unwrap();
@@ -1135,7 +1101,6 @@ fn the_page_has_the_design_actions_and_the_undo_window() {
         "easyNoteIpc.acceptAi(",
         "easyNoteIpc.trash(",
         "easyNoteIpc.restore(",
-        "easyNoteIpc.openInEditor(",
     ] {
         let at = app
             .find(call)
@@ -1695,4 +1660,202 @@ fn ipc_from_with_runs_the_hook_only_for_the_apps_own_page() {
     let reply: Value = serde_json::from_str(&out).unwrap();
     assert_eq!(reply["req"], 7);
     assert_eq!(seen.into_inner(), vec![reply["id"].as_str().unwrap()]);
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-286: `edit` saves the text and tags through `Store::update`, as `easy-note edit` does
+// ---------------------------------------------------------------------------------------------
+
+/// The `edit` request for `id` with the `detail` text as the base.
+fn edit_request(store: &Store, id: &str, text: &str, tags: Value) -> Value {
+    let base = call(store, &json!({"cmd": "detail", "id": id}))["text"].clone();
+    json!({"cmd": "edit", "id": id, "text": text, "tags": tags, "base": base})
+}
+
+#[test]
+fn edit_saves_the_text_and_tags_and_keeps_the_rest() {
+    // AC 1, Success Criterion 1.
+    let sb = Sandbox::new("edit");
+    let path = acted(&sb);
+    let store = sb.store();
+    let request = edit_request(
+        &store,
+        ACTED,
+        "Retry bug only on Chrome #Web",
+        json!(["#Z", "y", "z"]),
+    );
+    let out = call(&store, &request);
+    assert_eq!(out["id"], ACTED, "the updated detail: {out}");
+    assert_eq!(out["text"], "Retry bug only on Chrome #Web\n", "{out}");
+    // `easy-note tag` rule: no `#`, each once; the text's `#words` join as in `easy-note edit`.
+    assert_eq!(out["tags"], json!(["z", "y", "web"]), "{out}");
+    assert_eq!(out["masked"], false, "{out}");
+    assert_eq!(out["ai"]["stale"], true, "the text changed: {out}");
+    let file = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(body_of(&file), "Retry bug only on Chrome #Web\n");
+    for kept in [
+        "created: \"2026-11-19T09:00:00+07:00\"",
+        "repo: \"easy-ui-mcp\"",
+        "source: \"cli\"",
+        "tags: [\"z\", \"y\", \"web\"]",
+        "updated: \"2026-11-19T10:00:00+07:00\"",
+    ] {
+        assert!(file.contains(kept), "{kept} in {file}");
+    }
+}
+
+#[test]
+fn edit_of_the_tags_only_keeps_the_text_bytes() {
+    let sb = Sandbox::new("edit-tags");
+    let path = acted(&sb);
+    let store = sb.store();
+    let before = std::fs::read_to_string(&path).unwrap();
+    // The page may drop the last newline of the text it loaded: still the same text.
+    let mut request = edit_request(&store, ACTED, "", json!(["y", "new"]));
+    let text = request["base"]
+        .as_str()
+        .unwrap()
+        .trim_end_matches('\n')
+        .to_string();
+    request["text"] = json!(text);
+    request["base"] = json!(text);
+    let out = call(&store, &request);
+    assert_eq!(out["tags"], json!(["y", "new"]), "{out}");
+    assert_eq!(out["ai"]["stale"], false, "{out}");
+    let after = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(body_of(&after), body_of(&before), "the text is unchanged");
+}
+
+#[test]
+fn edit_with_nothing_changed_writes_nothing() {
+    let sb = Sandbox::new("edit-same");
+    acted(&sb);
+    let store = sb.store();
+    let base = call(&store, &json!({"cmd": "detail", "id": ACTED}))["text"].clone();
+    let before = snapshot(&sb.notes());
+    let out = call(
+        &store,
+        &json!({"cmd": "edit", "id": ACTED, "text": base, "tags": ["y"], "base": base}),
+    );
+    assert_eq!(out["id"], ACTED, "{out}");
+    assert_eq!(
+        snapshot(&sb.notes()),
+        before,
+        "no `updated` stamp, no write"
+    );
+}
+
+#[test]
+fn edit_refuses_when_the_note_changed_outside_the_window() {
+    // AC 2, Success Criterion 2.
+    let sb = Sandbox::new("edit-stale");
+    let path = acted(&sb);
+    let store = sb.store();
+    let request = edit_request(&store, ACTED, "my draft", json!(["y"]));
+    let mut file = std::fs::read_to_string(&path).unwrap();
+    file.push_str("added in Obsidian\n");
+    std::fs::write(&path, &file).unwrap();
+    let before = snapshot(&sb.notes());
+    let out = call(&store, &request);
+    assert_eq!(out, json!({"error": "the note changed outside the window"}));
+    assert_eq!(snapshot(&sb.notes()), before, "byte for byte");
+}
+
+#[test]
+fn edit_masks_a_planted_secret_on_write() {
+    // NFR-002, Success Criterion 3.
+    let sb = Sandbox::new("edit-leak");
+    acted(&sb);
+    let store = sb.store();
+    let cases = planted();
+    let text: Vec<&str> = cases.iter().map(|(t, _)| t.as_str()).collect();
+    let request = edit_request(&store, ACTED, &text.join("\n"), json!([]));
+    let raw = handle(&store, &request.to_string());
+    let out: Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(out["masked"], true, "{out}");
+    let file = std::fs::read_to_string(sb.notes().join(format!("2026/11/{ACTED}.md"))).unwrap();
+    for (_, secret) in &cases {
+        assert!(!file.contains(secret.as_str()), "secret in the file");
+        assert!(!raw.contains(secret.as_str()), "secret in the reply");
+    }
+    // Saving the masked text again keeps it masked and changes nothing more.
+    let again = edit_request(&store, ACTED, out["text"].as_str().unwrap(), json!([]));
+    let before = std::fs::read_to_string(sb.notes().join(format!("2026/11/{ACTED}.md"))).unwrap();
+    let out = call(&store, &again);
+    assert_eq!(out["masked"], true, "{out}");
+    let after = std::fs::read_to_string(sb.notes().join(format!("2026/11/{ACTED}.md"))).unwrap();
+    assert_eq!(body_of(&after), body_of(&before));
+}
+
+#[test]
+fn edit_errors_write_nothing() {
+    // AC 3, Success Criterion 4.
+    let sb = Sandbox::new("edit-errors");
+    sb.four();
+    acted(&sb);
+    let inbox = sb.notes().join("inbox");
+    std::fs::create_dir_all(&inbox).unwrap();
+    std::fs::write(inbox.join("p.md"), "phone note\n").unwrap();
+    let store = sb.store();
+    let base = call(&store, &json!({"cmd": "detail", "id": ACTED}))["text"].clone();
+    let inbox_base = call(&store, &json!({"cmd": "detail", "id": "inbox/p"}))["text"].clone();
+    let ok =
+        |id: &str, b: &Value| json!({"cmd": "edit", "id": id, "text": "x", "tags": [], "base": b});
+    let before = snapshot(&sb.notes());
+    let mut cases = vec![];
+    for empty in ["", "   ", " \n\t\n"] {
+        let mut r = ok(ACTED, &base);
+        r["text"] = json!(empty);
+        cases.push((r, "empty"));
+    }
+    cases.push((ok("inbox/p", &inbox_base), "inbox notes are read-only"));
+    cases.push((ok("20261119-090000-ffff", &base), "no such note"));
+    cases.push((ok("../../etc/passwd", &base), "bad id"));
+    let mut bad_tag = ok(ACTED, &base);
+    bad_tag["tags"] = json!(["a b"]);
+    cases.push((bad_tag, "not a tag"));
+    for (key, want) in [
+        ("id", "missing id"),
+        ("text", "missing text"),
+        ("tags", "missing tags"),
+        ("base", "missing base"),
+    ] {
+        let mut r = ok(ACTED, &base);
+        r.as_object_mut().unwrap().remove(key);
+        cases.push((r, want));
+    }
+    let mut not_list = ok(ACTED, &base);
+    not_list["tags"] = json!("y");
+    cases.push((not_list, "missing tags"));
+    let mut not_strings = ok(ACTED, &base);
+    not_strings["tags"] = json!([1]);
+    cases.push((not_strings, "missing tags"));
+    for (request, want) in &cases {
+        let out = call(&store, request);
+        assert_eq!(out, json!({"error": want}), "{request}");
+    }
+    assert_eq!(snapshot(&sb.notes()), before, "no change on disk");
+    // A trashed note is no note.
+    call(&store, &json!({"cmd": "trash", "id": ACTED}));
+    let out = call(&store, &ok(ACTED, &base));
+    assert_eq!(out, json!({"error": "no such note"}));
+}
+
+#[test]
+fn the_window_api_runs_no_xdg_open() {
+    // AC 9: `open_in_editor` is gone; no window command opens a note in another app.
+    let sb = Sandbox::new("no-open");
+    acted(&sb);
+    let fake = FakeOpener::new(0);
+    let out = call(&sb.store(), &json!({"cmd": "open_in_editor", "id": ACTED}));
+    assert_eq!(out, json!({"error": "unknown command"}));
+    assert!(fake.calls().is_empty());
+    let api = include_str!("../src/surfaces/window/api.rs");
+    assert!(!api.contains("xdg-open\")"), "api.rs starts no xdg-open");
+    for name in ["/ipc.js", "/app.js"] {
+        let page = std::str::from_utf8(asset(name).unwrap().1).unwrap();
+        for gone in ["open_in_editor", "openInEditor", "Open in editor"] {
+            assert!(!page.contains(gone), "{name} still has {gone}");
+        }
+    }
 }

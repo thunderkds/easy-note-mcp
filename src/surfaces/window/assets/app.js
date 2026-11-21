@@ -215,7 +215,6 @@
     }
 
     var acts = el('div', 'actions');
-    acts.appendChild(button('act', 'Open in editor', function () { openInEditor(d.id); }));
     acts.appendChild(button('act', 'Copy id', function () { copyId(d.id); }));
     acts.appendChild(button('act danger', 'Move to trash', function () { trashNote(d.id); }));
     card.appendChild(acts);
@@ -314,16 +313,6 @@
       toast(added.length ? 'tags added: ' + added.map(function (t) { return '#' + t; }).join(' ') : 'no new tags');
     }, function (err) {
       toast('could not add tags: ' + err.message, '', UNDO_MS);
-    }).then(afterAction);
-  }
-
-  function openInEditor(id) {
-    if (busy) return;
-    busy = true;
-    window.easyNoteIpc.openInEditor(id).then(function () {
-      toast('opened ' + id + '.md');
-    }, function (err) {
-      toast('could not open: ' + err.message, '', UNDO_MS);
     }).then(afterAction);
   }
 

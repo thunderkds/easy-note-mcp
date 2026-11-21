@@ -68,8 +68,38 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE** (backend-developer, worktree `easy-note-mcp-HUN-286` at `38d0f01`, no implementation
+commit yet; temp `HOME`, `XDG_CONFIG_HOME`, `EASY_NOTE_DIR`):
+
+```
+$ date -Iseconds; easy-note dashboard --help; easy-note dashboard --note ../x
+2026-11-21T18:16:59+07:00
+Open the dashboard: easy-note's own window in a `window` build on a desktop, else `easy-note.base` in Obsidian (run `install obsidian` first)
+
+Usage: easy-note dashboard
+
+Options:
+  -h, --help  Print help
+exit=0
+error: unexpected argument '--note' found
+
+Usage: easy-note dashboard
+
+For more information, try '--help'.
+exit=2
+```
+
+```
+$ date -Iseconds; cargo test --locked --test window_api edit_refuses_when_the_note_changed
+2026-11-21T18:18:38+07:00
+thread 'edit_refuses_when_the_note_changed_outside_the_window' (77904) panicked at tests/window_api.rs:1787:5:
+  left: Object {"error": String("unknown command")}
+ right: Object {"error": String("the note changed outside the window")}
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 50 filtered out; finished in 0.10s
+```
+
+The window API answers `edit` with `unknown command`; `dashboard` has no `--note`; the tray's
+recent-note click runs `xdg-open <file>` (`src/surfaces/tray.rs` `argv`, `Action::Open(path)`).
 
 **AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
 
