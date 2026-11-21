@@ -19,6 +19,26 @@ rm ~/.cargo/bin/n
 cargo uninstall easy-note-mcp
 ```
 
+### Debian package
+
+`scripts/build_deb.sh` builds `dist/easy-note_<version>_<arch>.deb` from the checkout. It needs
+`dpkg-dev` and the WebKitGTK headers (`sudo apt install dpkg-dev libwebkit2gtk-4.1-dev`).
+
+```bash
+scripts/build_deb.sh                                  # default features: window,tray
+sudo apt install ./dist/easy-note_0.1.0_amd64.deb     # apt resolves Depends
+easy-note --version
+```
+
+The package holds `/usr/bin/easy-note` and `/usr/share/doc/easy-note/`, and nothing else: the
+icons, the window page and its fonts are embedded in the binary. It ships no maintainer script, so
+it writes nothing below any home folder. Each person runs `easy-note setup` themselves. It gives
+no `n` symlink. `sudo apt remove easy-note` removes it; the notes dir stays.
+
+`dpkg-shlibdeps` reads `Depends` from the built binary, so a build without `--features window`
+drops the WebKitGTK dependency. `tests/deb.rs` covers the packaging with `/bin/true` in place of
+the binary, so `cargo test` checks it without a release build.
+
 ## Local checks
 
 ```bash
