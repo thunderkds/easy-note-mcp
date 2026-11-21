@@ -68,10 +68,23 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE** (captured 2026-11-21T18:12:02+07:00, commit acd0722, before any implementation commit):
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+```
+$ grep -n 'sleep\|host_present\|"New note"\|no notes yet' src/surfaces/tray.rs
+66:        Entry::Item("New note".to_string(), Action::NewNote),
+71:        Entry::Disabled("no notes yet".to_string()),
+233:pub fn doctor_line(host_present: bool) -> Option<String> {
+390:    pub fn host_present() -> bool {
+$ cargo test --locked --features tray --lib surfaces::tray
+test surfaces::tray::tests::an_empty_store_shows_one_disabled_item ... ok      (pins "no notes yet")
+test surfaces::tray::tests::the_menu_lists_the_five_newest_notes_between_the_fixed_items ... ok  (pins "New note")
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 51 filtered out
+```
+
+`tray::run` has no wait: `tray.spawn()` is called once (tray.rs:365-367) and its error returns `no tray host (...)`; `host_present` is not called in `run`. `grep sleep` finds no match. `dashboard::run` has no tray start (no `tray` in src/surfaces/dashboard.rs). Today's labels: row 1 `New note`, empty row `no notes yet`.
+
+**AFTER** (2026-11-21, agent run, before commit): the guide's full Verification Command exited 0 (fmt, clippy -D warnings and `cargo test --locked` in the three feature sets: default, `tray`, `window,tray`; every `test result` line `ok`, 0 failed). New unit tests in `src/surfaces/tray.rs`: `the_wait_returns_ready_after_the_fourth_check_when_the_host_appears`, `the_wait_gives_up_after_sixty_checks_with_no_host`, `a_host_present_at_start_needs_one_check_and_no_sleep`, `the_tray_start_argv_is_this_exe_and_tray`; label tests repointed to `New note · Ctrl+Alt+N` and `No notes yet. Your first one appears here.`. Red run before the code: `error[E0425]: cannot find function \`wait_for_host\`` (x3) and `tray_start_argv`.
 
 **DELTA**: [one sentence — what a user can now do that they could not before]
 
