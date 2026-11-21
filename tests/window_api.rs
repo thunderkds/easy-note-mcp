@@ -1202,17 +1202,24 @@ fn the_search_field_is_masked() {
 /// `window.ipc` that counts requests (`tests/fixtures/window/page_harness.js`). Skipped, with a
 /// printed note, when `node` is not installed.
 fn run_page(board: &Value) -> Option<Value> {
+    run_page_with(board, None)
+}
+
+/// As `run_page`; with `details` (note id -> its `detail` answer) the HUN-286 edit scenarios run too.
+fn run_page_with(board: &Value, details: Option<&Value>) -> Option<Value> {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("board.json");
     std::fs::write(&file, board.to_string()).unwrap();
     let harness =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/window/page_harness.js");
-    let out = match std::process::Command::new("node")
-        .arg(harness)
-        .arg(assets_dir())
-        .arg(&file)
-        .output()
-    {
+    let mut command = std::process::Command::new("node");
+    command.arg(harness).arg(assets_dir()).arg(&file);
+    if let Some(details) = details {
+        let more = dir.path().join("details.json");
+        std::fs::write(&more, details.to_string()).unwrap();
+        command.arg(more);
+    }
+    let out = match command.output() {
         Ok(out) => out,
         Err(e) => {
             eprintln!("skipped: no node to run the page ({e})");
@@ -1874,4 +1881,220 @@ fn the_initial_note_goes_to_the_page_as_one_json_string() {
     let ipc_js = std::str::from_utf8(asset("/ipc.js").unwrap().1).unwrap();
     assert!(ipc_js.contains("typeof prior.initialNote === 'string'"));
     assert!(ipc_js.contains("initialNote: initialNote"));
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-286 frontend slice: Edit mode in the detail panel, the initial note, the page side of
+// "the note changed outside the window". The real ipc.js and app.js run in node over a stub IPC
+// fed real `handle` answers (`tests/fixtures/window/page_harness.js`).
+// ---------------------------------------------------------------------------------------------
+
+/// The board and every note's `detail` of a store with the four sample notes, the AI-enriched
+/// `ACTED` note and one inbox note; then the harness run with the edit scenarios.
+fn run_edit_page() -> Option<Value> {
+    let sb = Sandbox::new("page-edit");
+    sb.four();
+    acted(&sb);
+    let inbox = sb.notes().join("inbox");
+    std::fs::create_dir_all(&inbox).unwrap();
+    std::fs::write(inbox.join("p.md"), "phone note\n").unwrap();
+    let store = sb.store();
+    let board = call(&store, &json!({"cmd": "board"}));
+    let other = *ids(&board)
+        .iter()
+        .find(|id| **id != ACTED && **id != "inbox/p")
+        .unwrap();
+    let mut notes = serde_json::Map::new();
+    for id in ids(&board) {
+        notes.insert(
+            id.to_string(),
+            call(&store, &json!({"cmd": "detail", "id": id})),
+        );
+    }
+    let more =
+        json!({"roles": {"editable": ACTED, "inbox": "inbox/p", "other": other}, "notes": notes});
+    run_page_with(&board, Some(&more))
+}
+
+#[test]
+fn the_initial_note_is_selected_after_the_first_board_load() {
+    let Some(run) = run_edit_page() else { return };
+    // AC 7 (page side): the board first, then the note's detail, shown in the panel.
+    let r = &run["initial_note"];
+    assert_eq!(r["posts"], json!(["board", "detail"]), "{r}");
+    assert_eq!(r["detail"], json!([ACTED]), "{r}");
+    assert_eq!(r["shown"]["id"], ACTED, "{r}");
+    assert_eq!(
+        r["current"], "true",
+        "the row is marked as the selection: {r}"
+    );
+    // An unknown id shows the panel's existing text.
+    let r = &run["initial_unknown"];
+    assert_eq!(
+        r["shown"]["text"], "Could not read the note: no such note",
+        "{r}"
+    );
+    // Without `--note` nothing is selected: no detail asked, the panel keeps index.html's
+    // "Pick a note to read it." (the fake DOM holds no static HTML, so the panel reads empty).
+    let r = &run["initial_none"];
+    assert_eq!(r["posts"], json!(["board"]), "{r}");
+    assert_eq!(r["shown"]["text"], "", "{r}");
+}
+
+#[test]
+fn edit_replaces_open_in_editor_and_opens_the_text_and_tags() {
+    let Some(run) = run_edit_page() else { return };
+    // AC 4: `Edit` in the actions row; edit mode shows the note text and its tags.
+    let r = &run["initial_note"]["shown"];
+    assert_eq!(
+        r["buttons"],
+        json!(["Add as tags", "Edit", "Copy id", "Move to trash"]),
+        "{r}"
+    );
+    let r = &run["edit_open"]["shown"];
+    assert_eq!(r["editing"], true, "{r}");
+    assert_eq!(
+        r["draft"], "Retry bug only on Firefox\n\n  keep   these bytes  ",
+        "the text without its last line end: {r}"
+    );
+    assert_eq!(r["tags"], "#y", "{r}");
+    assert_eq!(r["buttons"], json!(["Save", "Cancel"]), "{r}");
+    assert_eq!(r["focusIsBox"], true, "the caret is in the text box: {r}");
+}
+
+#[test]
+fn ctrl_enter_saves_through_edit_and_shows_the_new_note() {
+    let Some(run) = run_edit_page() else { return };
+    let r = &run["edit_save"];
+    // AC 4: one `edit` request with the whole text, the tags as words and the loaded text as base.
+    assert_eq!(
+        r["sent"],
+        json!([{"req": r["sent"][0]["req"], "cmd": "edit", "id": ACTED,
+                "text": "New text #Web\nsecond line", "tags": ["#y", "new"], "base": r["base"]}]),
+        "{r}"
+    );
+    assert_eq!(r["shown"]["editing"], false, "{r}");
+    assert_eq!(
+        r["shown"]["words"],
+        json!(["New text #Web\nsecond line\n"]),
+        "{r}"
+    );
+    assert_eq!(r["shown"]["stale"], true, "the AI detail shows stale: {r}");
+    assert_eq!(r["shown"]["toast"], "saved", "{r}");
+    // The list row updates: the board is asked again after the save.
+    assert_eq!(r["boards"], 1, "{r}");
+    let r = &run["edit_save_button"];
+    assert_eq!(r["sent"], 1, "{r}");
+    assert_eq!(r["shown"]["words"], json!(["by the button\n"]), "{r}");
+}
+
+#[test]
+fn esc_and_cancel_leave_edit_mode_without_writing() {
+    let Some(run) = run_edit_page() else { return };
+    for (how, r) in [
+        ("Esc", &run["edit_cancel"]["esc"]),
+        ("Cancel", &run["edit_cancel"]["button"]),
+    ] {
+        assert_eq!(r["sent"], 0, "{how}: {r}");
+        assert_eq!(r["shown"]["editing"], false, "{how}: {r}");
+        assert_eq!(
+            r["shown"]["words"],
+            json!(["Retry bug only on Firefox\n\n  keep   these bytes  \n"]),
+            "{how}: the old text: {r}"
+        );
+        assert_eq!(
+            r["shown"]["toast"], "cancelled · nothing saved",
+            "{how}: {r}"
+        );
+    }
+    // IME composition: Ctrl+Enter and Esc while composing do nothing.
+    let r = &run["edit_composing"];
+    assert_eq!(r["sent"], 0, "{r}");
+    assert_eq!(r["shown"]["editing"], true, "{r}");
+    assert_eq!(r["shown"]["draft"], "typing with an IME", "{r}");
+}
+
+#[test]
+fn the_focus_refresh_keeps_edit_mode_and_the_draft() {
+    let Some(run) = run_edit_page() else { return };
+    // AC 6: the board is reloaded, the same text box stays with the draft in it.
+    let r = &run["edit_refresh"];
+    assert_eq!(r["boards"], 1, "{r}");
+    assert_eq!(r["sameBox"], true, "{r}");
+    assert_eq!(r["shown"]["editing"], true, "{r}");
+    assert_eq!(r["shown"]["draft"], "a draft kept over a refresh", "{r}");
+    assert_eq!(r["shown"]["tags"], "#kept", "{r}");
+    assert_eq!(r["sent"], 0, "{r}");
+}
+
+#[test]
+fn a_save_refused_as_changed_outside_reloads_the_note_and_keeps_the_draft() {
+    let Some(run) = run_edit_page() else { return };
+    // AC 2 (page side): the message, the note asked again, the draft still in the box.
+    let r = &run["edit_changed_outside"];
+    let refused = &r["refused"]["shown"];
+    assert_eq!(refused["editing"], true, "{r}");
+    assert_eq!(refused["draft"], "my draft", "{r}");
+    assert!(
+        refused["error"]
+            .as_str()
+            .unwrap()
+            .contains("the note changed outside the window"),
+        "{r}"
+    );
+    assert_eq!(
+        refused["words"],
+        json!(["changed in Obsidian\n"]),
+        "the text in the file now is shown: {r}"
+    );
+    assert_eq!(r["refused"]["detailsAfter"], 2, "detail asked again: {r}");
+    // A second save sends the reloaded text as its base and goes through.
+    assert_eq!(r["second"]["base"], "changed in Obsidian\n", "{r}");
+    assert_eq!(r["second"]["text"], "my draft", "{r}");
+    assert_eq!(r["shown"]["editing"], false, "{r}");
+    assert_eq!(r["shown"]["words"], json!(["my draft\n"]), "{r}");
+}
+
+#[test]
+fn a_refused_or_empty_save_keeps_edit_mode() {
+    let Some(run) = run_edit_page() else { return };
+    let r = &run["edit_error"]["shown"];
+    assert_eq!(r["editing"], true, "{r}");
+    assert_eq!(r["draft"], "xxxxxxxxxx", "{r}");
+    assert_eq!(r["error"], "could not save: the text is too long", "{r}");
+    // Empty or white-space text sends no request (the backend answers `empty`).
+    let r = &run["edit_empty"];
+    assert_eq!(r["sent"], 0, "{r}");
+    assert_eq!(r["shown"]["editing"], true, "{r}");
+    assert!(
+        r["shown"]["error"].as_str().unwrap().contains("empty"),
+        "{r}"
+    );
+}
+
+#[test]
+fn another_note_is_not_selected_while_editing() {
+    let Some(run) = run_edit_page() else { return };
+    // Questions Log 2026-11-21: a row click while editing is blocked; the draft stays.
+    let r = &run["edit_switch"];
+    let b = &r["blocked"];
+    assert_eq!(b["detail"], 0, "no detail asked for the other note: {r}");
+    assert_eq!(b["current"], "false", "{r}");
+    assert_eq!(b["shown"]["editing"], true, "{r}");
+    assert_eq!(b["shown"]["draft"], "a draft I want to keep", "{r}");
+    assert_eq!(b["shown"]["toast"], "save or cancel the edit first", "{r}");
+    assert_eq!(b["shown"]["focusIsBox"], true, "{r}");
+    // After Esc the row click selects the other note.
+    assert_eq!(r["after"]["editing"], false, "{r}");
+    assert_ne!(r["after"]["id"], ACTED, "{r}");
+}
+
+#[test]
+fn an_inbox_note_has_no_edit_button_and_says_read_only() {
+    let Some(run) = run_edit_page() else { return };
+    // AC 5.
+    let r = &run["inbox"]["shown"];
+    assert_eq!(r["id"], "inbox/p", "{r}");
+    assert_eq!(r["buttons"], json!(["Copy id", "Move to trash"]), "{r}");
+    assert_eq!(r["readOnly"], "Inbox notes are read-only.", "{r}");
 }

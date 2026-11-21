@@ -1,4 +1,4 @@
-/* easy-note dashboard page (HUN-278 read, HUN-279 actions, HUN-280 capture). Port of docs/design/Main.dc.html, board "Dashboard (clickable)".
+/* easy-note dashboard page (HUN-278 read, HUN-279 actions, HUN-280 capture, HUN-286 edit). Port of docs/design/Main.dc.html, board "Dashboard (clickable)".
  * Every note-derived string goes into the DOM with textContent / createElement only. */
 (function () {
   'use strict';
@@ -14,7 +14,9 @@
     ['stale', 'Stale', function (n) { return !!(n.ai && n.stale); }]
   ];
 
-  var state = { board: null, notes: [], query: '', filter: 'all', sel: '', detail: null, detailError: '' };
+  // `edit` (HUN-286) is the draft while the panel is in edit mode: { id, base, text, tags, text0, tags0, error, outside }.
+  // It lives here, not only in the DOM, so a re-render keeps it; the focus refresh never re-renders the panel.
+  var state = { board: null, notes: [], query: '', filter: 'all', sel: '', detail: null, detailError: '', edit: null };
   var UNDO_MS = 6000;
   var SEARCH_MS = 120;  // HUN-282: the list renders this long after the last key press, not on each one
   var FRESH_MS = 1000;  // HUN-282: a focus refresh this soon after a board answer is the start-up focus, not news
@@ -184,12 +186,12 @@
       aside.replaceChildren(p);
       return;
     }
+    if (state.edit && state.edit.id === d.id) {
+      aside.replaceChildren(renderEdit(d, state.edit));
+      return;
+    }
     var card = el('article', 'card');
-
-    var head = el('div', 'card-head');
-    head.appendChild(el('span', 'card-id', d.id));
-    head.appendChild(el('span', 'chip', d.source));
-    card.appendChild(head);
+    card.appendChild(cardHead(d));
 
     card.appendChild(el('p', 'words-label', 'Your words'));
     card.appendChild(el('p', 'words', d.text));
@@ -215,10 +217,173 @@
     }
 
     var acts = el('div', 'actions');
+    // Inbox notes are read-only (FR-013): no Edit button, a line that says so.
+    editButton = null;
+    if (d.source === 'inbox') acts.appendChild(el('span', 'read-only', 'Inbox notes are read-only.'));
+    else {
+      editButton = button('act', 'Edit', function () { startEdit(d); });
+      acts.appendChild(editButton);
+    }
     acts.appendChild(button('act', 'Copy id', function () { copyId(d.id); }));
     acts.appendChild(button('act danger', 'Move to trash', function () { trashNote(d.id); }));
     card.appendChild(acts);
     aside.replaceChildren(card);
+  }
+
+  function cardHead(d) {
+    var head = el('div', 'card-head');
+    head.appendChild(el('span', 'card-id', d.id));
+    head.appendChild(el('span', 'chip', d.source));
+    return head;
+  }
+
+  // ---- edit mode (HUN-286): the note's text and tags, saved by `edit` like `easy-note edit` ----
+  var OUTSIDE = 'the note changed outside the window';
+  var editButton = null;
+  var editBox = null;
+
+  function renderEdit(d, e) {
+    var card = el('article', 'card');
+    card.appendChild(cardHead(d));
+    if (e.error) {
+      var err = el('p', 'error', e.error);
+      err.setAttribute('role', 'alert');
+      card.appendChild(err);
+    }
+    // After a save refused as changed outside the window: the text in the file now, above the kept draft.
+    if (e.outside) {
+      card.appendChild(el('p', 'words-label', 'Text in the file now'));
+      card.appendChild(el('p', 'words', d.text));
+    }
+    var label = el('label', 'edit-label', e.outside ? 'Your draft' : 'Your words');
+    label.htmlFor = 'edit-text';
+    card.appendChild(label);
+    var box = el('textarea', 'edit-text');
+    box.id = 'edit-text';
+    box.rows = 8;
+    box.value = e.text;
+    box.addEventListener('input', function () { e.text = box.value; });
+    box.addEventListener('keydown', editKey);
+    card.appendChild(box);
+    editBox = box;
+
+    var tagLabel = el('label', 'edit-label', 'Tags');
+    tagLabel.htmlFor = 'edit-tags';
+    card.appendChild(tagLabel);
+    var tags = el('input', 'edit-tags');
+    tags.id = 'edit-tags';
+    tags.type = 'text';
+    tags.value = e.tags;
+    tags.placeholder = '#tag #other';
+    tags.setAttribute('autocomplete', 'off');
+    tags.addEventListener('input', function () { e.tags = tags.value; });
+    tags.addEventListener('keydown', editKey);
+    card.appendChild(tags);
+
+    var keys = el('div', 'edit-keys');
+    [['Ctrl+Enter', ' save'], ['Esc', ' cancel']].forEach(function (k) {
+      var s = el('span');
+      s.appendChild(el('kbd', null, k[0]));
+      s.appendChild(document.createTextNode(k[1]));
+      keys.appendChild(s);
+    });
+    card.appendChild(keys);
+
+    var acts = el('div', 'actions');
+    acts.appendChild(button('act primary', 'Save', saveEdit));
+    acts.appendChild(button('act', 'Cancel', cancelEdit));
+    card.appendChild(acts);
+    return card;
+  }
+
+  function focusEditBox() {
+    if (!editBox) return;
+    editBox.focus();
+    editBox.setSelectionRange(editBox.value.length, editBox.value.length);
+  }
+
+  function startEdit(d) {
+    if (busy) return;
+    var text = str(d.text).replace(/\n$/, '');
+    var tags = tagsOf(d).map(function (t) { return '#' + t; }).join(' ');
+    state.edit = { id: d.id, base: str(d.text), text: text, tags: tags, text0: text, tags0: tags, error: '', outside: false };
+    renderDetail();
+    focusEditBox();
+  }
+
+  function leaveEdit() {
+    state.edit = null;
+    editBox = null;
+    renderDetail();
+    if (editButton) editButton.focus();
+  }
+
+  function cancelEdit() {
+    if (!state.edit || busy) return;
+    leaveEdit();
+    toast('cancelled · nothing saved');
+  }
+
+  // IME composition: no key does anything while a word is being composed.
+  function editKey(e) {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelEdit();
+    } else if (e.key === 'Enter' && e.ctrlKey) {
+      e.preventDefault();
+      saveEdit();
+    }
+  }
+
+  function editFailed(e, msg) {
+    e.error = msg;
+    if (state.edit !== e) return;
+    renderDetail();
+    focusEditBox();
+  }
+
+  // AC 4: one `edit` request; the board is asked again after it (the list row). AC 2: a save refused
+  // as changed outside the window asks for the note again and keeps the draft; the next save uses the
+  // reloaded text as its base.
+  function saveEdit() {
+    var e = state.edit;
+    if (!e || busy) return;
+    if (!e.text.trim()) {
+      editFailed(e, 'The text is empty. Write the note, or press Esc to cancel.');
+      return;
+    }
+    if (e.text === e.text0 && e.tags === e.tags0 && !e.outside) {
+      leaveEdit();
+      toast('no change · nothing saved');
+      return;
+    }
+    busy = true;
+    var id = e.id;
+    var tags = e.tags.split(/[\s,]+/).filter(Boolean);
+    window.easyNoteIpc.edit(id, e.text, tags, e.base).then(function (d) {
+      if (state.edit === e) state.edit = null;
+      editBox = null;
+      if (state.sel === id) {
+        state.detail = d;
+        renderDetail();
+        if (editButton) editButton.focus();
+      }
+      toast('saved');
+    }, function (err) {
+      if (err.message !== OUTSIDE) {
+        editFailed(e, 'could not save: ' + err.message);
+        return;
+      }
+      return window.easyNoteIpc.detail(id).then(function (d) {
+        e.base = str(d.text);
+        e.outside = true;
+        if (state.sel === id) state.detail = d;
+        editFailed(e, 'Not saved: ' + OUTSIDE + '. Your draft is kept below the text in the file now. Save again to replace that text.');
+      }, function (err2) {
+        editFailed(e, 'Not saved: ' + OUTSIDE + '. Could not read the note again: ' + err2.message);
+      });
+    }).then(afterAction);
   }
 
   function button(cls, label, onClick) {
@@ -476,6 +641,7 @@
       if (state.sel && !state.notes.some(function (n) { return n.id === state.sel; })) {
         state.sel = '';
         state.detail = null;
+        state.edit = null;
         renderDetail();
       }
       renderCounts();
@@ -496,8 +662,15 @@
     return loadBoard();
   }
 
-  // `reveal` (a row click only): bring the panel into view once the detail is rendered.
+  // `reveal` (a row click, or the `--note` initial note): bring the panel into view once the detail is rendered.
+  // HUN-286 (Questions Log): while a note is in edit mode the selection stays on it. A row click
+  // says so and puts the caret back in the draft; other callers (Undo, a new note) change nothing.
   function select(id, reveal) {
+    if (state.edit) {
+      if (reveal && id !== state.edit.id) toast('save or cancel the edit first');
+      if (reveal) focusEditBox();
+      return;
+    }
     state.sel = id;
     state.detailError = '';
     Object.keys(rowButtons).forEach(function (k) { rowButtons[k].setAttribute('aria-current', k === id ? 'true' : 'false'); });
@@ -544,5 +717,12 @@
   window.__easyNote.refresh = refreshBoard;
   buildFilters();
   renderList();
-  loadBoard();
+  // `easy-note dashboard --note <id>` (HUN-286): select that note once the first board answer is in,
+  // and bring the panel into view as a row click does (it is below the list in a narrow window).
+  loadBoard().then(function () {
+    var first = window.__easyNote.initialNote;
+    if (!first) return;
+    select(first, true);
+    focusRow(first);
+  });
 })();

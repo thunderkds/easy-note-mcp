@@ -101,6 +101,15 @@ test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 50 filtered out;
 The window API answers `edit` with `unknown command`; `dashboard` has no `--note`; the tray's
 recent-note click runs `xdg-open <file>` (`src/surfaces/tray.rs` `argv`, `Action::Open(path)`).
 
+**BEFORE, page side** (frontend-developer, worktree at `57215d3`, no frontend commit yet;
+2026-11-21T18:42:01+07:00; headless Chrome on a scratch copy of `src/surfaces/window/assets/` with a
+stub `window.ipc`, meta CSP dropped for `file://`):
+`/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-easy-note-mcp/f7aa1818-7158-435d-8b50-41e885be095a/scratchpad/hun286/shots/before-read-1280.png`
+— detail panel of a `cli` note: the actions row is `Copy id` and `Move to trash` only (the backend
+commit `d9b84fb` already removed `Open in editor`); there is no `Edit` button and no way to change
+the text or tags in the window. `before-inbox-1280.png` (same folder): an inbox note shows the same
+row, with no read-only line.
+
 **AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
 
 **DELTA**: [one sentence — what a user can now do that they could not before]
