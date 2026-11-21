@@ -1,4 +1,4 @@
-# TASK_REVIEW — HUN-286: [Short Title]
+# TASK_REVIEW — HUN-286: Dashboard window: read and edit a note in the app, not in Obsidian
 
 > Sibling of `tasks/TASK_GUIDE_HUN-286.md`. Everything here is **filled by the reviewer at Stage
 > 4/5** — it is deliberately NOT in the guide, because the implementing agent re-reads the guide on
@@ -48,16 +48,16 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/window_api.rs` (edit AC 1–3, 9 incl. `edit_errors_write_nothing`, `another_note_is_not_selected_while_editing`, `the_focus_refresh_keeps_edit_mode_and_the_draft`, `esc_and_cancel_leave_edit_mode_without_writing`), `tests/fixtures/window/page_harness.js` (14 edit scenarios), `tests/dashboard.rs` (`--note` refusals, AC 7), `src/surfaces/tray.rs` `a_recent_note_opens_the_window_when_it_can_else_the_file` (AC 8). Supervisor rerun 2026-11-21: `cargo test --locked --test window_api` → `test result: ok. 60 passed; 0 failed`. Frontend agent's full Verification Command 19:01–19:09: exit 0, 1768 passed, 0 failed |
 | Verification command run | ☐ pass / ☐ fail | [paste actual output] |
 | Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Reviewed `window/api.rs` (`edit`), `window/mod.rs` (`initial_note_script`), `cli.rs` + `dashboard.rs` (`--note`, `canonical_id` → `resolve` validates the id; `NotFound` only after a valid id), `tray.rs` (`open_note`), `assets/{app.js,ipc.js,app.css}`. Not reviewed: unchanged core (`Store::update` reused as is) |
 | Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
 | **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| **UI: Visual regression (diff or verdict pasted)** | ☑ pass | headless Chrome on a scratch copy of `assets/` with a stub IPC (easy-ui not available this session): `/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-easy-note-mcp/f7aa1818-7158-435d-8b50-41e885be095a/scratchpad/hun286/shots/after-{read,edit,saved,changed,switch,empty,inbox,unknown,cancel}-1280.png`, BEFORE `before-read-1280.png`. ux-evaluate: 11 pass, 0 fail, 3 not checked (tray click: owner machine; 375 px and touch: N/A for an 800 px-min desktop window). Supervisor looked at `after-edit-1280.png`: text box, Tags field, Save/Cancel, key hints in the panel |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ pass | `app.css` edit rules use existing tokens only (agent CSS audit vs `docs/design/graphite-mint-tokens.json`); text box 16px panel body font; Save is the one mint primary button |
+| **UI: Responsiveness at target viewports** | ☑ pass | 800 px and 1280 px: `/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-easy-note-mcp/f7aa1818-7158-435d-8b50-41e885be095a/scratchpad/hun286/shots/after-*-800.png`, `*-800-full.png`. No horizontal scroll at 800; in a short 800 px window Save/Cancel sit below the fold and the panel scrolls to them |
 
 ---
 
@@ -116,3 +116,22 @@ row, with no read-only line.
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/Txxx.jsonl`, never the
 implementing agent alone]
+
+## Stage 4 — code-review and security pass (Supervisor, 2026-11-21)
+
+Scope: `main...feat/HUN-286-edit`. Personas: correctness, testing, maintainability, standards, security (input handling: a webview IPC now writes note files), over-engineering, api (`dashboard --note`, IPC contract), ux-evaluate (agent run, verdicts above).
+
+Security pass (done inline: the built-in `security-review` reviews the current branch of the main checkout, which is the other session's `.deb` branch):
+- `edit` writes only through `Store::update` (guard masking, re-validate, atomic rename, `updated` stamp); `ensure_writable` refuses inbox notes before any write.
+- The id goes through `store.read` / `resolve` (path-safe id check); `dashboard --note` refuses a bad id with exit 2 before the window opens.
+- The initial note id reaches the page only as a serde_json string in an initialization script; no raw splice. CSP and pinned origin (HUN-284) unchanged.
+- No command left that runs `xdg-open` from the window (`the_window_api_runs_no_xdg_open`). The tray click is an argv list.
+- No P0/P1 security finding.
+
+- P0: None.
+- P1: None.
+- P2: None.
+- P3: `window/api.rs` `edit` — read, compare with `base`, then `Store::update` is not one atomic step; a write by another app in that gap of milliseconds is overwritten. Same window as `easy-note edit`; accepted.
+- P3: merge order — `src/surfaces/tray.rs` overlaps with HUN-285 (`argv` / `icon::start`). Rebase onto `feat/HUN-285-tray` was blocked by the pipeline gate while this task was In Progress; resolve at merge time (HUN-285 first).
+
+Verdict: no P0/P1; 0 safe fixes needed.
