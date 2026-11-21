@@ -210,3 +210,52 @@ fn hun281_unusable_display_falls_back_to_obsidian_without_a_panic() {
         "{err}"
     );
 }
+
+/// HUN-286 AC 7, Success Criterion 5: an id that fails the store's id check is refused before
+/// anything opens: exit 2, the usage message, no `xdg-open`, nothing written.
+#[test]
+fn dashboard_note_refuses_a_bad_id_before_anything_opens() {
+    for bad in [
+        "../x",
+        "2026/11/20261119-090000-aaaa",
+        "inbox/../x",
+        "inbox/.hidden",
+        "",
+    ] {
+        let sb = with_stubs("bad-note");
+        assert_eq!(sb.run(&["install", "obsidian"], "").status.code(), Some(0));
+        let o = sb.run(&["dashboard", "--note", bad], "obsidian.desktop");
+        assert_eq!(o.status.code(), Some(2), "{bad:?}: {}", text(&o.stderr));
+        assert!(
+            text(&o.stderr).contains("not a note id"),
+            "{bad:?}: {}",
+            text(&o.stderr)
+        );
+        assert_eq!(sb.log("open.calls"), "", "{bad:?}: nothing opened");
+    }
+}
+
+/// A valid id that names no note is no error: without the window (default build) the Obsidian
+/// path runs as for a bare `dashboard`.
+#[test]
+fn dashboard_note_with_a_valid_unknown_id_opens_the_dashboard() {
+    let sb = with_stubs("unknown-note");
+    assert_eq!(sb.run(&["install", "obsidian"], "").status.code(), Some(0));
+    for id in ["20261119-090000-ffff", "inbox/phone"] {
+        let o = sb.run(&["dashboard", "--note", id], "obsidian.desktop");
+        assert_eq!(o.status.code(), Some(0), "{id}: {}", text(&o.stderr));
+    }
+    assert_eq!(sb.log("open.calls").lines().count(), 2);
+}
+
+#[test]
+fn dashboard_help_names_the_note_option() {
+    let sb = with_stubs("note-help");
+    let o = sb.run(&["dashboard", "--help"], "");
+    assert_eq!(o.status.code(), Some(0));
+    assert!(
+        text(&o.stdout).contains("--note <ID>"),
+        "{}",
+        text(&o.stdout)
+    );
+}

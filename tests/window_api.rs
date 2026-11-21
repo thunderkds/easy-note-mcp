@@ -14,7 +14,7 @@ use easy_note_mcp::surfaces::dashboard::use_window;
 use easy_note_mcp::surfaces::window::{
     allowed_url,
     api::{handle, handle_with},
-    asset, ipc, ipc_from, ipc_from_with, ipc_with, reply_script, CSP, REFRESH,
+    asset, initial_note_script, ipc, ipc_from, ipc_from_with, ipc_with, reply_script, CSP, REFRESH,
 };
 use serde_json::{json, Value};
 
@@ -1858,4 +1858,20 @@ fn the_window_api_runs_no_xdg_open() {
             assert!(!page.contains(gone), "{name} still has {gone}");
         }
     }
+}
+
+#[test]
+fn the_initial_note_goes_to_the_page_as_one_json_string() {
+    // AC 7: never string-built into JS; ipc.js keeps the value when it sets `window.__easyNote`.
+    let id = "inbox/a\"b'</script>\u{2028}\\";
+    let script = initial_note_script(id);
+    let json = script
+        .strip_prefix("window.__easyNote = ")
+        .and_then(|s| s.strip_suffix(';'))
+        .unwrap_or_else(|| panic!("{script}"));
+    let value: Value = serde_json::from_str(json).unwrap();
+    assert_eq!(value, json!({"initialNote": id}));
+    let ipc_js = std::str::from_utf8(asset("/ipc.js").unwrap().1).unwrap();
+    assert!(ipc_js.contains("typeof prior.initialNote === 'string'"));
+    assert!(ipc_js.contains("initialNote: initialNote"));
 }

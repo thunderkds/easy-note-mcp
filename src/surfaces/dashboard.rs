@@ -162,15 +162,22 @@ pub fn use_window(built: bool, wayland: Option<&str>, display: Option<&str>) -> 
     built && (set(wayland) || set(display))
 }
 
-pub fn run() -> Result<(), String> {
+/// `use_window` for this binary and this process's environment.
+pub fn window_here() -> bool {
     let wayland = std::env::var("WAYLAND_DISPLAY").ok();
     let display = std::env::var("DISPLAY").ok();
-    if use_window(
+    use_window(
         cfg!(feature = "window"),
         wayland.as_deref(),
         display.as_deref(),
-    ) {
-        match super::window::open() {
+    )
+}
+
+/// `note` is the id the window selects (`dashboard --note`, already checked); the Obsidian path
+/// opens the dashboard without it.
+pub fn run(note: Option<&str>) -> Result<(), String> {
+    if window_here() {
+        match super::window::open(note) {
             Err(e) if e == super::window::NO_DISPLAY => {}
             done => return done,
         }

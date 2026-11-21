@@ -1,8 +1,9 @@
 //! `tray`: an optional icon in the Linux system tray (FR-033, DDR 0005).
 //!
 //! The menu is New note, Open dashboard (runs `easy-note dashboard`), the 5 newest notes, Open notes folder and Quit. New note runs this binary
-//! as `quick`; a note and the folder open with `xdg-open`. Every command is an argv list, never a
-//! shell. The recent list is read again each time the menu opens.
+//! as `quick`. A note opens the window on it (`dashboard --note <id>`) in a `window` build with a
+//! display, else its file with `xdg-open`. The folder opens with `xdg-open`. Every command is an
+//! argv list, never a shell. The recent list is read again each time the menu opens.
 //!
 //! The first part of this file is always compiled and holds no D-Bus: the menu model, the argv of
 //! each action, the single-instance lock and the texts. The StatusNotifierItem part (`ksni`) is
@@ -17,6 +18,7 @@ use std::time::SystemTime;
 use chrono::{DateTime, Utc};
 
 use super::cli::safe;
+use super::dashboard;
 use crate::core::query::{self, Filters};
 use crate::core::store::Store;
 
@@ -35,6 +37,7 @@ pub const NEEDS_FEATURE: &str =
 /// One note in the menu.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Recent {
+    pub id: String,
     pub title: String,
     pub created: DateTime<Utc>,
     pub path: PathBuf,
@@ -44,7 +47,8 @@ pub struct Recent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     NewNote,
-    Open(PathBuf),
+    /// A recent note: its id and its file.
+    Open(String, PathBuf),
     OpenFolder,
     OpenDashboard,
     Quit,
@@ -76,7 +80,10 @@ pub fn menu(recent: &[Recent], now: DateTime<Utc>) -> Vec<Entry> {
             cut(&safe(&note.title)),
             relative(note.created, now)
         );
-        entries.push(Entry::Item(label, Action::Open(note.path.clone())));
+        entries.push(Entry::Item(
+            label,
+            Action::Open(note.id.clone(), note.path.clone()),
+        ));
     }
     entries.push(Entry::Separator);
     entries.push(Entry::Item(
@@ -120,6 +127,7 @@ pub fn recent(store: &Store, n: usize) -> Vec<Recent> {
             let path = store.read(&item.id).ok()?.path?;
             let created = DateTime::parse_from_rfc3339(&item.created).ok()?;
             Some(Recent {
+                id: item.id,
                 title: item.title,
                 created: created.with_timezone(&Utc),
                 path,
@@ -139,10 +147,21 @@ pub fn argv(action: &Action, exe: &Path, root: &Path) -> Option<(PathBuf, Vec<Os
     };
     match action {
         Action::NewNote => Some((exe.to_path_buf(), vec![OsString::from("quick")])),
-        Action::Open(path) => Some(open(path)),
+        Action::Open(id, path) => Some(open_note(id, path, exe, dashboard::window_here())),
         Action::OpenFolder => Some(open(root)),
         Action::OpenDashboard => Some((exe.to_path_buf(), vec![OsString::from("dashboard")])),
         Action::Quit => None,
+    }
+}
+
+/// A recent note's click: `<exe> dashboard --note <id>` when the window can open (`window`), else
+/// `xdg-open <file>`.
+pub fn open_note(id: &str, path: &Path, exe: &Path, window: bool) -> (PathBuf, Vec<OsString>) {
+    if window {
+        let args = ["dashboard", "--note", id].map(OsString::from).to_vec();
+        (exe.to_path_buf(), args)
+    } else {
+        (PathBuf::from("xdg-open"), vec![path.as_os_str().to_owned()])
     }
 }
 
@@ -423,6 +442,7 @@ mod tests {
 
     fn note(title: &str, created: DateTime<Utc>) -> Recent {
         Recent {
+            id: format!("id-{title}"),
             title: title.to_string(),
             created,
             path: PathBuf::from(format!("/notes/{title}.md")),
@@ -469,7 +489,10 @@ mod tests {
         );
         assert_eq!(
             entries[3],
-            Entry::Item("n0 · just now".into(), Action::Open(notes[0].path.clone()))
+            Entry::Item(
+                "n0 · just now".into(),
+                Action::Open("id-n0".into(), notes[0].path.clone())
+            )
         );
         assert_eq!(
             entries[9],
@@ -539,9 +562,10 @@ mod tests {
             Some((exe.to_path_buf(), vec![OsString::from("quick")]))
         );
         let file = PathBuf::from("/home/me/easy-notes/2026/11/a b; rm -rf.md");
+        let id = "inbox/a b; rm -rf";
         assert_eq!(
-            argv(&Action::Open(file.clone()), exe, root),
-            Some((PathBuf::from("xdg-open"), vec![file.into_os_string()]))
+            argv(&Action::Open(id.into(), file.clone()), exe, root),
+            Some(open_note(id, &file, exe, dashboard::window_here()))
         );
         assert_eq!(
             argv(&Action::OpenFolder, exe, root),
@@ -551,6 +575,29 @@ mod tests {
         assert_eq!(
             argv(&Action::OpenDashboard, exe, root),
             Some((exe.to_path_buf(), vec![OsString::from("dashboard")]))
+        );
+    }
+
+    /// HUN-286 AC 8: a window build with a display opens the window on the note, else the file.
+    #[test]
+    fn a_recent_note_opens_the_window_when_it_can_else_the_file() {
+        let exe = Path::new("/opt/bin/easy-note");
+        let file = PathBuf::from("/home/me/easy-notes/2026/11/a b; rm -rf.md");
+        let id = "20261119-090000-aaaa";
+        assert_eq!(
+            open_note(id, &file, exe, true),
+            (
+                exe.to_path_buf(),
+                vec![
+                    OsString::from("dashboard"),
+                    OsString::from("--note"),
+                    OsString::from(id)
+                ]
+            )
+        );
+        assert_eq!(
+            open_note(id, &file, exe, false),
+            (PathBuf::from("xdg-open"), vec![file.into_os_string()])
         );
     }
 

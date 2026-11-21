@@ -72,6 +72,15 @@ pub fn reply_script(answer: &str) -> String {
     )
 }
 
+/// The initialization script for `dashboard --note <id>`: it runs before `ipc.js`, which keeps
+/// `initialNote`. The id goes in as one JSON string (serde_json escapes it), never spliced in raw.
+pub fn initial_note_script(id: &str) -> String {
+    format!(
+        "window.__easyNote = {};",
+        serde_json::json!({ "initialNote": id })
+    )
+}
+
 /// One IPC message from the page: `{"req": <number>, "cmd": ..., ...}`. `req` is taken out, the
 /// rest goes to `api::handle`, and the same `req` is put back at the top level of the answer
 /// (an error too), so the page matches each reply to its request. A `req` that is not a number
@@ -122,7 +131,7 @@ pub const NO_DISPLAY: &str = "the display cannot be used";
 
 /// Without the feature, `dashboard` never asks for the window (`dashboard::use_window`).
 #[cfg(not(feature = "window"))]
-pub fn open() -> Result<(), String> {
+pub fn open(_initial_note: Option<&str>) -> Result<(), String> {
     Err("this easy-note is built without the window feature".to_string())
 }
 
@@ -141,7 +150,9 @@ mod shell {
     use wry::http::{header, Response, StatusCode};
     use wry::{NewWindowResponse, WebViewBuilder, WebViewBuilderExtUnix};
 
-    use super::{allowed_url, asset, ipc_from_with, reply_script, CSP, REFRESH, START};
+    use super::{
+        allowed_url, asset, initial_note_script, ipc_from_with, reply_script, CSP, REFRESH, START,
+    };
     use crate::core::config;
     use crate::core::store::Store;
     use crate::surfaces::enrich;
@@ -168,7 +179,8 @@ mod shell {
     }
 
     /// Open the window and run its event loop until it is closed (the process then exits).
-    pub fn open() -> Result<(), String> {
+    /// `initial_note` is the id the page selects after its first board load (`dashboard --note`).
+    pub fn open(initial_note: Option<&str>) -> Result<(), String> {
         // One config read at start: the same `[ai] enrich` + `after_save` rule as `easy-note add`.
         let (dir, after_save) = config::notes_dir_and_after_save().map_err(|e| e.to_string())?;
         let store = Store::system(dir);
@@ -194,7 +206,11 @@ mod shell {
         let vbox = window
             .default_vbox()
             .ok_or_else(|| "no GTK container for the webview".to_string())?;
-        let webview = WebViewBuilder::new()
+        let mut builder = WebViewBuilder::new();
+        if let Some(id) = initial_note {
+            builder = builder.with_initialization_script(initial_note_script(id));
+        }
+        let webview = builder
             .with_custom_protocol("easy-note".into(), |_, request| {
                 respond(request.uri().path())
             })
