@@ -9,6 +9,10 @@
 //! each action, the single-instance lock and the texts. The StatusNotifierItem part (`ksni`) is
 //! behind the cargo feature `tray`, so a default build links no tray crate (NFR-010). Without the
 //! feature `run` only says how to install a build that has one.
+//!
+//! `run` waits up to 60 s for the tray host before it gives up: at login the autostart entry can
+//! run before the panel owns the watcher. The dashboard window starts `easy-note tray` when it
+//! opens (`start_with_app`); a tray that already runs exits on the lock.
 
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions, TryLockError};
@@ -26,6 +30,15 @@ use crate::core::store::Store;
 pub const RECENT: usize = 5;
 /// The longest note label, in characters (an ellipsis counts).
 const LABEL_MAX: usize = 40;
+
+/// The first row: the hint is the one-press hotkey of `easy-note hotkey` (FR-039, design).
+const NEW_NOTE_LABEL: &str = "New note · Ctrl+Alt+N";
+/// The disabled row when there is no note (FR-039, design).
+const EMPTY_LABEL: &str = "No notes yet. Your first one appears here.";
+
+/// How many times `run` checks for a tray host before it gives up, one check per second. At login
+/// the autostart entry can run before the panel owns the watcher (HUN-285).
+pub const WAIT_CHECKS: u32 = 60;
 
 /// What a person can do when there is no tray host: the hotkey is the one-press path (FR-033).
 pub const HOTKEY_HINT: &str =
@@ -62,17 +75,17 @@ pub enum Entry {
     Separator,
 }
 
-/// The menu, top to bottom: New note, Open dashboard, the newest notes (at most `RECENT`) or `no notes yet`,
-/// Open notes folder, Quit. `recent` is newest first. A label holds only masked text, with
+/// The menu, top to bottom: New note (with its hotkey hint), Open dashboard, the newest notes (at
+/// most `RECENT`) or the empty-state row, Open notes folder, Quit. `recent` is newest first. A label holds only masked text, with
 /// control characters shown as `\xNN`.
 pub fn menu(recent: &[Recent], now: DateTime<Utc>) -> Vec<Entry> {
     let mut entries = vec![
-        Entry::Item("New note".to_string(), Action::NewNote),
+        Entry::Item(NEW_NOTE_LABEL.to_string(), Action::NewNote),
         Entry::Item("Open dashboard".to_string(), Action::OpenDashboard),
         Entry::Separator,
     ];
     if recent.is_empty() {
-        entries.push(Entry::Disabled("no notes yet".to_string()));
+        entries.push(Entry::Disabled(EMPTY_LABEL.to_string()));
     }
     for note in recent.iter().take(RECENT) {
         let label = format!(
@@ -116,7 +129,7 @@ pub fn relative(created: DateTime<Utc>, now: DateTime<Utc>) -> String {
 }
 
 /// The newest `n` notes with the path of each file. A note that cannot be read is left out, and
-/// so is a store that cannot be listed: the menu then shows `no notes yet`.
+/// so is a store that cannot be listed: the menu then shows the empty-state row.
 pub fn recent(store: &Store, n: usize) -> Vec<Recent> {
     let Ok(page) = query::list_notes_in(store, &Filters::default(), n) else {
         return vec![];
@@ -163,6 +176,25 @@ pub fn open_note(id: &str, path: &Path, exe: &Path, window: bool) -> (PathBuf, V
     } else {
         (PathBuf::from("xdg-open"), vec![path.as_os_str().to_owned()])
     }
+}
+
+/// The program and arguments that start a tray from the dashboard window (`exe` is this binary).
+pub fn tray_start_argv(exe: &Path) -> (PathBuf, Vec<OsString>) {
+    (exe.to_path_buf(), vec![OsString::from("tray")])
+}
+
+/// Check `present` up to `WAIT_CHECKS` times, calling `sleep` between checks. `true` as soon as a
+/// check says yes. No D-Bus and no real sleep here, so a test can drive it.
+pub fn wait_for_host(mut present: impl FnMut() -> bool, mut sleep: impl FnMut()) -> bool {
+    for check in 1..=WAIT_CHECKS {
+        if present() {
+            return true;
+        }
+        if check < WAIT_CHECKS {
+            sleep();
+        }
+    }
+    false
 }
 
 /// The theme icon used when our own icons are not installed.
@@ -258,8 +290,12 @@ pub fn run() -> Result<(), String> {
     Err(NEEDS_FEATURE.to_string())
 }
 
+/// Without the feature the window starts no tray (NFR-010).
+#[cfg(not(feature = "tray"))]
+pub fn start_with_app() {}
+
 #[cfg(feature = "tray")]
-pub use icon::{host_present, run};
+pub use icon::{host_present, run, start_with_app};
 
 #[cfg(feature = "tray")]
 mod icon {
@@ -278,6 +314,8 @@ mod icon {
     const WATCHER: &str = "org.kde.StatusNotifierWatcher";
     /// How often the main thread checks that the host did not go away.
     const POLL: Duration = Duration::from_secs(1);
+    /// The pause between two checks for the host.
+    const WAIT_STEP: Duration = Duration::from_secs(1);
 
     struct SniTray {
         store: Store,
@@ -342,11 +380,14 @@ mod icon {
 
     /// Start the child with no stdio and wait for it on a thread, so none is left a zombie.
     fn start(action: &Action, exe: &Path, root: &Path) {
-        let Some((program, args)) = argv(action, exe, root) else {
-            return;
-        };
-        let child = Command::new(&program)
-            .args(&args)
+        if let Some((program, args)) = argv(action, exe, root) {
+            spawn_detached(&program, &args);
+        }
+    }
+
+    fn spawn_detached(program: &Path, args: &[OsString]) {
+        let child = Command::new(program)
+            .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -358,6 +399,15 @@ mod icon {
                 });
             }
             Err(e) => eprintln!("easy-note: cannot start {}: {e}", program.display()),
+        }
+    }
+
+    /// The dashboard window calls this when it opens: start `<this exe> tray`. A tray that
+    /// already runs exits on the lock. Nothing is shown to the person, whatever happens here.
+    pub fn start_with_app() {
+        if let Ok(exe) = std::env::current_exe() {
+            let (program, args) = tray_start_argv(&exe);
+            spawn_detached(&program, &args);
         }
     }
 
@@ -381,6 +431,9 @@ mod icon {
             store: store.clone(),
             clicks,
         };
+        // At login the panel may not own the watcher yet: wait for it. With no host after the wait,
+        // `spawn` fails and gives the message below.
+        wait_for_host(host_present, || std::thread::sleep(WAIT_STEP));
         let handle = tray
             .spawn()
             .map_err(|e| format!("no tray host ({e}); {HOTKEY_HINT}"))?;
@@ -469,7 +522,7 @@ mod tests {
         assert_eq!(
             labels(&entries),
             [
-                "New note",
+                "New note · Ctrl+Alt+N",
                 "Open dashboard",
                 "---",
                 "n0 · just now",
@@ -482,7 +535,10 @@ mod tests {
                 "Quit",
             ]
         );
-        assert_eq!(entries[0], Entry::Item("New note".into(), Action::NewNote));
+        assert_eq!(
+            entries[0],
+            Entry::Item("New note · Ctrl+Alt+N".into(), Action::NewNote)
+        );
         assert_eq!(
             entries[1],
             Entry::Item("Open dashboard".into(), Action::OpenDashboard)
@@ -507,16 +563,19 @@ mod tests {
         assert_eq!(
             labels(&entries),
             [
-                "New note",
+                "New note · Ctrl+Alt+N",
                 "Open dashboard",
                 "---",
-                "no notes yet",
+                "No notes yet. Your first one appears here.",
                 "---",
                 "Open notes folder",
                 "Quit"
             ]
         );
-        assert_eq!(entries[3], Entry::Disabled("no notes yet".into()));
+        assert_eq!(
+            entries[3],
+            Entry::Disabled("No notes yet. Your first one appears here.".into())
+        );
     }
 
     #[test]
@@ -664,6 +723,52 @@ mod tests {
         );
         drop(first);
         acquire_lock(dir.path()).unwrap();
+    }
+
+    #[test]
+    fn the_wait_returns_ready_after_the_fourth_check_when_the_host_appears() {
+        let mut checks = 0;
+        let mut sleeps = 0;
+        let ready = wait_for_host(
+            || {
+                checks += 1;
+                checks == 4
+            },
+            || sleeps += 1,
+        );
+        assert!(ready);
+        assert_eq!(checks, 4);
+        assert_eq!(sleeps, 3, "it sleeps between checks only");
+    }
+
+    #[test]
+    fn the_wait_gives_up_after_sixty_checks_with_no_host() {
+        let mut checks = 0;
+        let ready = wait_for_host(
+            || {
+                checks += 1;
+                false
+            },
+            || {},
+        );
+        assert!(!ready);
+        assert_eq!(checks, 60);
+    }
+
+    #[test]
+    fn a_host_present_at_start_needs_one_check_and_no_sleep() {
+        let mut sleeps = 0;
+        assert!(wait_for_host(|| true, || sleeps += 1));
+        assert_eq!(sleeps, 0);
+    }
+
+    #[test]
+    fn the_tray_start_argv_is_this_exe_and_tray() {
+        let exe = Path::new("/opt/bin/easy-note");
+        assert_eq!(
+            tray_start_argv(exe),
+            (exe.to_path_buf(), vec![OsString::from("tray")])
+        );
     }
 
     #[test]

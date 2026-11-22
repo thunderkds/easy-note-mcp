@@ -131,7 +131,7 @@ pub const NO_DISPLAY: &str = "the display cannot be used";
 
 /// Without the feature, `dashboard` never asks for the window (`dashboard::use_window`).
 #[cfg(not(feature = "window"))]
-pub fn open(_initial_note: Option<&str>) -> Result<(), String> {
+pub fn open(_initial_note: Option<&str>, _on_shown: impl FnOnce()) -> Result<(), String> {
     Err("this easy-note is built without the window feature".to_string())
 }
 
@@ -180,7 +180,9 @@ mod shell {
 
     /// Open the window and run its event loop until it is closed (the process then exits).
     /// `initial_note` is the id the page selects after its first board load (`dashboard --note`).
-    pub fn open(initial_note: Option<&str>) -> Result<(), String> {
+    /// `on_shown` runs once, after the window and webview exist and before the loop starts; it
+    /// does not run when the display cannot be used.
+    pub fn open(initial_note: Option<&str>, on_shown: impl FnOnce()) -> Result<(), String> {
         // One config read at start: the same `[ai] enrich` + `after_save` rule as `easy-note add`.
         let (dir, after_save) = config::notes_dir_and_after_save().map_err(|e| e.to_string())?;
         let store = Store::system(dir);
@@ -232,6 +234,7 @@ mod shell {
             .with_url(START)
             .build_gtk(vbox)
             .map_err(|e| e.to_string())?;
+        on_shown();
         event_loop.run(move |event, _, flow| {
             *flow = ControlFlow::Wait;
             let _ = &window;

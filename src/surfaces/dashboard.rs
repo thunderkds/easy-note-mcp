@@ -1,7 +1,8 @@
 //! `dashboard`: in a build with the `window` feature and a display, open easy-note's own window
 //! (FR-042, DDR 0009). Otherwise open `<notes dir>/easy-note.base` in Obsidian (FR-034, DDR 0006):
 //! Obsidian draws the window. `install obsidian` writes the file (FR-035). The programs
-//! `xdg-mime` and `xdg-open` run as argv lists, never through a shell (NFR-001).
+//! `xdg-mime` and `xdg-open` run as argv lists, never through a shell (NFR-001). In a build with
+//! `tray` too, the window starts the tray when it opens (FR-033); the Obsidian path starts none.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -177,7 +178,7 @@ pub fn window_here() -> bool {
 /// opens the dashboard without it.
 pub fn run(note: Option<&str>) -> Result<(), String> {
     if window_here() {
-        match super::window::open(note) {
+        match super::window::open(note, super::tray::start_with_app) {
             Err(e) if e == super::window::NO_DISPLAY => {}
             done => return done,
         }
