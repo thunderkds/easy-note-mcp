@@ -44,6 +44,18 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 -->
 
+## Auto decisions
+
+Mode: auto
+1. Fixed the reviewer's two P2s on `5de62bd` (tags sent as `#tag` not matched to stored tags; the stale-write guard covering only the text) before merge, test first, in `1f1405a` — RULE: `skills/code-review/SKILL.md` § Severity Scale ("P2 ... Recommended") with `AGENTS.md` § Hard-Stop Gates gate 1 (fresh reviewer before merge); the owner asked "fix HUN-286 [admin]" (chat 2026-11-22).
+2. The guard now takes a required `base_tags` field; a request without it is `missing base` — SAFER OPTION: the bundled page is the only client of `window::api`, and an optional field would let a stale page overwrite an outside tag change. ⚠ decided for you — please review
+3. The `startEdit` stale-panel guard (reviewer P3) went in with the P2 fix; the other P3s (space in a tag, typing during a save in flight, non-atomic compare-then-write, CRLF) stay follow-ups — RULE: `skills/code-review/SKILL.md` § Phase 4 (P2/P3 are suggestions).
+4. Merge conflicts with HUN-285 (`PRD.md`, `README.md`, `dashboard.rs`, `tray.rs`, `window/mod.rs`) resolved by keeping both sides: `window::open(initial_note, on_shown)` — RULE: `AGENTS.md` § Karpathy Engineering Principles (Surgical Changes); the owner ran `git merge main` in this worktree (chat 2026-11-22).
+5. The blank line the resolution left inside the PRD FR table (reviewer P2 on `bb6888f`) fixed in `ad41bf5` and re-reviewed — RULE: `skills/code-review/SKILL.md` § Severity Scale.
+Checks: tests `cargo test --locked --features window,tray` — 599 passed, 0 failed, 6 ignored; `cargo test --locked` — 591 passed, 0 failed; lint `cargo clippy --all-targets --locked [--features window,tray] -- -D warnings` exit 0 both, `cargo fmt --check` clean; reviews code-review — 0 P0, 0 P1, 0 P2, 3 P3 open; security-review — no findings (edit id path, `--note` script injection, tray argv, XSS, IPC origin, secret masking checked); fresh reviewer `Reviewer: HUN-286` approve on `ad41bf5`; real run: auto verify on `1f1405a` (auto-checked, not /verify)
+Memory: `memory/learnings.md` — 2026-11-22 `[admin]` counts only the hook's own verify; one task per message; reviewer record per commit; PRD table blank line after a merge (committed `d71b654` on `feat/HUN-287-deb`)
+Not done: merge (admin: after the auto verify pass); auto verify: ☑ pass (session 6c84c28a-aa32-47ef-a28d-b535f3d57680, commit 1f1405a0292389ae73c79040feaee5b89c671f1d, log .claude/verify-runs/HUN-286-1f1405a02923.log)
+
 ## Evidence
 
 | Check | Result | Notes / output snippet |
@@ -51,7 +63,7 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 | **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/window_api.rs` (edit AC 1–3, 9 incl. `edit_errors_write_nothing`, `another_note_is_not_selected_while_editing`, `the_focus_refresh_keeps_edit_mode_and_the_draft`, `esc_and_cancel_leave_edit_mode_without_writing`), `tests/fixtures/window/page_harness.js` (14 edit scenarios), `tests/dashboard.rs` (`--note` refusals, AC 7), `src/surfaces/tray.rs` `a_recent_note_opens_the_window_when_it_can_else_the_file` (AC 8). Supervisor rerun 2026-11-21: `cargo test --locked --test window_api` → `test result: ok. 60 passed; 0 failed`. Frontend agent's full Verification Command 19:01–19:09: exit 0, 1768 passed, 0 failed |
 | Verification command run | ☐ pass / ☐ fail | [paste actual output] |
 | Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
-| verify | ☑ pass | auto-run by hook, session 6c84c28a-aa32-47ef-a28d-b535f3d57680, commit 1f1405a0292389ae73c79040feaee5b89c671f1d, log .claude/verify-runs/HUN-286-1f1405a02923.log — pass |
+| verify | ☐ blocked | auto-run by hook, session dbd9f937-0526-475b-8969-63f3893ad488, commit bb6888fe539234ba7dbb4860f1967462c4bf27af, log .claude/verify-runs/HUN-286-bb6888fe5392.log — blocked (no single verdict line) |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Reviewed `window/api.rs` (`edit`), `window/mod.rs` (`initial_note_script`), `cli.rs` + `dashboard.rs` (`--note`, `canonical_id` → `resolve` validates the id; `NotFound` only after a valid id), `tray.rs` (`open_note`), `assets/{app.js,ipc.js,app.css}`. Not reviewed: unchanged core (`Store::update` reused as is) |
 | Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
 | **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
