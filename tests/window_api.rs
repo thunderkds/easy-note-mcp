@@ -14,7 +14,7 @@ use easy_note_mcp::surfaces::dashboard::use_window;
 use easy_note_mcp::surfaces::window::{
     allowed_url,
     api::{handle, handle_with},
-    asset, ipc, ipc_from, ipc_from_with, ipc_with, reply_script, CSP, REFRESH,
+    asset, initial_note_script, ipc, ipc_from, ipc_from_with, ipc_with, reply_script, CSP, REFRESH,
 };
 use serde_json::{json, Value};
 
@@ -941,8 +941,8 @@ fn trash_then_restore_brings_back_the_note_and_its_ai_file() {
     let board = call(&store, &json!({"cmd": "board"}));
     assert!(!ids(&board).contains(&ACTED), "the row is gone");
     assert_eq!(board["total"], 4);
-    // A trashed note is refused by accept_ai and open_in_editor; a second trash too.
-    for cmd in ["accept_ai", "open_in_editor", "trash", "detail"] {
+    // A trashed note is refused by accept_ai; a second trash too (edit: `edit_errors_write_nothing`).
+    for cmd in ["accept_ai", "trash", "detail"] {
         let out = call(&store, &json!({"cmd": cmd, "id": ACTED}));
         assert_eq!(out, json!({"error": "no such note"}), "{cmd}");
     }
@@ -971,34 +971,6 @@ fn trash_then_restore_brings_back_the_note_and_its_ai_file() {
 }
 
 #[test]
-fn open_in_editor_runs_xdg_open_once_with_the_note_path() {
-    // AC 4, Success Criterion 3.
-    let sb = Sandbox::new("open");
-    let path = acted(&sb);
-    let store = sb.store();
-    let before = snapshot(&sb.notes());
-    {
-        let fake = FakeOpener::new(0);
-        let out = call(&store, &json!({"cmd": "open_in_editor", "id": ACTED}));
-        assert_eq!(out, json!({"opened": ACTED}));
-        assert_eq!(fake.calls(), vec![format!("1:{}", path.display())]);
-    }
-    {
-        let fake = FakeOpener::new(4);
-        let out = call(&store, &json!({"cmd": "open_in_editor", "id": ACTED}));
-        assert_eq!(out, json!({"error": "xdg-open failed"}));
-        assert_eq!(fake.calls().len(), 1);
-    }
-    {
-        let fake = FakeOpener::new(0);
-        std::fs::remove_file(fake._bin.path().join("xdg-open")).unwrap();
-        let out = call(&store, &json!({"cmd": "open_in_editor", "id": ACTED}));
-        assert_eq!(out, json!({"error": "cannot run xdg-open"}));
-    }
-    assert_eq!(snapshot(&sb.notes()), before, "opening writes nothing");
-}
-
-#[test]
 fn actions_refuse_bad_and_unknown_ids_and_change_nothing() {
     // AC 6, Success Criterion 4.
     let sb = Sandbox::new("action-errors");
@@ -1010,7 +982,7 @@ fn actions_refuse_bad_and_unknown_ids_and_change_nothing() {
     let store = sb.store();
     let fake = FakeOpener::new(0);
     let before = snapshot(&sb.notes());
-    for cmd in ["accept_ai", "trash", "restore", "open_in_editor"] {
+    for cmd in ["accept_ai", "trash", "restore", "edit"] {
         for (id, want) in [
             (json!(null), "missing id"),
             (json!(7), "missing id"),
@@ -1018,7 +990,8 @@ fn actions_refuse_bad_and_unknown_ids_and_change_nothing() {
             (json!("2026/11/20261119-090000-aaaa"), "bad id"),
             (json!("20261119-090000-ffff"), "no such note"),
         ] {
-            let mut request = json!({"cmd": cmd});
+            let mut request =
+                json!({"cmd": cmd, "text": "x", "tags": [], "base": "x", "base_tags": []});
             if !id.is_null() {
                 request["id"] = id.clone();
             }
@@ -1094,7 +1067,7 @@ fn the_page_asks_only_for_commands_the_api_answers() {
         "accept_ai",
         "trash",
         "restore",
-        "open_in_editor",
+        "edit",
         "context",
         "add",
     ];
@@ -1116,13 +1089,7 @@ fn the_page_asks_only_for_commands_the_api_answers() {
 fn the_page_has_the_design_actions_and_the_undo_window() {
     let app = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
     // Labels from docs/design/Main.dc.html, board "Dashboard (clickable)", and the AC 5 toast.
-    for label in [
-        "'Add as tags'",
-        "'Open in editor'",
-        "'Copy id'",
-        "'Move to trash'",
-        "'Copied'",
-    ] {
+    for label in ["'Add as tags'", "'Copy id'", "'Move to trash'", "'Copied'"] {
         assert!(app.contains(label), "app.js lacks {label}");
     }
     let html = std::str::from_utf8(asset("/").unwrap().1).unwrap();
@@ -1135,7 +1102,6 @@ fn the_page_has_the_design_actions_and_the_undo_window() {
         "easyNoteIpc.acceptAi(",
         "easyNoteIpc.trash(",
         "easyNoteIpc.restore(",
-        "easyNoteIpc.openInEditor(",
     ] {
         let at = app
             .find(call)
@@ -1237,17 +1203,24 @@ fn the_search_field_is_masked() {
 /// `window.ipc` that counts requests (`tests/fixtures/window/page_harness.js`). Skipped, with a
 /// printed note, when `node` is not installed.
 fn run_page(board: &Value) -> Option<Value> {
+    run_page_with(board, None)
+}
+
+/// As `run_page`; with `details` (note id -> its `detail` answer) the HUN-286 edit scenarios run too.
+fn run_page_with(board: &Value, details: Option<&Value>) -> Option<Value> {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("board.json");
     std::fs::write(&file, board.to_string()).unwrap();
     let harness =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/window/page_harness.js");
-    let out = match std::process::Command::new("node")
-        .arg(harness)
-        .arg(assets_dir())
-        .arg(&file)
-        .output()
-    {
+    let mut command = std::process::Command::new("node");
+    command.arg(harness).arg(assets_dir()).arg(&file);
+    if let Some(details) = details {
+        let more = dir.path().join("details.json");
+        std::fs::write(&more, details.to_string()).unwrap();
+        command.arg(more);
+    }
+    let out = match command.output() {
         Ok(out) => out,
         Err(e) => {
             eprintln!("skipped: no node to run the page ({e})");
@@ -1695,4 +1668,485 @@ fn ipc_from_with_runs_the_hook_only_for_the_apps_own_page() {
     let reply: Value = serde_json::from_str(&out).unwrap();
     assert_eq!(reply["req"], 7);
     assert_eq!(seen.into_inner(), vec![reply["id"].as_str().unwrap()]);
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-286: `edit` saves the text and tags through `Store::update`, as `easy-note edit` does
+// ---------------------------------------------------------------------------------------------
+
+/// The `edit` request for `id` with the `detail` text as the base.
+fn edit_request(store: &Store, id: &str, text: &str, tags: Value) -> Value {
+    let shown = call(store, &json!({"cmd": "detail", "id": id}));
+    json!({"cmd": "edit", "id": id, "text": text, "tags": tags, "base": shown["text"], "base_tags": shown["tags"]})
+}
+
+/// `acted`, with its stored tags replaced by `tags` (a hand edit in another app).
+fn acted_with_tags(sb: &Sandbox, tags: &str) -> PathBuf {
+    let path = acted(sb);
+    let file = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(
+        &path,
+        file.replace("tags: [\"y\"]", &format!("tags: [{tags}]")),
+    )
+    .unwrap();
+    path
+}
+
+#[test]
+fn edit_keeps_existing_tags_the_page_sends_with_a_hash() {
+    // The page sends every tag as `#tag` (app.js `startEdit`); a kept tag stays as stored, as in
+    // `easy-note edit`, even when `easy-note tag` would refuse or lowercase it.
+    let sb = Sandbox::new("edit-hash-tags");
+    let path = acted_with_tags(&sb, "\"café\", \"Project\"");
+    let store = sb.store();
+    let request = edit_request(&store, ACTED, "new text", json!(["#café", "#Project"]));
+    let out = call(&store, &request);
+    assert_eq!(out["tags"], json!(["café", "Project"]), "{out}");
+    let file = std::fs::read_to_string(&path).unwrap();
+    assert!(file.contains("tags: [\"café\", \"Project\"]"), "{file}");
+}
+
+#[test]
+fn edit_refuses_when_only_the_tags_changed_outside_the_window() {
+    // AC 2 for the tags: a tag change made in another app is not overwritten without a word.
+    let sb = Sandbox::new("edit-stale-tags");
+    let path = acted(&sb);
+    let store = sb.store();
+    let request = edit_request(&store, ACTED, "my draft", json!(["#y"]));
+    let file = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(
+        &path,
+        file.replace("tags: [\"y\"]", "tags: [\"y\", \"obsidian\"]"),
+    )
+    .unwrap();
+    let before = snapshot(&sb.notes());
+    let out = call(&store, &request);
+    assert_eq!(out, json!({"error": "the note changed outside the window"}));
+    assert_eq!(snapshot(&sb.notes()), before, "byte for byte");
+}
+
+#[test]
+fn edit_saves_the_text_and_tags_and_keeps_the_rest() {
+    // AC 1, Success Criterion 1.
+    let sb = Sandbox::new("edit");
+    let path = acted(&sb);
+    let store = sb.store();
+    let request = edit_request(
+        &store,
+        ACTED,
+        "Retry bug only on Chrome #Web",
+        json!(["#Z", "y", "z"]),
+    );
+    let out = call(&store, &request);
+    assert_eq!(out["id"], ACTED, "the updated detail: {out}");
+    assert_eq!(out["text"], "Retry bug only on Chrome #Web\n", "{out}");
+    // `easy-note tag` rule: no `#`, each once; the text's `#words` join as in `easy-note edit`.
+    assert_eq!(out["tags"], json!(["z", "y", "web"]), "{out}");
+    assert_eq!(out["masked"], false, "{out}");
+    assert_eq!(out["ai"]["stale"], true, "the text changed: {out}");
+    let file = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(body_of(&file), "Retry bug only on Chrome #Web\n");
+    for kept in [
+        "created: \"2026-11-19T09:00:00+07:00\"",
+        "repo: \"easy-ui-mcp\"",
+        "source: \"cli\"",
+        "tags: [\"z\", \"y\", \"web\"]",
+        "updated: \"2026-11-19T10:00:00+07:00\"",
+    ] {
+        assert!(file.contains(kept), "{kept} in {file}");
+    }
+}
+
+#[test]
+fn edit_of_the_tags_only_keeps_the_text_bytes() {
+    let sb = Sandbox::new("edit-tags");
+    let path = acted(&sb);
+    let store = sb.store();
+    let before = std::fs::read_to_string(&path).unwrap();
+    // The page may drop the last newline of the text it loaded: still the same text.
+    let mut request = edit_request(&store, ACTED, "", json!(["y", "new"]));
+    let text = request["base"]
+        .as_str()
+        .unwrap()
+        .trim_end_matches('\n')
+        .to_string();
+    request["text"] = json!(text);
+    request["base"] = json!(text);
+    let out = call(&store, &request);
+    assert_eq!(out["tags"], json!(["y", "new"]), "{out}");
+    assert_eq!(out["ai"]["stale"], false, "{out}");
+    let after = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(body_of(&after), body_of(&before), "the text is unchanged");
+}
+
+#[test]
+fn edit_with_nothing_changed_writes_nothing() {
+    let sb = Sandbox::new("edit-same");
+    acted(&sb);
+    let store = sb.store();
+    let base = call(&store, &json!({"cmd": "detail", "id": ACTED}))["text"].clone();
+    let before = snapshot(&sb.notes());
+    let out = call(
+        &store,
+        &json!({"cmd": "edit", "id": ACTED, "text": base, "tags": ["y"], "base": base, "base_tags": ["y"]}),
+    );
+    assert_eq!(out["id"], ACTED, "{out}");
+    assert_eq!(
+        snapshot(&sb.notes()),
+        before,
+        "no `updated` stamp, no write"
+    );
+}
+
+#[test]
+fn edit_refuses_when_the_note_changed_outside_the_window() {
+    // AC 2, Success Criterion 2.
+    let sb = Sandbox::new("edit-stale");
+    let path = acted(&sb);
+    let store = sb.store();
+    let request = edit_request(&store, ACTED, "my draft", json!(["y"]));
+    let mut file = std::fs::read_to_string(&path).unwrap();
+    file.push_str("added in Obsidian\n");
+    std::fs::write(&path, &file).unwrap();
+    let before = snapshot(&sb.notes());
+    let out = call(&store, &request);
+    assert_eq!(out, json!({"error": "the note changed outside the window"}));
+    assert_eq!(snapshot(&sb.notes()), before, "byte for byte");
+}
+
+#[test]
+fn edit_masks_a_planted_secret_on_write() {
+    // NFR-002, Success Criterion 3.
+    let sb = Sandbox::new("edit-leak");
+    acted(&sb);
+    let store = sb.store();
+    let cases = planted();
+    let text: Vec<&str> = cases.iter().map(|(t, _)| t.as_str()).collect();
+    let request = edit_request(&store, ACTED, &text.join("\n"), json!([]));
+    let raw = handle(&store, &request.to_string());
+    let out: Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(out["masked"], true, "{out}");
+    let file = std::fs::read_to_string(sb.notes().join(format!("2026/11/{ACTED}.md"))).unwrap();
+    for (_, secret) in &cases {
+        assert!(!file.contains(secret.as_str()), "secret in the file");
+        assert!(!raw.contains(secret.as_str()), "secret in the reply");
+    }
+    // Saving the masked text again keeps it masked and changes nothing more.
+    let again = edit_request(&store, ACTED, out["text"].as_str().unwrap(), json!([]));
+    let before = std::fs::read_to_string(sb.notes().join(format!("2026/11/{ACTED}.md"))).unwrap();
+    let out = call(&store, &again);
+    assert_eq!(out["masked"], true, "{out}");
+    let after = std::fs::read_to_string(sb.notes().join(format!("2026/11/{ACTED}.md"))).unwrap();
+    assert_eq!(body_of(&after), body_of(&before));
+}
+
+#[test]
+fn edit_errors_write_nothing() {
+    // AC 3, Success Criterion 4.
+    let sb = Sandbox::new("edit-errors");
+    sb.four();
+    acted(&sb);
+    let inbox = sb.notes().join("inbox");
+    std::fs::create_dir_all(&inbox).unwrap();
+    std::fs::write(inbox.join("p.md"), "phone note\n").unwrap();
+    let store = sb.store();
+    let base = call(&store, &json!({"cmd": "detail", "id": ACTED}))["text"].clone();
+    let inbox_base = call(&store, &json!({"cmd": "detail", "id": "inbox/p"}))["text"].clone();
+    let ok = |id: &str, b: &Value| json!({"cmd": "edit", "id": id, "text": "x", "tags": [], "base": b, "base_tags": if id == ACTED { json!(["y"]) } else { json!([]) }});
+    let before = snapshot(&sb.notes());
+    let mut cases = vec![];
+    for empty in ["", "   ", " \n\t\n"] {
+        let mut r = ok(ACTED, &base);
+        r["text"] = json!(empty);
+        cases.push((r, "empty"));
+    }
+    cases.push((ok("inbox/p", &inbox_base), "inbox notes are read-only"));
+    cases.push((ok("20261119-090000-ffff", &base), "no such note"));
+    cases.push((ok("../../etc/passwd", &base), "bad id"));
+    let mut bad_tag = ok(ACTED, &base);
+    bad_tag["tags"] = json!(["a b"]);
+    cases.push((bad_tag, "not a tag"));
+    for (key, want) in [
+        ("id", "missing id"),
+        ("text", "missing text"),
+        ("tags", "missing tags"),
+        ("base", "missing base"),
+        ("base_tags", "missing base"),
+    ] {
+        let mut r = ok(ACTED, &base);
+        r.as_object_mut().unwrap().remove(key);
+        cases.push((r, want));
+    }
+    let mut not_list = ok(ACTED, &base);
+    not_list["tags"] = json!("y");
+    cases.push((not_list, "missing tags"));
+    let mut not_strings = ok(ACTED, &base);
+    not_strings["tags"] = json!([1]);
+    cases.push((not_strings, "missing tags"));
+    for (request, want) in &cases {
+        let out = call(&store, request);
+        assert_eq!(out, json!({"error": want}), "{request}");
+    }
+    assert_eq!(snapshot(&sb.notes()), before, "no change on disk");
+    // A trashed note is no note.
+    call(&store, &json!({"cmd": "trash", "id": ACTED}));
+    let out = call(&store, &ok(ACTED, &base));
+    assert_eq!(out, json!({"error": "no such note"}));
+}
+
+#[test]
+fn the_window_api_runs_no_xdg_open() {
+    // AC 9: `open_in_editor` is gone; no window command opens a note in another app.
+    let sb = Sandbox::new("no-open");
+    acted(&sb);
+    let fake = FakeOpener::new(0);
+    let out = call(&sb.store(), &json!({"cmd": "open_in_editor", "id": ACTED}));
+    assert_eq!(out, json!({"error": "unknown command"}));
+    assert!(fake.calls().is_empty());
+    let api = include_str!("../src/surfaces/window/api.rs");
+    assert!(!api.contains("xdg-open\")"), "api.rs starts no xdg-open");
+    for name in ["/ipc.js", "/app.js"] {
+        let page = std::str::from_utf8(asset(name).unwrap().1).unwrap();
+        for gone in ["open_in_editor", "openInEditor", "Open in editor"] {
+            assert!(!page.contains(gone), "{name} still has {gone}");
+        }
+    }
+}
+
+#[test]
+fn the_initial_note_goes_to_the_page_as_one_json_string() {
+    // AC 7: never string-built into JS; ipc.js keeps the value when it sets `window.__easyNote`.
+    let id = "inbox/a\"b'</script>\u{2028}\\";
+    let script = initial_note_script(id);
+    let json = script
+        .strip_prefix("window.__easyNote = ")
+        .and_then(|s| s.strip_suffix(';'))
+        .unwrap_or_else(|| panic!("{script}"));
+    let value: Value = serde_json::from_str(json).unwrap();
+    assert_eq!(value, json!({"initialNote": id}));
+    let ipc_js = std::str::from_utf8(asset("/ipc.js").unwrap().1).unwrap();
+    assert!(ipc_js.contains("typeof prior.initialNote === 'string'"));
+    assert!(ipc_js.contains("initialNote: initialNote"));
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-286 frontend slice: Edit mode in the detail panel, the initial note, the page side of
+// "the note changed outside the window". The real ipc.js and app.js run in node over a stub IPC
+// fed real `handle` answers (`tests/fixtures/window/page_harness.js`).
+// ---------------------------------------------------------------------------------------------
+
+/// The board and every note's `detail` of a store with the four sample notes, the AI-enriched
+/// `ACTED` note and one inbox note; then the harness run with the edit scenarios.
+fn run_edit_page() -> Option<Value> {
+    let sb = Sandbox::new("page-edit");
+    sb.four();
+    acted(&sb);
+    let inbox = sb.notes().join("inbox");
+    std::fs::create_dir_all(&inbox).unwrap();
+    std::fs::write(inbox.join("p.md"), "phone note\n").unwrap();
+    let store = sb.store();
+    let board = call(&store, &json!({"cmd": "board"}));
+    let other = *ids(&board)
+        .iter()
+        .find(|id| **id != ACTED && **id != "inbox/p")
+        .unwrap();
+    let mut notes = serde_json::Map::new();
+    for id in ids(&board) {
+        notes.insert(
+            id.to_string(),
+            call(&store, &json!({"cmd": "detail", "id": id})),
+        );
+    }
+    let more =
+        json!({"roles": {"editable": ACTED, "inbox": "inbox/p", "other": other}, "notes": notes});
+    run_page_with(&board, Some(&more))
+}
+
+#[test]
+fn the_initial_note_is_selected_after_the_first_board_load() {
+    let Some(run) = run_edit_page() else { return };
+    // AC 7 (page side): the board first, then the note's detail, shown in the panel.
+    let r = &run["initial_note"];
+    assert_eq!(r["posts"], json!(["board", "detail"]), "{r}");
+    assert_eq!(r["detail"], json!([ACTED]), "{r}");
+    assert_eq!(r["shown"]["id"], ACTED, "{r}");
+    assert_eq!(
+        r["current"], "true",
+        "the row is marked as the selection: {r}"
+    );
+    // An unknown id shows the panel's existing text.
+    let r = &run["initial_unknown"];
+    assert_eq!(
+        r["shown"]["text"], "Could not read the note: no such note",
+        "{r}"
+    );
+    // Without `--note` nothing is selected: no detail asked, the panel keeps index.html's
+    // "Pick a note to read it." (the fake DOM holds no static HTML, so the panel reads empty).
+    let r = &run["initial_none"];
+    assert_eq!(r["posts"], json!(["board"]), "{r}");
+    assert_eq!(r["shown"]["text"], "", "{r}");
+}
+
+#[test]
+fn edit_replaces_open_in_editor_and_opens_the_text_and_tags() {
+    let Some(run) = run_edit_page() else { return };
+    // AC 4: `Edit` in the actions row; edit mode shows the note text and its tags.
+    let r = &run["initial_note"]["shown"];
+    assert_eq!(
+        r["buttons"],
+        json!(["Add as tags", "Edit", "Copy id", "Move to trash"]),
+        "{r}"
+    );
+    let r = &run["edit_open"]["shown"];
+    assert_eq!(r["editing"], true, "{r}");
+    assert_eq!(
+        r["draft"], "Retry bug only on Firefox\n\n  keep   these bytes  ",
+        "the text without its last line end: {r}"
+    );
+    assert_eq!(r["tags"], "#y", "{r}");
+    assert_eq!(r["buttons"], json!(["Save", "Cancel"]), "{r}");
+    assert_eq!(r["focusIsBox"], true, "the caret is in the text box: {r}");
+}
+
+#[test]
+fn ctrl_enter_saves_through_edit_and_shows_the_new_note() {
+    let Some(run) = run_edit_page() else { return };
+    let r = &run["edit_save"];
+    // AC 4: one `edit` request with the whole text, the tags as words and the loaded text as base.
+    assert_eq!(
+        r["sent"],
+        json!([{"req": r["sent"][0]["req"], "cmd": "edit", "id": ACTED,
+                "text": "New text #Web\nsecond line", "tags": ["#y", "new"], "base": r["base"],
+                "base_tags": ["y"]}]),
+        "{r}"
+    );
+    assert_eq!(r["shown"]["editing"], false, "{r}");
+    assert_eq!(
+        r["shown"]["words"],
+        json!(["New text #Web\nsecond line\n"]),
+        "{r}"
+    );
+    assert_eq!(r["shown"]["stale"], true, "the AI detail shows stale: {r}");
+    assert_eq!(r["shown"]["toast"], "saved", "{r}");
+    // The list row updates: the board is asked again after the save.
+    assert_eq!(r["boards"], 1, "{r}");
+    let r = &run["edit_save_button"];
+    assert_eq!(r["sent"], 1, "{r}");
+    assert_eq!(r["shown"]["words"], json!(["by the button\n"]), "{r}");
+}
+
+#[test]
+fn esc_and_cancel_leave_edit_mode_without_writing() {
+    let Some(run) = run_edit_page() else { return };
+    for (how, r) in [
+        ("Esc", &run["edit_cancel"]["esc"]),
+        ("Cancel", &run["edit_cancel"]["button"]),
+    ] {
+        assert_eq!(r["sent"], 0, "{how}: {r}");
+        assert_eq!(r["shown"]["editing"], false, "{how}: {r}");
+        assert_eq!(
+            r["shown"]["words"],
+            json!(["Retry bug only on Firefox\n\n  keep   these bytes  \n"]),
+            "{how}: the old text: {r}"
+        );
+        assert_eq!(
+            r["shown"]["toast"], "cancelled · nothing saved",
+            "{how}: {r}"
+        );
+    }
+    // IME composition: Ctrl+Enter and Esc while composing do nothing.
+    let r = &run["edit_composing"];
+    assert_eq!(r["sent"], 0, "{r}");
+    assert_eq!(r["shown"]["editing"], true, "{r}");
+    assert_eq!(r["shown"]["draft"], "typing with an IME", "{r}");
+}
+
+#[test]
+fn the_focus_refresh_keeps_edit_mode_and_the_draft() {
+    let Some(run) = run_edit_page() else { return };
+    // AC 6: the board is reloaded, the same text box stays with the draft in it.
+    let r = &run["edit_refresh"];
+    assert_eq!(r["boards"], 1, "{r}");
+    assert_eq!(r["sameBox"], true, "{r}");
+    assert_eq!(r["shown"]["editing"], true, "{r}");
+    assert_eq!(r["shown"]["draft"], "a draft kept over a refresh", "{r}");
+    assert_eq!(r["shown"]["tags"], "#kept", "{r}");
+    assert_eq!(r["sent"], 0, "{r}");
+}
+
+#[test]
+fn a_save_refused_as_changed_outside_reloads_the_note_and_keeps_the_draft() {
+    let Some(run) = run_edit_page() else { return };
+    // AC 2 (page side): the message, the note asked again, the draft still in the box.
+    let r = &run["edit_changed_outside"];
+    let refused = &r["refused"]["shown"];
+    assert_eq!(refused["editing"], true, "{r}");
+    assert_eq!(refused["draft"], "my draft", "{r}");
+    assert!(
+        refused["error"]
+            .as_str()
+            .unwrap()
+            .contains("the note changed outside the window"),
+        "{r}"
+    );
+    assert_eq!(
+        refused["words"],
+        json!(["changed in Obsidian\n"]),
+        "the text in the file now is shown: {r}"
+    );
+    assert_eq!(r["refused"]["detailsAfter"], 2, "detail asked again: {r}");
+    // A second save sends the reloaded text as its base and goes through.
+    assert_eq!(r["second"]["base"], "changed in Obsidian\n", "{r}");
+    assert_eq!(r["second"]["text"], "my draft", "{r}");
+    assert_eq!(
+        r["second"]["base_tags"],
+        json!(["y", "obsidian"]),
+        "and the reloaded tags: {r}"
+    );
+    assert_eq!(r["shown"]["editing"], false, "{r}");
+    assert_eq!(r["shown"]["words"], json!(["my draft\n"]), "{r}");
+}
+
+#[test]
+fn a_refused_or_empty_save_keeps_edit_mode() {
+    let Some(run) = run_edit_page() else { return };
+    let r = &run["edit_error"]["shown"];
+    assert_eq!(r["editing"], true, "{r}");
+    assert_eq!(r["draft"], "xxxxxxxxxx", "{r}");
+    assert_eq!(r["error"], "could not save: the text is too long", "{r}");
+    // Empty or white-space text sends no request (the backend answers `empty`).
+    let r = &run["edit_empty"];
+    assert_eq!(r["sent"], 0, "{r}");
+    assert_eq!(r["shown"]["editing"], true, "{r}");
+    assert!(
+        r["shown"]["error"].as_str().unwrap().contains("empty"),
+        "{r}"
+    );
+}
+
+#[test]
+fn another_note_is_not_selected_while_editing() {
+    let Some(run) = run_edit_page() else { return };
+    // Questions Log 2026-11-21: a row click while editing is blocked; the draft stays.
+    let r = &run["edit_switch"];
+    let b = &r["blocked"];
+    assert_eq!(b["detail"], 0, "no detail asked for the other note: {r}");
+    assert_eq!(b["current"], "false", "{r}");
+    assert_eq!(b["shown"]["editing"], true, "{r}");
+    assert_eq!(b["shown"]["draft"], "a draft I want to keep", "{r}");
+    assert_eq!(b["shown"]["toast"], "save or cancel the edit first", "{r}");
+    assert_eq!(b["shown"]["focusIsBox"], true, "{r}");
+    // After Esc the row click selects the other note.
+    assert_eq!(r["after"]["editing"], false, "{r}");
+    assert_ne!(r["after"]["id"], ACTED, "{r}");
+}
+
+#[test]
+fn an_inbox_note_has_no_edit_button_and_says_read_only() {
+    let Some(run) = run_edit_page() else { return };
+    // AC 5.
+    let r = &run["inbox"]["shown"];
+    assert_eq!(r["id"], "inbox/p", "{r}");
+    assert_eq!(r["buttons"], json!(["Copy id", "Move to trash"]), "{r}");
+    assert_eq!(r["readOnly"], "Inbox notes are read-only.", "{r}");
 }

@@ -167,8 +167,8 @@ quick box. Neither reads the other's folder.
 A build with the `window` feature has its own dashboard window: counts, search, kind filters, notes by day and a
 detail panel with the AI detail. The page is inside the binary and loads nothing from the network.
 
-Window actions on the selected note: `Add as tags` does what `easy-note tag <id> --accept-ai` does; `Open in editor`
-runs `xdg-open` on the note file; `Copy id` copies the id; `Move to trash` does what `easy-note rm <id>` does, and its
+Window actions on the selected note: `Add as tags` does what `easy-note tag <id> --accept-ai` does; `Edit` changes
+the text and tags in the window and saves them as `easy-note edit` does (an inbox note is read-only); `Copy id` copies the id; `Move to trash` does what `easy-note rm <id>` does, and its
 toast offers `Undo` (`easy-note restore <id>`) for 6 seconds. The AI file moves with the note. Nothing else in the
 window changes a note file.
 
@@ -182,7 +182,8 @@ easy-note dashboard
 ```
 
 `dashboard` opens the window when a desktop is running (`WAYLAND_DISPLAY` or `DISPLAY` is set). In a build without
-`window`, or with no desktop, it opens the Obsidian dashboard below instead.
+`window`, or with no desktop, it opens the Obsidian dashboard below instead. `easy-note dashboard --note <id>` opens
+the window on that note.
 
 ## Obsidian dashboard
 
@@ -254,7 +255,7 @@ cargo install --path . --locked --features tray
 ```
 
 Then run `easy-note tray`. The menu holds New note · Ctrl+Alt+N (opens the quick box with the last
-context), Open dashboard, your 5 newest notes (click one to open it), Open notes folder and Quit. It needs a desktop with a
+context), Open dashboard, your 5 newest notes (click one to open the window on it; without the window, the file opens), Open notes folder and Quit. It needs a desktop with a
 StatusNotifier host: KDE has one; GNOME needs the AppIndicator extension. Without a host,
 `easy-note tray` exits with 1 and prints the hotkey hint, and `easy-note doctor` says
 `tray: no tray host`. At login the panel may start after the tray, so the tray checks again every

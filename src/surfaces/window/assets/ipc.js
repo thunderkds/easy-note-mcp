@@ -1,5 +1,6 @@
 /*
- * IPC contract between this page and the Rust window (HUN-278 read, HUN-279 actions, HUN-280 capture). All of it lives in this file.
+ * IPC contract between this page and the Rust window (HUN-278 read, HUN-279 actions, HUN-280 capture,
+ * HUN-286 edit and the initial note). All of it lives in this file.
  *
  * Request (page -> Rust):
  *   window.ipc.postMessage(JSON.stringify({ req: <number>, cmd: <string>, ...args }))
@@ -10,7 +11,9 @@
  *       { "req": 3, "cmd": "accept_ai", "id": "<note id>" }
  *       { "req": 4, "cmd": "trash", "id": "<note id>" }
  *       { "req": 5, "cmd": "restore", "id": "<note id>" }
- *       { "req": 6, "cmd": "open_in_editor", "id": "<note id>" }
+ *       { "req": 6, "cmd": "edit", "id": "<note id>", "text": "<the whole new text>",
+ *         "tags": ["<tag>", ...], "base": "<the `text` of the detail the page loaded>",
+ *         "base_tags": ["<the `tags` of that detail>", ...] }
  *       { "req": 7, "cmd": "context" }
  *       { "req": 8, "cmd": "add", "text": "<the typed text>", "keep_context": true }
  *   The correlation key is `req`, not `id`, because `id` is already the note id in the `detail`
@@ -37,15 +40,33 @@
  *                     "cannot use the note"
  *   restore        -> { restored: <id> } (`easy-note restore`; the page's Undo)
  *                     errors: as trash; "no such note" also when the note is already back
- *   open_in_editor -> { opened: <id> } (`xdg-open <note file>`, an argv list, no shell)
- *                     errors: "no such note", "bad id", "missing id", "xdg-open failed", "cannot run xdg-open",
- *                     "cannot read the note"
+ *   edit           -> the updated `detail` (`easy-note edit`: Store::update masks, re-validates and sets `updated`;
+ *                     `masked` is true also when this save masked something). `text` and `tags` are the whole new
+ *                     values, not a diff. `tags` follow `easy-note tag` (a leading `#` is dropped, each once, in
+ *                     order; a tag the note already has is kept as it is); when the text changed, its `#words`
+ *                     are added after them, as `easy-note edit` does. Same text (a trailing newline aside) and
+ *                     same tags: nothing is written, the reply is the `detail`. The AI detail turns `stale` when
+ *                     the text changed. No `after_save` enrich runs (`easy-note edit` runs none).
+ *                     errors (nothing written): "the note changed outside the window" (the note's text is not
+ *                     `base` now: reload the note with `detail`, keep the draft), "empty" (empty or white-space
+ *                     text), "inbox notes are read-only", "no such note" (unknown or trashed id), "bad id",
+ *                     "not a tag", "missing id", "missing text", "missing tags" (not a list of strings),
+ *                     "missing base", "the text is too long", "cannot use the note"
  *   context        -> { context: { repo, task } | null } (the `easy-note quick` last context, FR-027); never fails
  *   add            -> the new note's `detail` (`easy-note add` with `source: quick`; the last context when
  *                     keep_context is true, else none; a secret is masked on write)
  *                     errors: "empty", "missing text", "the text is too long", "cannot use the note"
- *   A trashed id is "no such note" for detail, accept_ai and open_in_editor.
+ *   A trashed id is "no such note" for detail, accept_ai and edit.
  *   Copy id needs no request: the page uses navigator.clipboard.
+ *   No request opens a note in another app (HUN-286 removed the xdg-open request).
+ *
+ * Initial note (Rust -> page, `easy-note dashboard --note <id>`, HUN-286):
+ *   window.__easyNote.initialNote is the note id to select after the first board load, as a string,
+ *   or null when the window was opened without `--note`. Rust checks the id with the store's id
+ *   check first and hands it over in an initialization script that runs before this file:
+ *     window.__easyNote = { initialNote: <serde_json string> };
+ *   This file keeps that one value and adds `reply`. An unknown id gets the detail's
+ *   "no such note" error, as any other id does.
  */
 (function () {
   'use strict';
@@ -84,14 +105,18 @@
     });
   }
 
-  window.__easyNote = { reply: reply };
+  var prior = window.__easyNote;
+  var initialNote = prior && typeof prior.initialNote === 'string' ? prior.initialNote : null;
+  window.__easyNote = { reply: reply, initialNote: initialNote };
   window.easyNoteIpc = {
     board: function () { return request('board'); },
     detail: function (noteId) { return request('detail', { id: noteId }); },
     acceptAi: function (noteId) { return request('accept_ai', { id: noteId }); },
     trash: function (noteId) { return request('trash', { id: noteId }); },
     restore: function (noteId) { return request('restore', { id: noteId }); },
-    openInEditor: function (noteId) { return request('open_in_editor', { id: noteId }); },
+    edit: function (noteId, text, tags, base, baseTags) {
+      return request('edit', { id: noteId, text: text, tags: tags, base: base, base_tags: baseTags });
+    },
     context: function () { return request('context'); },
     add: function (text, keepContext) { return request('add', { text: text, keep_context: !!keepContext }); }
   };

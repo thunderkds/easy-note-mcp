@@ -197,7 +197,11 @@ pub enum Command {
     Tray,
     /// Open the dashboard: easy-note's own window in a `window` build on a desktop, else
     /// `easy-note.base` in Obsidian (run `install obsidian` first).
-    Dashboard,
+    Dashboard {
+        /// Open the window on this note (its detail shown).
+        #[arg(long, value_name = "ID")]
+        note: Option<String>,
+    },
     /// Set up the launcher, the Obsidian dashboard and vault, and the tray login item in one go.
     Setup,
     /// Add the Claude Code hook (shows a diff, keeps a backup of settings.json), the launcher, the
@@ -246,7 +250,7 @@ pub fn starts_mcp(command: &Command) -> bool {
         | Command::Quick { .. }
         | Command::Hotkey
         | Command::Tray
-        | Command::Dashboard
+        | Command::Dashboard { .. }
         | Command::Setup
         | Command::Install { .. }
         | Command::Uninstall { .. } => false,
@@ -448,11 +452,23 @@ fn dispatch(command: Command) -> Outcome {
             say_raw(&super::quick::hotkey(&desktop))
         }
         Command::Tray => super::tray::run().map_err(Fail::runtime),
-        Command::Dashboard => super::dashboard::run().map_err(Fail::runtime),
+        Command::Dashboard { note } => dashboard(note.as_deref()),
         Command::Setup => setup(),
         Command::Install { target } => installed(target, super::install::Action::Install),
         Command::Uninstall { target } => installed(target, super::install::Action::Uninstall),
     }
+}
+
+/// `dashboard [--note <id>]`: an id that fails the store's id check is a usage error before
+/// anything opens; a valid id that names no note is the page's "no such note".
+fn dashboard(note: Option<&str>) -> Outcome {
+    if let Some(id) = note {
+        match crate::core::store::Store::open()?.canonical_id(id) {
+            Ok(_) | Err(StoreError::NotFound(_)) => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    super::dashboard::run(note).map_err(Fail::runtime)
 }
 
 /// `install` / `uninstall`: print what the installer reports. The text may quote lines of the
@@ -717,7 +733,7 @@ mod tests {
             Command::Quick { cwd: None },
             Command::Hotkey,
             Command::Tray,
-            Command::Dashboard,
+            Command::Dashboard { note: None },
             Command::Setup,
             Command::Install {
                 target: Target::Claude,

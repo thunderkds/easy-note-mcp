@@ -13,8 +13,14 @@
 //! - `{"cmd": "accept_ai", "id"}` → the updated `detail` (`easy-note tag <id> --accept-ai`)
 //! - `{"cmd": "trash", "id"}` → `{"trashed": id}` (`easy-note rm`, the AI file moves too)
 //! - `{"cmd": "restore", "id"}` → `{"restored": id}` (`easy-note restore`)
-//! - `{"cmd": "open_in_editor", "id"}` → `{"opened": id}`: `xdg-open <note file>`, an argv list
-//!   (NFR-001); writes nothing
+//! - `{"cmd": "edit", "id", "text", "tags": [..], "base", "base_tags": [..]}` → the updated `detail` (`easy-note
+//!   edit`, HUN-286): `base` is the `detail` text the page loaded; when the note's text is not
+//!   `base` now (a trailing newline aside), nothing is written and the error is `the note changed
+//!   outside the window`. Tags follow `easy-note tag` (no `#`, each once; a tag the note already
+//!   has is kept as it is); a changed text adds its `#words` as `easy-note edit` does. Empty text
+//!   is `empty`; no change writes nothing. `masked` is also true when the guard masked on this save
+//!
+//! No command opens a note in another app (HUN-286: `open_in_editor` is gone).
 //!
 //! Capture (FR-044), the same rule as `easy-note quick` (FR-027) and the same core call as
 //! `easy-note add`:
@@ -30,7 +36,6 @@
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashSet};
-use std::process::{Command, Stdio};
 
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use serde_json::{json, Map, Value};
@@ -73,7 +78,7 @@ fn answer(store: &Store, request: &str, on_added: &dyn Fn(&str)) -> Result<Value
         Some("accept_ai") => accept_ai(store, id()?),
         Some("trash") => trash(store, id()?),
         Some("restore") => restore(store, id()?),
-        Some("open_in_editor") => open_in_editor(store, id()?),
+        Some("edit") => edit(store, id()?, &request),
         Some("context") => Ok(json!({ "context": context(store) })),
         Some("add") => add(store, &request, on_added),
         Some(_) => Err("unknown command"),
@@ -136,19 +141,74 @@ fn restore(store: &Store, id: &str) -> Result<Value, &'static str> {
     Ok(json!({ "restored": id }))
 }
 
-/// `xdg-open <note file>`: the path comes only from the store's read of a valid, live id.
-fn open_in_editor(store: &Store, id: &str) -> Result<Value, &'static str> {
-    let note = store.read(id).map_err(store_error)?;
-    let path = note.path.ok_or("cannot read the note")?;
-    let status = Command::new("xdg-open")
-        .arg(path)
-        .stdin(Stdio::null())
-        .status()
-        .map_err(|_| "cannot run xdg-open")?;
-    if !status.success() {
-        return Err("xdg-open failed");
+/// `edit <id>` (`cli::write::edit`) with the text and tags from the page, guarded by `base`.
+fn edit(store: &Store, id: &str, request: &Value) -> Result<Value, &'static str> {
+    let text = request
+        .get("text")
+        .and_then(Value::as_str)
+        .ok_or("missing text")?;
+    let wanted: Vec<&str> = request
+        .get("tags")
+        .and_then(Value::as_array)
+        .and_then(|tags| tags.iter().map(Value::as_str).collect())
+        .ok_or("missing tags")?;
+    let base = request
+        .get("base")
+        .and_then(Value::as_str)
+        .ok_or("missing base")?;
+    let base_tags: Vec<&str> = request
+        .get("base_tags")
+        .and_then(Value::as_array)
+        .and_then(|tags| tags.iter().map(Value::as_str).collect())
+        .ok_or("missing base")?;
+    if text.trim().is_empty() {
+        return Err("empty");
     }
-    Ok(json!({ "opened": id }))
+    let note = store.read(id).map_err(store_error)?;
+    store.ensure_writable(note.id()).map_err(store_error)?;
+    let same = |a: &str, b: &str| a.trim_end_matches('\n') == b.trim_end_matches('\n');
+    let shown = guard::mask_for_output(&note.body);
+    let before: Vec<String> = match note.fields.get("tags") {
+        Some(Field::List(tags)) => tags.clone(),
+        _ => vec![],
+    };
+    // The tags count as part of the base: a tag change made in another app is not overwritten.
+    if !same(&shown, base) || before != base_tags {
+        return Err("the note changed outside the window");
+    }
+    let mut now: Vec<String> = vec![];
+    for tag in wanted {
+        // The page sends each tag as `#tag`; a tag the note has is kept as stored (`easy-note edit`).
+        let bare = tag.strip_prefix('#').unwrap_or(tag);
+        let tag = match before.iter().find(|t| *t == bare) {
+            Some(kept) => kept.clone(),
+            None => tags::normalize(tag).ok_or("not a tag")?,
+        };
+        if !now.contains(&tag) {
+            now.push(tag);
+        }
+    }
+    let changed = (!same(&shown, text)).then_some(text);
+    if changed.is_some() {
+        for tag in tags::extract(text) {
+            if !now.contains(&tag) {
+                now.push(tag);
+            }
+        }
+    }
+    let new_tags = (now != before).then_some(now);
+    if changed.is_none() && new_tags.is_none() {
+        return detail(store, id);
+    }
+    let updated = store
+        .update(id, changed, new_tags.as_deref())
+        .map_err(store_error)?;
+    ai_view::sync(store, id);
+    let mut out = detail(store, id)?;
+    if !updated.masked.is_empty() {
+        out["masked"] = json!(true);
+    }
+    Ok(out)
 }
 
 /// The last context for the dialog's chip: repo and task, or null when it holds neither.
