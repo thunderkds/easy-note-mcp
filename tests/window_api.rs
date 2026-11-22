@@ -990,7 +990,8 @@ fn actions_refuse_bad_and_unknown_ids_and_change_nothing() {
             (json!("2026/11/20261119-090000-aaaa"), "bad id"),
             (json!("20261119-090000-ffff"), "no such note"),
         ] {
-            let mut request = json!({"cmd": cmd, "text": "x", "tags": [], "base": "x"});
+            let mut request =
+                json!({"cmd": cmd, "text": "x", "tags": [], "base": "x", "base_tags": []});
             if !id.is_null() {
                 request["id"] = id.clone();
             }
@@ -1675,8 +1676,53 @@ fn ipc_from_with_runs_the_hook_only_for_the_apps_own_page() {
 
 /// The `edit` request for `id` with the `detail` text as the base.
 fn edit_request(store: &Store, id: &str, text: &str, tags: Value) -> Value {
-    let base = call(store, &json!({"cmd": "detail", "id": id}))["text"].clone();
-    json!({"cmd": "edit", "id": id, "text": text, "tags": tags, "base": base})
+    let shown = call(store, &json!({"cmd": "detail", "id": id}));
+    json!({"cmd": "edit", "id": id, "text": text, "tags": tags, "base": shown["text"], "base_tags": shown["tags"]})
+}
+
+/// `acted`, with its stored tags replaced by `tags` (a hand edit in another app).
+fn acted_with_tags(sb: &Sandbox, tags: &str) -> PathBuf {
+    let path = acted(sb);
+    let file = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(
+        &path,
+        file.replace("tags: [\"y\"]", &format!("tags: [{tags}]")),
+    )
+    .unwrap();
+    path
+}
+
+#[test]
+fn edit_keeps_existing_tags_the_page_sends_with_a_hash() {
+    // The page sends every tag as `#tag` (app.js `startEdit`); a kept tag stays as stored, as in
+    // `easy-note edit`, even when `easy-note tag` would refuse or lowercase it.
+    let sb = Sandbox::new("edit-hash-tags");
+    let path = acted_with_tags(&sb, "\"café\", \"Project\"");
+    let store = sb.store();
+    let request = edit_request(&store, ACTED, "new text", json!(["#café", "#Project"]));
+    let out = call(&store, &request);
+    assert_eq!(out["tags"], json!(["café", "Project"]), "{out}");
+    let file = std::fs::read_to_string(&path).unwrap();
+    assert!(file.contains("tags: [\"café\", \"Project\"]"), "{file}");
+}
+
+#[test]
+fn edit_refuses_when_only_the_tags_changed_outside_the_window() {
+    // AC 2 for the tags: a tag change made in another app is not overwritten without a word.
+    let sb = Sandbox::new("edit-stale-tags");
+    let path = acted(&sb);
+    let store = sb.store();
+    let request = edit_request(&store, ACTED, "my draft", json!(["#y"]));
+    let file = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(
+        &path,
+        file.replace("tags: [\"y\"]", "tags: [\"y\", \"obsidian\"]"),
+    )
+    .unwrap();
+    let before = snapshot(&sb.notes());
+    let out = call(&store, &request);
+    assert_eq!(out, json!({"error": "the note changed outside the window"}));
+    assert_eq!(snapshot(&sb.notes()), before, "byte for byte");
 }
 
 #[test]
@@ -1742,7 +1788,7 @@ fn edit_with_nothing_changed_writes_nothing() {
     let before = snapshot(&sb.notes());
     let out = call(
         &store,
-        &json!({"cmd": "edit", "id": ACTED, "text": base, "tags": ["y"], "base": base}),
+        &json!({"cmd": "edit", "id": ACTED, "text": base, "tags": ["y"], "base": base, "base_tags": ["y"]}),
     );
     assert_eq!(out["id"], ACTED, "{out}");
     assert_eq!(
@@ -1806,8 +1852,7 @@ fn edit_errors_write_nothing() {
     let store = sb.store();
     let base = call(&store, &json!({"cmd": "detail", "id": ACTED}))["text"].clone();
     let inbox_base = call(&store, &json!({"cmd": "detail", "id": "inbox/p"}))["text"].clone();
-    let ok =
-        |id: &str, b: &Value| json!({"cmd": "edit", "id": id, "text": "x", "tags": [], "base": b});
+    let ok = |id: &str, b: &Value| json!({"cmd": "edit", "id": id, "text": "x", "tags": [], "base": b, "base_tags": if id == ACTED { json!(["y"]) } else { json!([]) }});
     let before = snapshot(&sb.notes());
     let mut cases = vec![];
     for empty in ["", "   ", " \n\t\n"] {
@@ -1826,6 +1871,7 @@ fn edit_errors_write_nothing() {
         ("text", "missing text"),
         ("tags", "missing tags"),
         ("base", "missing base"),
+        ("base_tags", "missing base"),
     ] {
         let mut r = ok(ACTED, &base);
         r.as_object_mut().unwrap().remove(key);
@@ -1970,7 +2016,8 @@ fn ctrl_enter_saves_through_edit_and_shows_the_new_note() {
     assert_eq!(
         r["sent"],
         json!([{"req": r["sent"][0]["req"], "cmd": "edit", "id": ACTED,
-                "text": "New text #Web\nsecond line", "tags": ["#y", "new"], "base": r["base"]}]),
+                "text": "New text #Web\nsecond line", "tags": ["#y", "new"], "base": r["base"],
+                "base_tags": ["y"]}]),
         "{r}"
     );
     assert_eq!(r["shown"]["editing"], false, "{r}");
@@ -2051,6 +2098,11 @@ fn a_save_refused_as_changed_outside_reloads_the_note_and_keeps_the_draft() {
     // A second save sends the reloaded text as its base and goes through.
     assert_eq!(r["second"]["base"], "changed in Obsidian\n", "{r}");
     assert_eq!(r["second"]["text"], "my draft", "{r}");
+    assert_eq!(
+        r["second"]["base_tags"],
+        json!(["y", "obsidian"]),
+        "and the reloaded tags: {r}"
+    );
     assert_eq!(r["shown"]["editing"], false, "{r}");
     assert_eq!(r["shown"]["words"], json!(["my draft\n"]), "{r}");
 }

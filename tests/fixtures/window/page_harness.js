@@ -97,7 +97,7 @@ async function scenario(run) {
     if (editErrors.length) return { error: editErrors.shift() };
     const d = notes[m.id];
     if (!d) return { error: 'no such note' };
-    if (d.text !== m.base) return { error: 'the note changed outside the window' };
+    if (d.text !== m.base || JSON.stringify(d.tags || []) !== JSON.stringify(m.base_tags)) return { error: 'the note changed outside the window' };
     const text = m.text.replace(/\n*$/, '\n');
     const tags = [];
     m.tags.forEach((t) => { t = t.replace(/^#/, ''); if (t && !tags.includes(t)) tags.push(t); });
@@ -266,6 +266,7 @@ async function editScenarios(out) {
     s.edit('my draft');
     // Another app writes the file after the page loaded it.
     s.notes[editable].text = 'changed in Obsidian\n';
+    s.notes[editable].tags = ['y', 'obsidian'];
     s.key(s.box(), 'Enter', { ctrlKey: true });
     await sleep(80);
     const refused = { shown: s.shown(), detailsAfter: s.sent('detail').length };

@@ -14,7 +14,7 @@
     ['stale', 'Stale', function (n) { return !!(n.ai && n.stale); }]
   ];
 
-  // `edit` (HUN-286) is the draft while the panel is in edit mode: { id, base, text, tags, text0, tags0, error, outside }.
+  // `edit` (HUN-286) is the draft while the panel is in edit mode: { id, base, baseTags, text, tags, text0, tags0, error, outside }.
   // It lives here, not only in the DOM, so a re-render keeps it; the focus refresh never re-renders the panel.
   var state = { board: null, notes: [], query: '', filter: 'all', sel: '', detail: null, detailError: '', edit: null };
   var UNDO_MS = 6000;
@@ -303,10 +303,10 @@
   }
 
   function startEdit(d) {
-    if (busy) return;
+    if (busy || state.sel !== d.id) return;
     var text = str(d.text).replace(/\n$/, '');
     var tags = tagsOf(d).map(function (t) { return '#' + t; }).join(' ');
-    state.edit = { id: d.id, base: str(d.text), text: text, tags: tags, text0: text, tags0: tags, error: '', outside: false };
+    state.edit = { id: d.id, base: str(d.text), baseTags: tagsOf(d), text: text, tags: tags, text0: text, tags0: tags, error: '', outside: false };
     renderDetail();
     focusEditBox();
   }
@@ -361,7 +361,7 @@
     busy = true;
     var id = e.id;
     var tags = e.tags.split(/[\s,]+/).filter(Boolean);
-    window.easyNoteIpc.edit(id, e.text, tags, e.base).then(function (d) {
+    window.easyNoteIpc.edit(id, e.text, tags, e.base, e.baseTags).then(function (d) {
       if (state.edit === e) state.edit = null;
       editBox = null;
       if (state.sel === id) {
@@ -377,6 +377,7 @@
       }
       return window.easyNoteIpc.detail(id).then(function (d) {
         e.base = str(d.text);
+        e.baseTags = tagsOf(d);
         e.outside = true;
         if (state.sel === id) state.detail = d;
         editFailed(e, 'Not saved: ' + OUTSIDE + '. Your draft is kept below the text in the file now. Save again to replace that text.');

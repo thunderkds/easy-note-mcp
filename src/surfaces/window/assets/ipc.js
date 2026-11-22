@@ -12,7 +12,8 @@
  *       { "req": 4, "cmd": "trash", "id": "<note id>" }
  *       { "req": 5, "cmd": "restore", "id": "<note id>" }
  *       { "req": 6, "cmd": "edit", "id": "<note id>", "text": "<the whole new text>",
- *         "tags": ["<tag>", ...], "base": "<the `text` of the detail the page loaded>" }
+ *         "tags": ["<tag>", ...], "base": "<the `text` of the detail the page loaded>",
+ *         "base_tags": ["<the `tags` of that detail>", ...] }
  *       { "req": 7, "cmd": "context" }
  *       { "req": 8, "cmd": "add", "text": "<the typed text>", "keep_context": true }
  *   The correlation key is `req`, not `id`, because `id` is already the note id in the `detail`
@@ -113,8 +114,8 @@
     acceptAi: function (noteId) { return request('accept_ai', { id: noteId }); },
     trash: function (noteId) { return request('trash', { id: noteId }); },
     restore: function (noteId) { return request('restore', { id: noteId }); },
-    edit: function (noteId, text, tags, base) {
-      return request('edit', { id: noteId, text: text, tags: tags, base: base });
+    edit: function (noteId, text, tags, base, baseTags) {
+      return request('edit', { id: noteId, text: text, tags: tags, base: base, base_tags: baseTags });
     },
     context: function () { return request('context'); },
     add: function (text, keepContext) { return request('add', { text: text, keep_context: !!keepContext }); }

@@ -13,7 +13,7 @@
 //! - `{"cmd": "accept_ai", "id"}` → the updated `detail` (`easy-note tag <id> --accept-ai`)
 //! - `{"cmd": "trash", "id"}` → `{"trashed": id}` (`easy-note rm`, the AI file moves too)
 //! - `{"cmd": "restore", "id"}` → `{"restored": id}` (`easy-note restore`)
-//! - `{"cmd": "edit", "id", "text", "tags": [..], "base"}` → the updated `detail` (`easy-note
+//! - `{"cmd": "edit", "id", "text", "tags": [..], "base", "base_tags": [..]}` → the updated `detail` (`easy-note
 //!   edit`, HUN-286): `base` is the `detail` text the page loaded; when the note's text is not
 //!   `base` now (a trailing newline aside), nothing is written and the error is `the note changed
 //!   outside the window`. Tags follow `easy-note tag` (no `#`, each once; a tag the note already
@@ -156,6 +156,11 @@ fn edit(store: &Store, id: &str, request: &Value) -> Result<Value, &'static str>
         .get("base")
         .and_then(Value::as_str)
         .ok_or("missing base")?;
+    let base_tags: Vec<&str> = request
+        .get("base_tags")
+        .and_then(Value::as_array)
+        .and_then(|tags| tags.iter().map(Value::as_str).collect())
+        .ok_or("missing base")?;
     if text.trim().is_empty() {
         return Err("empty");
     }
@@ -163,16 +168,19 @@ fn edit(store: &Store, id: &str, request: &Value) -> Result<Value, &'static str>
     store.ensure_writable(note.id()).map_err(store_error)?;
     let same = |a: &str, b: &str| a.trim_end_matches('\n') == b.trim_end_matches('\n');
     let shown = guard::mask_for_output(&note.body);
-    if !same(&shown, base) {
-        return Err("the note changed outside the window");
-    }
     let before: Vec<String> = match note.fields.get("tags") {
         Some(Field::List(tags)) => tags.clone(),
         _ => vec![],
     };
+    // The tags count as part of the base: a tag change made in another app is not overwritten.
+    if !same(&shown, base) || before != base_tags {
+        return Err("the note changed outside the window");
+    }
     let mut now: Vec<String> = vec![];
     for tag in wanted {
-        let tag = match before.iter().find(|t| *t == tag) {
+        // The page sends each tag as `#tag`; a tag the note has is kept as stored (`easy-note edit`).
+        let bare = tag.strip_prefix('#').unwrap_or(tag);
+        let tag = match before.iter().find(|t| *t == bare) {
             Some(kept) => kept.clone(),
             None => tags::normalize(tag).ok_or("not a tag")?,
         };
