@@ -55,7 +55,6 @@ Mode: auto
 Checks: tests `cargo test --locked --features window,tray` — 599 passed, 0 failed, 6 ignored; `cargo test --locked` — 591 passed, 0 failed; lint `cargo clippy --all-targets --locked [--features window,tray] -- -D warnings` exit 0 both, `cargo fmt --check` clean; reviews code-review — 0 P0, 0 P1, 0 P2, 3 P3 open; security-review — no findings (edit id path, `--note` script injection, tray argv, XSS, IPC origin, secret masking checked); fresh reviewer `Reviewer: HUN-286` approve on `ad41bf5`; real run: auto verify on `1f1405a` (auto-checked, not /verify)
 Memory: `memory/learnings.md` — 2026-11-22 `[admin]` counts only the hook's own verify; one task per message; reviewer record per commit; PRD table blank line after a merge (committed `d71b654` on `feat/HUN-287-deb`)
 Not done: merge (admin: after the auto verify pass); auto verify: ☐ blocked (session 8778de87-16c3-42ef-8526-bbfca6c79078, commit ad41bf5dc426f3c3d0aed4c45b9861c2eea35800, log .claude/verify-runs/HUN-286-ad41bf5dc426.log)
-Paused: auto-mode check failed — Risk Medium: decision 2 (`SAFER OPTION`) is a choice — it is flagged ⚠ — so it must be `DEBATED` with exactly 2 Advocates named [report 0eb82ae3e67f]
 
 ## Evidence
 
