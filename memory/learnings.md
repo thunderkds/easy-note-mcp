@@ -83,3 +83,11 @@
 - **Gotcha**: a `cargo` stand-in on PATH checks the script's feature list without a release build, but it cannot prove the script then stops — `target/release/easy-note` may still be there from an earlier real build, and the script happily packages it. Assert the recorded arguments only.
 - **Pattern**: `dpkg-shlibdeps` wants a `debian/control` beside its working directory; write a throwaway one *outside* the staged package root, or it ships inside the `.deb`.
 **Files**: scripts/build_deb.sh, tests/deb.rs
+
+### 2026-11-22 — `[admin]` counts only the hook's own verify; a blocked deb verify needs a hand merge; merge resolutions can break Markdown tables (HUN-285/286/287)
+- **Gotcha**: `[admin] merge <ID>` accepts only a hook-written `auto-run by hook` verify pass. A user `/verify` row (`/verify by the user, session <sid>, commit <sha>`) satisfies the plain merge gate but not `[admin]`, so HUN-287 (its headless verify blocked on Bash approval for `bash scripts/build_deb.sh`) needs the owner's hand merge, or an allow rule for that command and a fresh auto verify.
+- **Gotcha**: the gate reads only the latest user message: an `[admin]` tag must name exactly one task ID in that message, one merge per message. `git merge --abort` and merging `main` into a task branch are refused under `[admin]` too; the owner runs them.
+- **Gotcha**: a `ReviewerDone` record holds only for the commit it names; any code or doc commit after it (even a one-line PRD fix) needs another `Reviewer: <ID>` spawn. Commits that touch only review files keep it valid.
+- **Pattern**: resolving a conflict in a Markdown table row with a string replace can leave a blank line inside the table, which ends it; check `PRD.md` tables after every merge (HUN-286 `bb6888f` → fixed `ad41bf5`).
+- **Gotcha**: a `.deb` built from a task branch holds only that branch plus `main`; features in Ready for Review are not in it, and every build reports `0.1.0`, so `--version` cannot tell builds apart.
+**Files**: .claude/hooks/pre_bash_block_unsafe_merge.py, scripts/build_deb.sh, PRD.md
