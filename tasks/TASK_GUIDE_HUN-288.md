@@ -75,7 +75,7 @@ Today: the detail panel shows the AI detail when `<notes dir>/.easy-note/ai/<id>
 | 2 | The call does not block the window: the window keeps answering `board`, `detail` and the focus refresh while `claude` runs; the answer reaches the page when the child ends | restated intent |
 | 3 | Errors come back as `{"error": "<words>"}` and write nothing: enrich off (per Q1), `claude` not found, not logged in (the `login_hint` text), timed out, bad answer from `claude`, unknown / trashed / bad id | restated intent |
 | 4 | The note file is byte-for-byte unchanged by `enrich` | NFR-012 |
-| 5 | Panel: `Run AI` sits in the actions row; for a note with AI detail it reads `Run AI again`. While running, the button is disabled with `AI running…`; a second click on the same note sends nothing. When the answer comes, the AI detail section shows the new title, kind, summary and suggested tags; an error shows as a toast and the button comes back | restated intent |
+| 5 | Panel: `Run AI` sits in the actions row; for a note with AI detail it reads `Re-run`. While running, the button is disabled with `AI running…`; a second click on the same note sends nothing. When the answer comes, the AI detail section shows the new title, kind, summary and suggested tags; an error shows as a toast and the button comes back | restated intent |
 | 6 | Selecting another note while AI runs does not lose the answer: the board row gets its AI mark, and coming back to the note shows the AI detail | restated intent |
 | 7 | Every string in the answer goes through `guard::mask_for_output` (the same `mask_all` as every other command) | NFR-002 |
 
@@ -141,7 +141,7 @@ cargo fmt --check \
 | -- | -- | -- | -- |
 | US-016 | get AI detail for one note | select note → Run AI | `AI running…`, then the AI detail section filled in |
 | US-018 | claude not set up | Run AI with no `claude` / not logged in | a toast that names the fix (install, log in, or the config line) |
-| US-016 | AI detail is old | note with stale AI → Run AI again | the stale mark goes, new AI detail shown |
+| US-016 | AI detail is old | note with stale AI → Re-run | the stale mark goes, new AI detail shown |
 
 ---
 
@@ -187,7 +187,7 @@ Threading: `claude -p` can take many seconds. The IPC handler must not wait for 
 | `PRD.md`, `PROJECT_SPEC.md`, `PROJECT_KANBAN.md`, `docs/ddr/*`, `docs/design/*` | Supervisor / owner owned |
 | `memory/*`, `AGENTS.md`, `CLAUDE.md`, `agents/`, `skills/`, `.claude/`, `.github/workflows/*` | Kit / CI files |
 | `src/core/*` | Call existing public functions only; a missing one is a `Question:` to the Supervisor |
-| `src/surfaces/quick.rs` | HUN-289 (styled quick window) changes it |
+| `src/surfaces/quick.rs` | the styled quick window task changes it |
 
 ---
 
@@ -211,4 +211,4 @@ The enrich step over a temp store with a stub `claude` on `PATH` (as `tests/` fo
 ## Questions Log
 
 * 2026-11-22 DECIDED a `Run AI` button in the detail panel (owner pick, chat 2026-11-22)
-* 2026-11-23 OPEN Q1 (owner): with no `[ai]` section (`enrich` off, the default; the owner has no config.toml), should `Run AI` still run? Option A: yes — the click is the opt-in, defaults apply (`command = "claude"`); `after_save` stays off. Option B: no — the toast says `AI is off: set [ai] enrich = "claude" in ~/.config/easy-note/config.toml`, as `easy-note ai enrich` says today. Supervisor recommendation: A, because the person pressed the button for exactly this note; DDR 0007's opt-in is about AI running without being asked. A needs a DDR 0007 note.
+* 2026-11-23 DECIDED Q1 = Option A (Supervisor under [admin], owner said "spawn parallel"; owner may override; needs a DDR 0007 note) — original question: with no `[ai]` section (`enrich` off, the default; the owner has no config.toml), should `Run AI` still run? Option A: yes — the click is the opt-in, defaults apply (`command = "claude"`); `after_save` stays off. Option B: no — the toast says `AI is off: set [ai] enrich = "claude" in ~/.config/easy-note/config.toml`, as `easy-note ai enrich` says today. Supervisor recommendation: A, because the person pressed the button for exactly this note; DDR 0007's opt-in is about AI running without being asked. A needs a DDR 0007 note.

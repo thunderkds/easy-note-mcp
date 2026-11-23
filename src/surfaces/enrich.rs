@@ -267,6 +267,13 @@ fn enrich_one(
     let input = format!("{PROMPT}\n\n<note>\n{}\n</note>\n", text.trim_end());
     let raw = call(program, settings, input)?;
     let (answer, model) = parse_output(&raw, &settings.model)?;
+    // `ai::enrich` stamps `based_on` from the body it reads now: refuse if the person saved an
+    // edit while the child ran, so no AI file is stamped fresh for text it was not written from.
+    match store.read(id) {
+        Ok(now) if now.body == note.body => {}
+        Ok(_) => return Err("the note changed while AI ran".to_string()),
+        Err(_) => return Err("no such note".to_string()),
+    }
     let detail = ai::enrich(
         store,
         note.id(),
@@ -284,6 +291,24 @@ fn enrich_one(
         AiError::Store(_) => "cannot write the AI file".to_string(),
     })?;
     Ok(detail.id)
+}
+
+/// The per-note step for the window's `Run AI` (HUN-288): the same `enrich_one` as `ai enrich <id>`,
+/// with the same settings. The click is the opt-in: `[ai] enrich` is not asked (the defaults apply
+/// without an `[ai]` section), and `after_save` is not touched. `Err` is words for the toast.
+pub(crate) fn for_window(store: &Store, id: &str) -> Result<String, String> {
+    let settings = config::ai_settings().map_err(|e| e.to_string())?;
+    let program = resolve(&settings.command).ok_or_else(|| {
+        let file = config::config_path().map_or_else(
+            |_| "config.toml".to_string(),
+            |path| path.display().to_string(),
+        );
+        format!(
+            "claude not found ({}): install it, or set [ai] command in {file}",
+            settings.command
+        )
+    })?;
+    enrich_one(store, &settings, &program, id)
 }
 
 fn print(text: &str) {

@@ -4,7 +4,8 @@ Capture one-line notes from the terminal, from Claude Code, Codex and Cursor, an
 key press, into a folder of plain Markdown files. Each note gets its context for free: the repo,
 the branch and the task ID of the folder you were in. easy-note is one Linux binary with a CLI and
 an MCP server. It masks secrets on every write and read. It runs no model and makes no network
-call, with one opt-in exception: `easy-note ai enrich` asks your own `claude` CLI for AI detail
+call, with opt-in exceptions: `easy-note ai enrich` (needs `[ai] enrich`) and the window's `Run AI`
+button (your click, one note) ask your own `claude` CLI for AI detail
 (see "AI detail with your Claude subscription").
 
 ## Install
@@ -133,8 +134,9 @@ note files are never changed. Run `easy-note ai render` once to write the pages 
 `easy-note ai enrich` writes the AI detail without a Claude session: it starts your own Claude
 Code CLI (`claude -p`) once per note, signed in to the account you pick. No API key is used:
 easy-note removes `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL` from the
-CLI's environment, so your subscription pays. It is off until you turn it on in
-`~/.config/easy-note/config.toml`:
+CLI's environment, so your subscription pays. The CLI path (`ai enrich`, `--pending`, `after_save`) is
+off until you turn it on in `~/.config/easy-note/config.toml`; the window's `Run AI` click is its own
+opt-in for one note and needs no `[ai]` section:
 
 ```
 [ai]
@@ -184,7 +186,10 @@ A build with the `window` feature has its own dashboard window: counts, search, 
 detail panel with the AI detail. The page is inside the binary and loads nothing from the network.
 
 Window actions on the selected note: `Add as tags` does what `easy-note tag <id> --accept-ai` does; `Edit` changes
-the text and tags in the window and saves them as `easy-note edit` does (an inbox note is read-only); `Copy id` copies the id; `Move to trash` does what `easy-note rm <id>` does, and its
+the text and tags in the window and saves them as `easy-note edit` does (an inbox note is read-only); `Run AI` (`Re-run`
+when the note has AI detail) runs `easy-note ai enrich <id>` on the note without freezing the window, and the click is the
+opt-in, so it needs no `[ai]` section (it starts your own `claude`, `command` and `timeout_secs` of `[ai]` apply; an error shows
+in a toast); `Copy id` copies the id; `Move to trash` does what `easy-note rm <id>` does, and its
 toast offers `Undo` (`easy-note restore <id>`) for 6 seconds. The AI file moves with the note. Nothing else in the
 window changes a note file.
 

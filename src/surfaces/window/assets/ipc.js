@@ -1,6 +1,6 @@
 /*
  * IPC contract between this page and the Rust window (HUN-278 read, HUN-279 actions, HUN-280 capture,
- * HUN-286 edit and the initial note). All of it lives in this file.
+ * HUN-286 edit and the initial note, HUN-288 Run AI). All of it lives in this file.
  *
  * Request (page -> Rust):
  *   window.ipc.postMessage(JSON.stringify({ req: <number>, cmd: <string>, ...args }))
@@ -16,6 +16,7 @@
  *         "base_tags": ["<the `tags` of that detail>", ...] }
  *       { "req": 7, "cmd": "context" }
  *       { "req": 8, "cmd": "add", "text": "<the typed text>", "keep_context": true }
+ *       { "req": 9, "cmd": "enrich", "id": "<note id>" }
  *   The correlation key is `req`, not `id`, because `id` is already the note id in the `detail`
  *   request and in every note object of a reply.
  *
@@ -53,6 +54,14 @@
  *                     "not a tag", "missing id", "missing text", "missing tags" (not a list of strings),
  *                     "missing base", "the text is too long", "cannot use the note"
  *   context        -> { context: { repo, task } | null } (the `easy-note quick` last context, FR-027); never fails
+ *   enrich         -> the updated `detail`, its AI detail filled in (`easy-note ai enrich <id>`, `Run AI`, HUN-288):
+ *                     the person's own `claude` runs, so the reply comes seconds later (up to the `[ai] timeout_secs`,
+ *                     120 by default); the window answers every other request meanwhile. The click is the opt-in:
+ *                     no `[ai]` section is needed. The note file is not changed. One run per note at a time.
+ *                     errors (nothing written): words the person can act on, e.g. "claude not found (claude): install it,
+ *                     or set [ai] command in <config.toml>", "claude exited 1; if it is not logged in, log in once: claude",
+ *                     "timeout", "the answer is not JSON", "no such note", "missing id",
+ *                     "AI is already running for this note"
  *   add            -> the new note's `detail` (`easy-note add` with `source: quick`; the last context when
  *                     keep_context is true, else none; a secret is masked on write)
  *                     errors: "empty", "missing text", "the text is too long", "cannot use the note"
@@ -118,6 +127,7 @@
       return request('edit', { id: noteId, text: text, tags: tags, base: base, base_tags: baseTags });
     },
     context: function () { return request('context'); },
-    add: function (text, keepContext) { return request('add', { text: text, keep_context: !!keepContext }); }
+    add: function (text, keepContext) { return request('add', { text: text, keep_context: !!keepContext }); },
+    enrich: function (noteId) { return request('enrich', { id: noteId }); }
   };
 })();

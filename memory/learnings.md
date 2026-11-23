@@ -91,3 +91,8 @@
 - **Pattern**: resolving a conflict in a Markdown table row with a string replace can leave a blank line inside the table, which ends it; check `PRD.md` tables after every merge (HUN-286 `bb6888f` → fixed `ad41bf5`).
 - **Gotcha**: a `.deb` built from a task branch holds only that branch plus `main`; features in Ready for Review are not in it, and every build reports `0.1.0`, so `--version` cannot tell builds apart.
 **Files**: .claude/hooks/pre_bash_block_unsafe_merge.py, scripts/build_deb.sh, PRD.md
+
+- **Gotcha**: a `verify` Evidence row filled by hand (even `☑ pass`) makes `stop_auto_verify.py --start <ID>` print "its result is already filled for commit <sha> — nothing started", and the `[admin]` merge gate then has no hook-written row. Leave the row empty until the hook writes it; put your own real-run notes in a separate section (HUN-288, HUN-289).
+- **Gotcha**: easy-verifier `score` rejects `findings` whose `evidence_ref` is not a `path:start-end` inside the dimension's own evidence pack, and returns a 100 KB payload that the harness saves to a file; read it with `jq` (`.overall`, `.change_risk`, `.needs_input`). A first call with no `agent_input` returns `change_kind`, `picks` and `test_pairs` questions; answer them on the second call.
+- **Pattern**: to see a webview window work without touching the real desktop, run `Xvfb :77`, `GDK_BACKEND=x11`, unset `WAYLAND_DISPLAY`, `WEBKIT_DISABLE_DMABUF_RENDERER=1`, drive keys and clicks with `libXtst` through ctypes (`XTestFakeKeyEvent`), and capture with `import -window root`; no window manager, so move the pointer over the window first. A temp `HOME`, `EASY_NOTE_DIR` and a stub `claude` on `PATH` keep it away from real notes.
+**Files**: tasks/TASK_REVIEW_HUN-288.md, tasks/TASK_REVIEW_HUN-289.md
