@@ -1,14 +1,18 @@
-//! `quick`: one key press or one click opens a one-line box; Enter saves the note (FR-022).
+//! `quick`: one key press or one click opens a small input box; Enter saves the note (FR-022).
 //!
-//! The box is a native tool, never a window of ours: `zenity`, else `kdialog`, each only when
-//! `$DISPLAY` or `$WAYLAND_DISPLAY` is set; else a prompt on the terminal when stdin is one; else
-//! exit 1. Arguments go as an argv list, never through a shell. Exit 0 with text saves it; any other
+//! In a `window` build with `$DISPLAY` or `$WAYLAND_DISPLAY` set, the box is a small window of ours
+//! that holds only the dashboard's capture dialog (HUN-289, `window::open_capture`): Enter saves,
+//! Shift+Enter adds a line, Esc cancels, Backspace on the empty box drops the context chip. When that
+//! window cannot open, or in another build, the box is a native tool: `zenity`, else `kdialog`, each
+//! only when a display is set; else a prompt on the terminal when stdin is one; else exit 1.
+//! Arguments go as an argv list, never through a shell. Exit 0 with text saves it; any other
 //! exit is a cancel. A save prints the confirmation line and sends it with `notify-send` when found.
 //!
 //! The context is the `--cwd` folder's, else that of the newest `cli` or `hook` note made less than
 //! two hours ago (FR-027). It is read before the box shows, from the notes of this and the last
 //! month only, newest first, and the scan stops at the first note that is too old (NFR-011). It is
-//! shown in the box text, and a leading `-` in the answer drops it.
+//! shown in the box text (the window: its chip), and a leading `-` in the answer drops it (the window:
+//! Backspace on the empty box). Either way the note is saved here, by the same code.
 
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -20,6 +24,8 @@ use chrono::{DateTime, Datelike, FixedOffset, Local};
 use wait_timeout::ChildExt;
 
 use super::cli::{confirmation, safe};
+use super::dashboard;
+use super::window;
 use crate::core::config;
 use crate::core::context::{self, Context};
 use crate::core::format::parse;
@@ -40,21 +46,11 @@ pub fn run(cwd: Option<&Path>) -> Result<(), String> {
         None => last_context(&store.root, Local::now().fixed_offset()).unwrap_or_default(),
     };
     let chip = chip(&context);
-    let label = match &chip {
-        Some(chip) => format!("Note — {} (start with - to drop)", safe(chip)),
-        None => "Note".to_string(),
-    };
-    let Some(answer) = ask(&label)? else {
+    let Some((answer, keep)) = answer(&context, chip.as_deref())? else {
         return Ok(());
     };
-    let mut text = answer.trim();
-    let mut context = context;
-    if chip.is_some() {
-        if let Some(rest) = drop_marker(text) {
-            text = rest;
-            context = Context::default();
-        }
-    }
+    let text = answer.trim();
+    let context = if keep { context } else { Context::default() };
     if text.is_empty() {
         return Ok(());
     }
@@ -85,6 +81,31 @@ pub fn run(cwd: Option<&Path>) -> Result<(), String> {
             Err(format!("{} — note not saved", safe(&message)))
         }
     }
+}
+
+/// The answer, and whether the context stays with it; `None` is a cancel. The quick window first
+/// when this build and environment can show one, else (or when it does not open) the native box.
+fn answer(context: &Context, chip: Option<&str>) -> Result<Option<(String, bool)>, String> {
+    if dashboard::window_here() {
+        if let Ok(got) = window::open_capture(context) {
+            // No chip shown means nothing to drop: the context stays, as on the zenity path.
+            return Ok(got.map(|(text, keep)| (text, keep || chip.is_none())));
+        }
+    }
+    let label = match chip {
+        Some(chip) => format!("Note — {} (start with - to drop)", safe(chip)),
+        None => "Note".to_string(),
+    };
+    let Some(answer) = ask(&label)? else {
+        return Ok(None);
+    };
+    let text = answer.trim();
+    if chip.is_some() {
+        if let Some(rest) = drop_marker(text) {
+            return Ok(Some((rest.to_string(), false)));
+        }
+    }
+    Ok(Some((text.to_string(), true)))
 }
 
 /// `<repo> · <task>`, or `None` when the context holds neither.

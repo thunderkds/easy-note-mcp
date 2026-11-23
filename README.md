@@ -229,24 +229,31 @@ If Obsidian is not installed, `dashboard` says so and opens the notes folder ins
 
 ## One key press
 
-From anywhere on the Linux desktop or in an editor, one key press or one click opens a one-line
-box. Type, press Enter, and the note is saved with `source: quick`. A `✓ noted ...` desktop
+From anywhere on the Linux desktop or in an editor, one key press or one click opens a small
+input box. Type, press Enter, and the note is saved with `source: quick`. A `✓ noted ...` desktop
 notification confirms it. Esc, or an empty box, saves nothing.
 
-The box is the native `zenity` box, or `kdialog` when `zenity` is missing. It shows only when
-`$DISPLAY` or `$WAYLAND_DISPLAY` is set. Without a display, `quick` asks on the terminal. With no
-terminal either, it exits with `no dialog tool and no terminal`. The notification uses
+In a build with the window (the `.deb`, or `--features window`), the box is a small easy-note
+window that holds only the dashboard's `+ New note` dialog, with the same look and keys: Enter
+saves, Shift+Enter adds a line, Esc cancels. It closes when you save or cancel. In other builds, or
+when that window cannot open, the box is the native `zenity` box, or `kdialog` when `zenity` is
+missing. Either box shows only when `$DISPLAY` or `$WAYLAND_DISPLAY` is set. Without a display,
+`quick` asks on the terminal. With no terminal either, it exits with `no dialog tool and no terminal`. The notification uses
 `notify-send` when it is installed.
 
 ### Context in the box
 
-The box shows the context it will save, for example `Note — easy-ui-mcp · T120 (start with - to drop)`.
+The box shows the context it will save: in the easy-note window as a chip above the text, for
+example `easy-ui-mcp · T120`; in the `zenity` box in its label, for example
+`Note — easy-ui-mcp · T120 (start with - to drop)`.
 
 - From an editor, pass `--cwd` with the project folder. The context is that folder's repo, branch and task.
 - Without `--cwd`, the context is that of your newest terminal (`n`) or `/note` note made less
   than 2 hours ago. An older note gives no context.
-- Start the answer with `-` and a space (`- remember the milk`) to save with no context. The `-`
-  and one space after it are removed. `-x` and `--x` are saved as typed.
+- In the easy-note window, the context is a chip above the text: press Backspace in the empty box,
+  or click its ×, to save with no context.
+- In the `zenity` or `kdialog` box, start the answer with `-` and a space (`- remember the milk`) to
+  save with no context. The `-` and one space after it are removed. `-x` and `--x` are saved as typed.
 
 ### Bind a key
 

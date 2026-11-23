@@ -11,6 +11,9 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
+use crate::core::context::Context;
+use crate::core::format::check_text;
+use crate::core::guard;
 use crate::core::store::Store;
 
 /// The Content-Security-Policy of every page response: nothing but the app's own scheme, and no
@@ -20,6 +23,8 @@ pub const CSP: &str = "default-src easy-note:";
 pub const ORIGIN: &str = "easy-note://localhost";
 /// The page's address.
 pub const START: &str = "easy-note://localhost/";
+/// The quick window's page (HUN-289): the capture dialog alone.
+pub const QUICK_START: &str = "easy-note://localhost/quick.html";
 /// What the shell runs when the window gets focus: the page asks `board` again.
 pub const REFRESH: &str = "window.__easyNote && window.__easyNote.refresh()";
 
@@ -35,6 +40,10 @@ pub fn asset(path: &str) -> Option<(&'static str, &'static [u8])> {
         "/app.js" => Some((JS, include_bytes!("assets/app.js"))),
         "/app.css" => Some((CSS, include_bytes!("assets/app.css"))),
         "/ipc.js" => Some((JS, include_bytes!("assets/ipc.js"))),
+        "/capture.js" => Some((JS, include_bytes!("assets/capture.js"))),
+        "/quick.html" => Some((HTML, include_bytes!("assets/quick.html"))),
+        "/quick.js" => Some((JS, include_bytes!("assets/quick.js"))),
+        "/quick.css" => Some((CSS, include_bytes!("assets/quick.css"))),
         "/fonts/ibm-plex-sans-latin-400-normal.woff2" => Some((
             WOFF2,
             include_bytes!("assets/fonts/ibm-plex-sans-latin-400-normal.woff2"),
@@ -200,6 +209,66 @@ pub fn ipc_threaded(
     });
 }
 
+/// What the quick window's page asked (HUN-289). It talks `context`, `add` and `close` only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Capture {
+    /// The answer to hand back to the page (`reply_script`), with the request's `req`.
+    Reply(String),
+    /// Enter on some text: `quick` saves it as it always did; the chip's context only with `keep_context`.
+    Save { text: String, keep_context: bool },
+    /// Esc, or Enter with no text: nothing is saved.
+    Close,
+}
+
+/// One IPC message of the quick window. `context` is the one `quick` computed (the `--cwd` folder's,
+/// else the last context): `{"context": {repo, task} | null}` as the dashboard's `context` answers.
+/// `add` with text is a `Save` (no reply: the window closes), or `the text is too long` (the dialog and
+/// its text stay, as in the dashboard); every other command is
+/// `unknown command`. Every string in a reply passes `guard::mask_for_output`.
+pub fn capture_ipc(body: &str, context: &Context) -> Capture {
+    let Ok(request) = serde_json::from_str::<Value>(body) else {
+        return Capture::Reply(serde_json::json!({ "error": "bad request" }).to_string());
+    };
+    let req = request.get("req").filter(|r| r.is_number()).cloned();
+    let answer = match request.get("cmd").and_then(Value::as_str) {
+        Some("close") => return Capture::Close,
+        Some("add") => match request.get("text").and_then(Value::as_str) {
+            Some(text) if !text.trim().is_empty() && check_text(text.trim()).is_err() => {
+                serde_json::json!({ "error": "the text is too long" })
+            }
+            Some(text) if !text.trim().is_empty() => {
+                let keep_context =
+                    request.get("keep_context").and_then(Value::as_bool) == Some(true);
+                return Capture::Save {
+                    text: text.to_string(),
+                    keep_context,
+                };
+            }
+            Some(_) => serde_json::json!({ "error": "empty" }),
+            None => serde_json::json!({ "error": "missing text" }),
+        },
+        Some("context") => {
+            let chip = (context.repo.is_some() || context.task.is_some()).then(|| {
+                let mask = |v: &Option<String>| v.as_deref().map(guard::mask_for_output);
+                serde_json::json!({ "repo": mask(&context.repo), "task": mask(&context.task) })
+            });
+            serde_json::json!({ "context": chip })
+        }
+        Some(_) => serde_json::json!({ "error": "unknown command" }),
+        None => serde_json::json!({ "error": "missing cmd" }),
+    };
+    let mut answer = answer;
+    if let (Some(req), Value::Object(map)) = (req, &mut answer) {
+        map.insert("req".to_string(), req);
+    }
+    Capture::Reply(answer.to_string())
+}
+
+/// `capture_ipc` for a message from `source`; a page outside `ORIGIN` gets nothing (as `ipc_from`).
+pub fn capture_from(source: &str, body: &str, context: &Context) -> Option<Capture> {
+    allowed_url(source).then(|| capture_ipc(body, context))
+}
+
 /// `open`'s error when the display cannot be used (GTK does not start): `dashboard` then takes
 /// the FR-034 Obsidian path instead (HUN-281).
 pub const NO_DISPLAY: &str = "the display cannot be used";
@@ -210,26 +279,35 @@ pub fn open(_initial_note: Option<&str>, _on_shown: impl FnOnce()) -> Result<(),
     Err("this easy-note is built without the window feature".to_string())
 }
 
+/// Without the feature, `quick` never asks for the window (`dashboard::window_here`).
+#[cfg(not(feature = "window"))]
+pub fn open_capture(_context: &Context) -> Result<Option<(String, bool)>, String> {
+    Err("this easy-note is built without the window feature".to_string())
+}
+
 #[cfg(feature = "window")]
-pub use shell::open;
+pub use shell::{open, open_capture};
 
 #[cfg(feature = "window")]
 mod shell {
     use std::borrow::Cow;
+    use std::time::{Duration, Instant};
 
-    use tao::dpi::LogicalSize;
+    use tao::dpi::{LogicalPosition, LogicalSize};
     use tao::event::{Event, WindowEvent};
-    use tao::event_loop::{ControlFlow, EventLoopBuilder};
+    use tao::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
+    use tao::platform::run_return::EventLoopExtRunReturn;
     use tao::platform::unix::WindowExtUnix;
     use tao::window::WindowBuilder;
     use wry::http::{header, Response, StatusCode};
     use wry::{NewWindowResponse, WebViewBuilder, WebViewBuilderExtUnix};
 
     use super::{
-        allowed_url, asset, initial_note_script, ipc_threaded, reply_script, Running, CSP, REFRESH,
-        START,
+        allowed_url, asset, capture_from, initial_note_script, ipc_threaded, reply_script, Capture,
+        Running, CSP, QUICK_START, REFRESH, START,
     };
     use crate::core::config;
+    use crate::core::context::Context;
     use crate::core::store::Store;
     use crate::surfaces::enrich;
 
@@ -239,6 +317,115 @@ mod shell {
     /// The person's own value wins; set ours only when the variable is unset.
     pub(super) fn needs_dmabuf_default(current: Option<&std::ffi::OsStr>) -> bool {
         current.is_none()
+    }
+
+    /// The quick window's size: the design dialog (560 px) and its 16 px margin (quick.css).
+    const QUICK_SIZE: (f64, f64) = (592.0, 226.0);
+    /// How long the loop keeps running after the hide, so GTK sends it to the display server before
+    /// `quick` saves and notifies (a hide that is only queued would leave the window up meanwhile).
+    const HIDE_FLUSH: Duration = Duration::from_millis(60);
+
+    /// Build the event loop; tao panics ("Failed to initialize gtk backend!") when GTK cannot open
+    /// the display, for example `DISPLAY` set to a display that is gone. Catch that one panic, quietly.
+    fn event_loop<T: 'static>() -> Result<EventLoop<T>, String> {
+        if needs_dmabuf_default(std::env::var_os(DMABUF).as_deref()) {
+            // Before any GTK or WebKit code runs; still one thread here.
+            std::env::set_var(DMABUF, "1");
+        }
+        let quiet = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let built = std::panic::catch_unwind(|| EventLoopBuilder::<T>::with_user_event().build());
+        std::panic::set_hook(quiet);
+        built.map_err(|_| super::NO_DISPLAY.to_string())
+    }
+
+    /// The quick window (HUN-289): the capture dialog alone, centred, until Enter, Esc or close.
+    /// `Ok(Some((text, keep_context)))` when the person pressed Enter on some text, `Ok(None)` on a
+    /// cancel; `Err` when the window cannot open (`quick` then shows the zenity box). It saves
+    /// nothing: `quick` does, the way it always did.
+    pub fn open_capture(context: &Context) -> Result<Option<(String, bool)>, String> {
+        let mut event_loop = event_loop::<Capture>()?;
+        let proxy = event_loop.create_proxy();
+        let (width, height) = QUICK_SIZE;
+        let mut builder = WindowBuilder::new()
+            .with_title("easy-note — new note")
+            .with_inner_size(LogicalSize::new(width, height))
+            .with_resizable(false)
+            .with_always_on_top(true)
+            .with_focused(true);
+        // X11 takes the position; on Wayland the compositor places the window itself.
+        if let Some(monitor) = event_loop.primary_monitor() {
+            let scale = monitor.scale_factor();
+            let size = monitor.size().to_logical::<f64>(scale);
+            let at = monitor.position().to_logical::<f64>(scale);
+            builder = builder.with_position(LogicalPosition::new(
+                at.x + (size.width - width) / 2.0,
+                at.y + (size.height - height) / 3.0,
+            ));
+        }
+        let window = builder.build(&event_loop).map_err(|e| e.to_string())?;
+        let vbox = window
+            .default_vbox()
+            .ok_or_else(|| "no GTK container for the webview".to_string())?;
+        let context = context.clone();
+        let webview = WebViewBuilder::new()
+            .with_custom_protocol("easy-note".into(), |_, request| {
+                respond(request.uri().path())
+            })
+            .with_ipc_handler(move |request| {
+                let source = request.uri().to_string();
+                if let Some(message) = capture_from(&source, request.body(), &context) {
+                    let _ = proxy.send_event(message);
+                }
+            })
+            // The quick page only: not even the dashboard's page on the same origin.
+            .with_navigation_handler(|url| url == QUICK_START)
+            .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
+            .with_devtools(cfg!(debug_assertions))
+            .with_url(QUICK_START)
+            .build_gtk(vbox)
+            .map_err(|e| e.to_string())?;
+        window.set_focus();
+        let mut answer = None;
+        let mut closing: Option<Instant> = None;
+        event_loop.run_return(|event, _, flow| {
+            if let Some(until) = closing {
+                // Hidden already: run until the hide is out, then stop. Later messages change nothing.
+                *flow = if Instant::now() >= until {
+                    ControlFlow::Exit
+                } else {
+                    ControlFlow::WaitUntil(until)
+                };
+                return;
+            }
+            *flow = ControlFlow::Wait;
+            let done = match event {
+                Event::UserEvent(Capture::Reply(reply)) => {
+                    let _ = webview.evaluate_script(&reply_script(&reply));
+                    false
+                }
+                Event::UserEvent(Capture::Save { text, keep_context }) => {
+                    answer = Some((text, keep_context));
+                    true
+                }
+                Event::UserEvent(Capture::Close)
+                | Event::WindowEvent {
+                    event: WindowEvent::CloseRequested,
+                    ..
+                } => true,
+                _ => false,
+            };
+            if done {
+                // Gone from the screen first: the save and its notification come after.
+                window.set_visible(false);
+                let until = Instant::now() + HIDE_FLUSH;
+                closing = Some(until);
+                *flow = ControlFlow::WaitUntil(until);
+            }
+        });
+        drop(webview);
+        drop(window);
+        Ok(answer)
     }
 
     fn respond(path: &str) -> Response<Cow<'static, [u8]>> {
@@ -262,18 +449,7 @@ mod shell {
         // One config read at start: the same `[ai] enrich` + `after_save` rule as `easy-note add`.
         let (dir, after_save) = config::notes_dir_and_after_save().map_err(|e| e.to_string())?;
         let store = Store::system(dir);
-        if needs_dmabuf_default(std::env::var_os(DMABUF).as_deref()) {
-            // Before any GTK or WebKit code runs; still one thread here.
-            std::env::set_var(DMABUF, "1");
-        }
-        // tao panics ("Failed to initialize gtk backend!") when GTK cannot open the display,
-        // for example `DISPLAY` set to a display that is gone. Catch that one panic, quietly.
-        let quiet = std::panic::take_hook();
-        std::panic::set_hook(Box::new(|_| {}));
-        let built =
-            std::panic::catch_unwind(|| EventLoopBuilder::<String>::with_user_event().build());
-        std::panic::set_hook(quiet);
-        let event_loop = built.map_err(|_| super::NO_DISPLAY.to_string())?;
+        let event_loop = event_loop::<String>()?;
         let proxy = event_loop.create_proxy();
         let running = Running::default();
         let window = WindowBuilder::new()
