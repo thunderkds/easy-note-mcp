@@ -126,3 +126,17 @@ Left for the Supervisor (BEFORE / AFTER / DELTA / WITNESS).
 ## Verdict / Score / Security review
 
 Left for the Supervisor.
+
+## Auto decisions
+
+Mode: auto
+
+1. The quick window stays the default for `quick`, and NFR-011 (p95 < 300 ms) applies to the native box, not the window (measured p50 95 ms, p95 114 ms to map; dialog painted slower) — RULE: `tasks/TASK_GUIDE_HUN-289.md:222` (Q1 = Option A, owner: "go with your recommendations", chat 2026-11-23; PRD FR-022, FR-027 and NFR-011 reworded to match, `PRD.md:125`).
+2. The QA reviewer's P1 and P2 findings were fixed in the code (`check_text` limit for the window path, trimmed check, `onError` line in `quick.js`, help and README wording); the P3 items were left — RULE: `skills/code-review/SKILL.md:26` (P1 must fix) and `skills/code-review/SKILL.md:28` (P3 optional).
+3. The verify row was reset to empty so the hook writes its own result, and `main` is not merged into this branch by me because the gate allows no merge-in under `[admin]` — RULE: `docs/claude-md/tracks.md` `### Admin tag`.
+
+Checks: code-review Skill call made over `main...HEAD` (20 files, 1027 lines; lane check EXCEEDS because of the docs commit, no P0 and no P1 open) (auto-checked, not /verify); security-review Skill call made, the HUN-289 source diff (`window/mod.rs`, `quick.rs`, `quick.html`, `quick.js`) read directly: IPC only from the `easy-note://localhost` origin, navigation pinned to `quick.html`, only `context`, `add` and `close` answered, text capped by `check_text`, every reply string through `mask_for_output`, the note saved by the same `quick` code, no finding at confidence 8 or more (auto-checked, not /verify); QA review by a fresh-context reviewer and the guide Verification Command, both builds 0 failed (auto-checked, not /verify); real run under Xvfb with release `--features window,tray`: Enter saved a note with `source: quick`, Esc and empty Enter saved nothing, Shift+Enter saved two lines (auto-checked, not /verify); Companion score overall 70, floor missed (Evidence row).
+
+Memory: nothing new on this branch, to keep `memory/` out of a merge conflict with main; the HUN-289 decision entry and follow-ups are written on main after the merge, as for HUN-288 (ffd0b15).
+
+Not done: merge (admin: after the auto verify pass; the Companion score also fails, so the owner merges by hand), the delivery report, `main` merged into this branch (the gate refuses it under `[admin]`), owner-only checks (20-run quick-dialog timing, tray New note, `Ctrl+Alt+N`, planted secret in the window, GNOME Wayland focus), auto verify: running (log `.claude/verify-runs/HUN-289-30eab2e72d31.log`)
