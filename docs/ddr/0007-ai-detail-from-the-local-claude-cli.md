@@ -24,6 +24,7 @@ DDR gate: surprising (a model-free tool starts a model) âœ…, genuine trade-off â
 3. `[ai] claude_config_dir` sets `CLAUDE_CONFIG_DIR` for the child; `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are removed so the subscription, not an API key, pays.
 4. `after_save = true` starts `ai enrich <id>` detached after a save; capture never waits and never fails because of it.
 5. The `enrich_notes` MCP prompt (DDR 0004) stays.
+6. *(HUN-288, 2026-11-23)* The window's `Run AI` button is a person-pressed action on one note: it runs the same `ai enrich <id>` step without `[ai] enrich = "claude"` (the other `[ai]` keys, such as `command` and `model`, still apply; `after_save` is unaffected). Item 1's opt-in is about AI that runs unasked. One run per note at a time; if the note's text changes while the run is going, nothing is written.
 
 ## Alternatives Considered
 
