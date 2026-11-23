@@ -1,5 +1,5 @@
 # PROJECT_KANBAN.md
-**Last updated**: 2026-11-20
+**Last updated**: 2026-11-21
 
 > Board cache, pulled from the board by `python3 scripts/board_sync.py pull`. Do not edit it by hand:
 > the board is the source of truth, and the next pull overwrites this file.
@@ -14,6 +14,7 @@
 ### In Progress
 
 ### Ready for Review
+- [ ] **HUN-287** — Debian package: `scripts/build_deb.sh` builds an installable .deb (window + tray) | Common-Infrastructure-Agent | C2 | Risk: Low | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-287.md`
 
 ### Done
 - [x] **HUN-280** — Dashboard window capture dialog: + New note in the window (Enter save, Esc cancel) | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-280.md` | Done 2026-11-20: merged 06cf56a by the Supervisor under [admin] (auto verify pass; app.js, window/mod.rs, tests/window_api.rs conflicts with HUN-282/HUN-284 resolved by the Supervisor, both kept; cargo test default and --features window pass, clippy clean)

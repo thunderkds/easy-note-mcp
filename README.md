@@ -20,6 +20,22 @@ ln -s "$(command -v easy-note)" ~/.cargo/bin/n   # `n` is the same binary: `n <t
 Another `n` (for example the Node version manager) may already be on `PATH`. `easy-note doctor`
 reports the clash; `easy-note add` always works.
 
+### A Debian package
+
+`scripts/build_deb.sh` makes a .deb for Debian and Ubuntu. The build needs `dpkg-dev` and the
+WebKitGTK headers:
+
+```
+sudo apt install dpkg-dev libwebkit2gtk-4.1-dev
+scripts/build_deb.sh                                  # writes dist/easy-note_<version>_<arch>.deb
+sudo apt install ./dist/easy-note_0.1.0_amd64.deb     # apt pulls the libraries it needs
+```
+
+The package holds the binary and the docs. It builds the `window` and `tray` features, so the
+dashboard window and the tray icon both work. It gives you `easy-note`, not `n`. It writes nothing
+below your home folder, so run `easy-note setup` yourself after the install. `sudo apt remove
+easy-note` removes it.
+
 ## Set up
 
 One command puts the desktop parts in place: the launcher and its icons, the Obsidian dashboard
