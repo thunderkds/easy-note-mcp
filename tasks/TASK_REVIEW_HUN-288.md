@@ -73,3 +73,22 @@ BEFORE: not captured before the first implementation commit (the spawn warning f
 acted on); at `main`, the detail panel has no AI action in the window: AI detail could only be created from the CLI
 (`easy-note ai enrich <id>`) or the `enrich_notes` prompt.
 AFTER: see "Runtime check" above.
+
+## Auto decisions
+
+Mode: auto
+
+1. Q1 (does `Run AI` run with no `[ai]` section): yes, the click is the opt-in; `after_save` stays off. RULE: Supervisor recommendation, owner said "go with your recommendations" and "spawn parallel" (chat 2026-11-23, `[admin]`); recorded in DDR 0007 item 6.
+2. Button label with AI detail: `Re-run` (not `Run AI again` or `Re-run AI`). RULE: owner chose a shorter label; `Re-run AI` (88 px) and `Redo AI` still wrapped `Move to trash` at 1280 px, `Re-run` (71 px) fits one row.
+3. Fresh-context reviewer on `0fac452`: P2 race fixed in the code (re-read the note after the child ends), README, empty-panel text and panic reply fixed; focus-after-render left. RULE: Stage 4, every P0/P1/P2 with an unambiguous fix is fixed; P3 focus left as accepted.
+
+Checks:
+- code-review: fresh-context reviewer, 0 P0, 0 P1, findings above (auto-checked, not /verify).
+- security-review: Skill call made; the skill's own diff covered the main checkout, so the HUN-288 source diff (`enrich.rs`, `window/api.rs`, `window/mod.rs`) was read directly: origin check before any parse or child, one run per note with the slot freed on panic, `for_window` reuses `enrich_one` (same argv, env without `ANTHROPIC_*` auth variables, stdin), ids go through `Store::read`, replies pass `mask_all`; no finding at confidence 8 or more (auto-checked, not /verify).
+- Tests: guide Verification Command exit 0, 1222 passed, 0 failed, 12 ignored, both builds (auto-checked, not /verify).
+- Real run: Xvfb, release `--features window,tray`, stub `claude`: Run AI click, running state, AI detail and `Re-run`, failure toast, no AI file on failure (auto-checked, not /verify).
+- Companion score: overall 76, floor missed (see the Evidence row).
+
+Memory: wrote `memory/learnings.md` entries (hand-filled `verify` row blocks the hook's auto verify; easy-verifier `score` rejects findings whose refs are outside its packs and returns 100 KB payloads to read with jq; Xvfb plus XTEST recipe to drive the window under test).
+
+Not done: merge (admin: after the auto verify pass), the delivery report, owner-only check (one `Run AI` with the real `claude`), `doctor` still prints `ai: off` while the window can run AI (follow-up), the in-flight `claude` child is not killed when the window closes (follow-up). auto verify: running (T182), commit fa16162.
