@@ -54,7 +54,7 @@ Today: tray `New note` and the `Ctrl+Alt+N` hotkey both run `easy-note quick`, w
 - [X] Restated intent confirmed to match the user's request — owner, chat 2026-11-23 ("Start HUN-289 now")
 - [X] Domain terms align with `PROJECT_SPEC.md` glossary — Supervisor 2026-11-23
 - [X] Every Acceptance Criterion below traces to a line in the Requirement — Supervisor 2026-11-23
-- [ ] All Requirement Refs exist in `PRD.md` and are covered (FR-022 wording to be updated by the Supervisor)
+- [X] All Requirement Refs exist in `PRD.md` and are covered — Supervisor 2026-11-23 (FR-022, FR-027, NFR-011 wording updated)
 - [X] Questions Log Q1 answered by the owner — "measure, then decide" (2026-11-23); the number is below, the choice is still open
 
 ---
@@ -219,3 +219,4 @@ Path choice as a unit test. The capture page with a stub IPC in the page harness
 * 2026-11-23 DECIDED owner: build it now; for Q1, measure first and bring the number before changing the hotkey path
 * 2026-11-23 MEASURED Q1 (release build, owner's machine, GNOME, under XWayland, temp notes dir): window mapped p50 95 ms, p95 114 ms (20 runs); dialog painted (accent border on screen) in 6/10 runs at 300 ms, 8/10 at 350 ms, 10/10 at 400 ms. So the dialog is visible at about p50 300 ms and p95 400–450 ms: over NFR-011's 300 ms. Owner to choose Option A or B
 * 2026-11-23 DECIDED two quick runs at once: two windows (no single instance; cut list). Each saves on its own
+* 2026-11-23 DECIDED Q1 = Option A (owner: "go with your recommendations"): the window stays the default for quick; NFR-011 now applies to the native box; PRD FR-022, FR-027, NFR-011 updated

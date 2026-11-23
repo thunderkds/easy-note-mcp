@@ -37,7 +37,7 @@ src/  (one Rust crate, one binary `easy-note`; `n` is the same binary — DDR 00
   surfaces/cli.rs      `easy-note` commands (FR-013)
   surfaces/mcp.rs      7 tools + 1 prompt (FR-012, D37), stdio + streamable-http (`rmcp`)
   surfaces/hook.rs     Claude Code UserPromptSubmit capture (FR-018); no async runtime on the pass path
-  surfaces/quick.rs    one-line native input box (FR-022)
+  surfaces/quick.rs    small input box: own capture window in a window build, else zenity/kdialog (FR-022)
   surfaces/install.rs  `install|uninstall claude|launcher|tray` (FR-019, FR-026, FR-033, DDR 0003)
   core/ai.rs           AI detail files: write with caps + mask, hash staleness, pending list (FR-029–FR-032, DDR 0004)
   surfaces/tray.rs     optional system tray (FR-033), behind a cargo feature
@@ -56,7 +56,7 @@ Capture paths (round 2), all into the same core `store.add()`:
 | Claude Code chat | `/note retry bug on firefox` | hook → block + `✓ noted …` | No | hook input `cwd` |
 | Codex / Cursor chat | `note: retry bug on firefox` | model → `note_add` | Yes (1 turn) | `cwd` arg → roots → process cwd |
 | Terminal | `n retry bug on firefox` | CLI | No | shell cwd |
-| Editor / desktop | hotkey or dock icon → one-line box | `easy-note quick [--cwd]` | No | `--cwd` from editor snippet, else last context < 2 h |
+| Editor / desktop | hotkey or dock icon → small input box | `easy-note quick [--cwd]` | No | `--cwd` from editor snippet, else last context < 2 h |
 | System tray (`easy-note tray`) | click icon → "New note" | tray runs `quick` | No | last context |
 | Phone / other device | save a file into `inbox/` via the sync app | read-only inbox | No | none |
 
