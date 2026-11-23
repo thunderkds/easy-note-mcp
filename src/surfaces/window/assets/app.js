@@ -225,7 +225,7 @@
       acts.appendChild(editButton);
     }
     var running = !!aiRunning[d.id];
-    var runAi = button('act', running ? 'AI running…' : d.ai ? 'Run AI again' : 'Run AI', function () { runAiFor(d.id); });
+    var runAi = button('act', running ? 'AI running…' : d.ai ? 'Re-run' : 'Run AI', function () { runAiFor(d.id); });
     runAi.disabled = running;
     acts.appendChild(runAi);
     acts.appendChild(button('act', 'Copy id', function () { copyId(d.id); }));

@@ -366,7 +366,7 @@ async function runAiScenarios(out) {
   });
   out.ai_again = await scenario(async (s) => {
     await open(s, editable);
-    s.button('Run AI again').fire('click');
+    s.button('Re-run').fire('click');
     const running = s.shown();
     await sleep(80);
     return { running, shown: s.shown() };

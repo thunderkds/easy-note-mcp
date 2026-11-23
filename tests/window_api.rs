@@ -2007,13 +2007,7 @@ fn edit_replaces_open_in_editor_and_opens_the_text_and_tags() {
     let r = &run["initial_note"]["shown"];
     assert_eq!(
         r["buttons"],
-        json!([
-            "Add as tags",
-            "Edit",
-            "Run AI again",
-            "Copy id",
-            "Move to trash"
-        ]),
+        json!(["Add as tags", "Edit", "Re-run", "Copy id", "Move to trash"]),
         "{r}"
     );
     let r = &run["edit_open"]["shown"];
@@ -2618,13 +2612,7 @@ fn run_ai_sits_in_the_actions_row_and_reads_again_when_the_note_has_ai_detail() 
     let with = &run["ai_idle_with_ai"]["shown"];
     assert_eq!(
         with["buttons"],
-        json!([
-            "Add as tags",
-            "Edit",
-            "Run AI again",
-            "Copy id",
-            "Move to trash"
-        ]),
+        json!(["Add as tags", "Edit", "Re-run", "Copy id", "Move to trash"]),
         "{with}"
     );
 }
@@ -2647,7 +2635,7 @@ fn run_ai_shows_running_once_then_the_new_ai_detail() {
     let sent = r["sent"].as_array().unwrap();
     assert_eq!(sent.len(), 1, "{r}");
     assert_eq!(sent[0]["cmd"], "enrich", "{r}");
-    // The answer fills the AI detail section; the button comes back as `Run AI again`.
+    // The answer fills the AI detail section; the button comes back as `Re-run`.
     let shown = &r["shown"];
     assert_eq!(shown["aiTitle"], "AI title new", "{r}");
     assert_eq!(shown["aiKind"], "type: idea", "{r}");
@@ -2658,7 +2646,7 @@ fn run_ai_shows_running_once_then_the_new_ai_detail() {
         shown["buttons"]
             .as_array()
             .unwrap()
-            .contains(&json!("Run AI again")),
+            .contains(&json!("Re-run")),
         "{r}"
     );
     // The board is asked again, so the row gets its AI mark.
