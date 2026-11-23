@@ -2247,6 +2247,29 @@ fn the_quick_window_add_hands_the_text_back_and_close_closes() {
 }
 
 #[test]
+fn the_quick_window_refuses_text_over_the_limit_and_keeps_the_dialog() {
+    // As the dashboard's `add`: the page gets "the text is too long" (dialog and text stay), the
+    // window is not closed on it, and text at the limit is still a save.
+    let at_limit = "a".repeat(20_000);
+    assert_eq!(
+        capture_ipc(
+            &json!({"req": 7, "cmd": "add", "text": at_limit}).to_string(),
+            &chip_context()
+        ),
+        Capture::Save {
+            text: at_limit,
+            keep_context: false
+        }
+    );
+    let too_long = "é".repeat(20_001);
+    let got = reply_of(capture_ipc(
+        &json!({"req": 8, "cmd": "add", "text": too_long}).to_string(),
+        &chip_context(),
+    ));
+    assert_eq!(got, json!({"req": 8, "error": "the text is too long"}));
+}
+
+#[test]
 fn the_quick_window_refuses_every_other_command() {
     // AC 7: no board, detail, edit or trash in the quick window.
     for cmd in [

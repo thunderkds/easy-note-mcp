@@ -9,6 +9,7 @@ pub mod api;
 use serde_json::Value;
 
 use crate::core::context::Context;
+use crate::core::format::check_text;
 use crate::core::guard;
 use crate::core::store::Store;
 
@@ -146,7 +147,8 @@ pub enum Capture {
 
 /// One IPC message of the quick window. `context` is the one `quick` computed (the `--cwd` folder's,
 /// else the last context): `{"context": {repo, task} | null}` as the dashboard's `context` answers.
-/// `add` with text is a `Save` (no reply: the window closes); every other command is
+/// `add` with text is a `Save` (no reply: the window closes), or `the text is too long` (the dialog and
+/// its text stay, as in the dashboard); every other command is
 /// `unknown command`. Every string in a reply passes `guard::mask_for_output`.
 pub fn capture_ipc(body: &str, context: &Context) -> Capture {
     let Ok(request) = serde_json::from_str::<Value>(body) else {
@@ -156,6 +158,9 @@ pub fn capture_ipc(body: &str, context: &Context) -> Capture {
     let answer = match request.get("cmd").and_then(Value::as_str) {
         Some("close") => return Capture::Close,
         Some("add") => match request.get("text").and_then(Value::as_str) {
+            Some(text) if !text.trim().is_empty() && check_text(text).is_err() => {
+                serde_json::json!({ "error": "the text is too long" })
+            }
             Some(text) if !text.trim().is_empty() => {
                 let keep_context =
                     request.get("keep_context").and_then(Value::as_bool) == Some(true);
