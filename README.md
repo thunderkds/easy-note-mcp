@@ -238,7 +238,9 @@ missing. Either box shows only when `$DISPLAY` or `$WAYLAND_DISPLAY` is set. Wit
 
 ### Context in the box
 
-The box shows the context it will save, for example `Note — easy-ui-mcp · T120 (start with - to drop)`.
+The box shows the context it will save: in the easy-note window as a chip above the text, for
+example `easy-ui-mcp · T120`; in the `zenity` box in its label, for example
+`Note — easy-ui-mcp · T120 (start with - to drop)`.
 
 - From an editor, pass `--cwd` with the project folder. The context is that folder's repo, branch and task.
 - Without `--cwd`, the context is that of your newest terminal (`n`) or `/note` note made less

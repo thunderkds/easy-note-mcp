@@ -11,6 +11,8 @@
   var keepContext = false;
   var capOpenNo = 0;
   var saving = false;
+  // The `context` request of the open dialog: a save waits for it, so a fast Enter keeps the chip.
+  var contextAsked = null;
 
   function $(id) { return document.getElementById(id); }
   function str(v) { return v === undefined || v === null ? '' : String(v); }
@@ -30,7 +32,7 @@
     call('onOpen');
     box.focus();
     // The chip shows the FR-027 last context; `context` never fails, and no chip is shown when it is null.
-    window.easyNoteIpc.context().then(function (r) {
+    contextAsked = window.easyNoteIpc.context().then(function (r) {
       var c = r && r.context;
       if (no !== capOpenNo || $('cap').hidden || !c) return;
       var label = [str(c.repo), str(c.task)].filter(Boolean).join(' · ');
@@ -83,7 +85,8 @@
     }
     if (saving) return;
     saving = true;
-    window.easyNoteIpc.add(text, keepContext).then(function (d) {
+    var asked = contextAsked || Promise.resolve();
+    asked.then(function () { return window.easyNoteIpc.add(text, keepContext); }).then(function (d) {
       saving = false;
       closeCapture();
       call('onSaved', d);

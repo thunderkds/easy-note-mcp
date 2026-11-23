@@ -2399,5 +2399,11 @@ fn the_quick_page_keys_follow_the_dashboard_dialog() {
         "{run}"
     );
     assert_eq!(run["drop_chip"]["chip"], Value::Null, "{run}");
+    // Review P3: Enter before the `context` reply waits for it, so the chip's context is kept.
+    assert_eq!(
+        run["fast_enter"]["sent"],
+        json!([ctx, {"cmd": "add", "text": "quick one", "keep_context": true}]),
+        "{run}"
+    );
     assert_eq!(run["no_chip"]["chip"], Value::Null, "{run}");
 }

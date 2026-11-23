@@ -18,7 +18,7 @@ class El {
   fire(type, event) { (this.listeners[type] || []).forEach((fn) => fn(event || {})); }
 }
 
-async function scenario(chip, run) {
+async function scenario(chip, run, early) {
   const doc = { activeElement: null, byId: {} };
   doc.getElementById = (id) => (doc.byId[id] = doc.byId[id] || new El(id, doc));
   // quick.html: the dialog and the chip row start hidden.
@@ -35,7 +35,8 @@ async function scenario(chip, run) {
     },
   };
   ['ipc.js', 'capture.js', 'quick.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(assets, f), 'utf8'), ctx));
-  await sleep(30);
+  // `early`: the keys come before the `context` reply (a fast Enter).
+  if (!early) await sleep(30);
   const box = doc.byId['cap-text'];
   const key = (k, extra) => doc.byId['cap-dialog'].fire('keydown', Object.assign({ key: k, target: box, preventDefault() {} }, extra || {}));
   const typed = (v) => { box.value = v; };
@@ -47,6 +48,7 @@ async function scenario(chip, run) {
   });
   try {
     await run({ key, typed, state });
+    await sleep(30);
     return state();
   } catch (e) {
     return { crash: String(e && e.stack || e) };
@@ -63,6 +65,7 @@ const CHIP = { repo: 'easy-note-mcp', task: 'HUN-289' };
   out.esc = await scenario(CHIP, async (s) => { s.typed('never mind'); s.key('Escape'); });
   out.empty_enter = await scenario(CHIP, async (s) => { s.typed('  \n '); s.key('Enter'); });
   out.drop_chip = await scenario(CHIP, async (s) => { s.key('Backspace'); s.typed('no context'); s.key('Enter'); });
+  out.fast_enter = await scenario(CHIP, async (s) => { s.typed('quick one'); s.key('Enter'); }, true);
   out.no_chip = await scenario(null, async (s) => { s.typed('plain'); s.key('Enter'); });
   console.log(JSON.stringify(out));
 })();

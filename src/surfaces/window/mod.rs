@@ -211,6 +211,7 @@ pub use shell::{open, open_capture};
 #[cfg(feature = "window")]
 mod shell {
     use std::borrow::Cow;
+    use std::time::{Duration, Instant};
 
     use tao::dpi::{LogicalPosition, LogicalSize};
     use tao::event::{Event, WindowEvent};
@@ -240,6 +241,9 @@ mod shell {
 
     /// The quick window's size: the design dialog (560 px) and its 16 px margin (quick.css).
     const QUICK_SIZE: (f64, f64) = (592.0, 226.0);
+    /// How long the loop keeps running after the hide, so GTK sends it to the display server before
+    /// `quick` saves and notifies (a hide that is only queued would leave the window up meanwhile).
+    const HIDE_FLUSH: Duration = Duration::from_millis(60);
 
     /// Build the event loop; tao panics ("Failed to initialize gtk backend!") when GTK cannot open
     /// the display, for example `DISPLAY` set to a display that is gone. Catch that one panic, quietly.
@@ -294,7 +298,8 @@ mod shell {
                     let _ = proxy.send_event(message);
                 }
             })
-            .with_navigation_handler(|url| allowed_url(&url))
+            // The quick page only: not even the dashboard's page on the same origin.
+            .with_navigation_handler(|url| url == QUICK_START)
             .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
             .with_devtools(cfg!(debug_assertions))
             .with_url(QUICK_START)
@@ -302,7 +307,17 @@ mod shell {
             .map_err(|e| e.to_string())?;
         window.set_focus();
         let mut answer = None;
+        let mut closing: Option<Instant> = None;
         event_loop.run_return(|event, _, flow| {
+            if let Some(until) = closing {
+                // Hidden already: run until the hide is out, then stop. Later messages change nothing.
+                *flow = if Instant::now() >= until {
+                    ControlFlow::Exit
+                } else {
+                    ControlFlow::WaitUntil(until)
+                };
+                return;
+            }
             *flow = ControlFlow::Wait;
             let done = match event {
                 Event::UserEvent(Capture::Reply(reply)) => {
@@ -321,9 +336,11 @@ mod shell {
                 _ => false,
             };
             if done {
-                // Gone from the screen at once: the save and its notification come after.
+                // Gone from the screen first: the save and its notification come after.
                 window.set_visible(false);
-                *flow = ControlFlow::Exit;
+                let until = Instant::now() + HIDE_FLUSH;
+                closing = Some(until);
+                *flow = ControlFlow::WaitUntil(until);
             }
         });
         drop(webview);
