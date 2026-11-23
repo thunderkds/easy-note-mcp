@@ -2482,6 +2482,25 @@ fn enrich_masks_every_string_of_the_answer() {
 }
 
 #[test]
+fn a_note_edited_during_the_run_is_refused_and_writes_nothing() {
+    // The text sent to claude is the text the AI file is stamped for: an edit saved while the
+    // child runs must not get a fresh `based_on` for words the AI never saw.
+    let script = format!(
+        "echo 'edited while AI ran' >> \"$(dirname \"$0\")/../notes/2026/11/{PLAIN}.md\"\n{STUB_OK}"
+    );
+    let env = AiEnv::new("enrich-race", &script, &answer_json("raced"));
+    let file = plain_note(&env);
+    let out = call(&env.sb.store(), &json!({"cmd": "enrich", "id": PLAIN}));
+    assert_eq!(env.calls(), 1, "claude ran once");
+    assert_eq!(out["error"], "the note changed while AI ran", "{out}");
+    assert!(out.get("ai").is_none(), "{out}");
+    assert!(env.ai_files().is_empty(), "an AI file was written");
+    assert!(std::fs::read_to_string(&file)
+        .unwrap()
+        .contains("edited while AI ran"));
+}
+
+#[test]
 fn a_slow_claude_does_not_hold_the_other_requests() {
     use std::sync::mpsc;
     use std::time::Duration;

@@ -267,6 +267,13 @@ fn enrich_one(
     let input = format!("{PROMPT}\n\n<note>\n{}\n</note>\n", text.trim_end());
     let raw = call(program, settings, input)?;
     let (answer, model) = parse_output(&raw, &settings.model)?;
+    // `ai::enrich` stamps `based_on` from the body it reads now: refuse if the person saved an
+    // edit while the child ran, so no AI file is stamped fresh for text it was not written from.
+    match store.read(id) {
+        Ok(now) if now.body == note.body => {}
+        Ok(_) => return Err("the note changed while AI ran".to_string()),
+        Err(_) => return Err("no such note".to_string()),
+    }
     let detail = ai::enrich(
         store,
         note.id(),

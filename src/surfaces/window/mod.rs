@@ -182,8 +182,19 @@ pub fn ipc_threaded(
         return send(answer.to_string());
     };
     let (store, body) = (store.clone(), body.to_string());
+    let req = request.get("req").filter(|r| r.is_number()).cloned();
     std::thread::spawn(move || {
-        let answer = ipc_with(&store, &body, &|_| {});
+        // A panic must still answer, or the page's button stays at "AI running…".
+        let answer = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ipc_with(&store, &body, &|_| {})
+        }))
+        .unwrap_or_else(|_| {
+            let mut failed = serde_json::json!({ "error": "AI run failed" });
+            if let Some(req) = req {
+                failed["req"] = req;
+            }
+            failed.to_string()
+        });
         drop(slot);
         send(answer);
     });

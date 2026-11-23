@@ -210,7 +210,7 @@
 
     if (d.ai) card.appendChild(renderAi(d.ai, d));
     else {
-      var none = el('p', 'no-ai', 'No AI detail yet. In Claude Code, run the ');
+      var none = el('p', 'no-ai', 'No AI detail yet. Press Run AI, or in Claude Code run the ');
       none.appendChild(el('code', null, 'enrich_notes'));
       none.appendChild(document.createTextNode(' prompt; your own AI writes it in a separate file.'));
       card.appendChild(none);
