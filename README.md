@@ -184,7 +184,10 @@ A build with the `window` feature has its own dashboard window: counts, search, 
 detail panel with the AI detail. The page is inside the binary and loads nothing from the network.
 
 Window actions on the selected note: `Add as tags` does what `easy-note tag <id> --accept-ai` does; `Edit` changes
-the text and tags in the window and saves them as `easy-note edit` does (an inbox note is read-only); `Copy id` copies the id; `Move to trash` does what `easy-note rm <id>` does, and its
+the text and tags in the window and saves them as `easy-note edit` does (an inbox note is read-only); `Run AI` (`Run AI again`
+when the note has AI detail) runs `easy-note ai enrich <id>` on the note without freezing the window, and the click is the
+opt-in, so it needs no `[ai]` section (it starts your own `claude`, `command` and `timeout_secs` of `[ai]` apply; an error shows
+in a toast); `Copy id` copies the id; `Move to trash` does what `easy-note rm <id>` does, and its
 toast offers `Undo` (`easy-note restore <id>`) for 6 seconds. The AI file moves with the note. Nothing else in the
 window changes a note file.
 

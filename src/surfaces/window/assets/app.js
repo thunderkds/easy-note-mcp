@@ -1,4 +1,4 @@
-/* easy-note dashboard page (HUN-278 read, HUN-279 actions, HUN-280 capture, HUN-286 edit). Port of docs/design/Main.dc.html, board "Dashboard (clickable)".
+/* easy-note dashboard page (HUN-278 read, HUN-279 actions, HUN-280 capture, HUN-286 edit, HUN-288 Run AI). Port of docs/design/Main.dc.html, board "Dashboard (clickable)".
  * Every note-derived string goes into the DOM with textContent / createElement only. */
 (function () {
   'use strict';
@@ -224,6 +224,10 @@
       editButton = button('act', 'Edit', function () { startEdit(d); });
       acts.appendChild(editButton);
     }
+    var running = !!aiRunning[d.id];
+    var runAi = button('act', running ? 'AI running…' : d.ai ? 'Run AI again' : 'Run AI', function () { runAiFor(d.id); });
+    runAi.disabled = running;
+    acts.appendChild(runAi);
     acts.appendChild(button('act', 'Copy id', function () { copyId(d.id); }));
     acts.appendChild(button('act danger', 'Move to trash', function () { trashNote(d.id); }));
     card.appendChild(acts);
@@ -480,6 +484,29 @@
     }, function (err) {
       toast('could not add tags: ' + err.message, '', UNDO_MS);
     }).then(afterAction);
+  }
+
+  // HUN-288: `Run AI` starts the person's `claude` for one note and the answer comes seconds later, so it
+  // does not use `busy` (the other actions stay usable) and keeps its own state per note id: one run per
+  // note at a time, whichever note is selected when the answer comes.
+  var aiRunning = {};
+
+  function runAiFor(id) {
+    if (aiRunning[id]) return;
+    aiRunning[id] = true;
+    if (state.sel === id) renderDetail();
+    window.easyNoteIpc.enrich(id).then(function (d) {
+      delete aiRunning[id];
+      // Another note is selected now: its panel stays; coming back asks `detail`, which holds the new AI detail.
+      if (state.sel !== id) return;
+      state.detail = d;
+      // In edit mode the draft stays; Cancel and Save show the new AI detail.
+      if (!state.edit) renderDetail();
+    }, function (err) {
+      delete aiRunning[id];
+      if (state.sel === id && !state.edit) renderDetail();
+      toast('Run AI failed: ' + err.message, '', UNDO_MS);
+    }).then(loadBoard);
   }
 
   // AC 5: the page clipboard API, no IPC. When it is missing or refused, the toast shows the id to copy by hand.

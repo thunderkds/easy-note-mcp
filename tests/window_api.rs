@@ -9,12 +9,15 @@
 use std::path::{Path, PathBuf};
 
 use easy_note_mcp::core::ai;
+use easy_note_mcp::core::config::AiSettings;
 use easy_note_mcp::core::store::Store;
 use easy_note_mcp::surfaces::dashboard::use_window;
+use easy_note_mcp::surfaces::enrich;
 use easy_note_mcp::surfaces::window::{
     allowed_url,
     api::{handle, handle_with},
-    asset, initial_note_script, ipc, ipc_from, ipc_from_with, ipc_with, reply_script, CSP, REFRESH,
+    asset, initial_note_script, ipc, ipc_from, ipc_from_with, ipc_threaded, ipc_with, reply_script,
+    Running, CSP, ORIGIN, REFRESH,
 };
 use serde_json::{json, Value};
 
@@ -1070,6 +1073,7 @@ fn the_page_asks_only_for_commands_the_api_answers() {
         "edit",
         "context",
         "add",
+        "enrich",
     ];
     assert_eq!(cmds, all.into_iter().collect(), "commands in ipc.js");
     let sb = Sandbox::new("page-cmds");
@@ -1957,8 +1961,17 @@ fn run_edit_page() -> Option<Value> {
             call(&store, &json!({"cmd": "detail", "id": id})),
         );
     }
-    let more =
-        json!({"roles": {"editable": ACTED, "inbox": "inbox/p", "other": other}, "notes": notes});
+    // A note with no AI detail, for the HUN-288 scenarios.
+    let plain = *ids(&board)
+        .iter()
+        .find(|id| notes[**id]["ai"].is_null() && !id.starts_with("inbox/"))
+        .unwrap();
+    let other = *ids(&board)
+        .iter()
+        .find(|id| **id != ACTED && **id != "inbox/p" && **id != plain)
+        .unwrap_or(&other);
+    let more = json!({"roles": {"editable": ACTED, "inbox": "inbox/p", "other": other, "plain": plain},
+                      "notes": notes});
     run_page_with(&board, Some(&more))
 }
 
@@ -1994,7 +2007,13 @@ fn edit_replaces_open_in_editor_and_opens_the_text_and_tags() {
     let r = &run["initial_note"]["shown"];
     assert_eq!(
         r["buttons"],
-        json!(["Add as tags", "Edit", "Copy id", "Move to trash"]),
+        json!([
+            "Add as tags",
+            "Edit",
+            "Run AI again",
+            "Copy id",
+            "Move to trash"
+        ]),
         "{r}"
     );
     let r = &run["edit_open"]["shown"];
@@ -2147,6 +2166,548 @@ fn an_inbox_note_has_no_edit_button_and_says_read_only() {
     // AC 5.
     let r = &run["inbox"]["shown"];
     assert_eq!(r["id"], "inbox/p", "{r}");
-    assert_eq!(r["buttons"], json!(["Copy id", "Move to trash"]), "{r}");
+    // HUN-288: `Run AI` is there for an inbox note too (the AI file is not the note).
+    assert_eq!(
+        r["buttons"],
+        json!(["Run AI", "Copy id", "Move to trash"]),
+        "{r}"
+    );
     assert_eq!(r["readOnly"], "Inbox notes are read-only.", "{r}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-288: `Run AI`, the `enrich` command. A stub `claude` is first on PATH (a script that
+// records what it was given); HOME is a temp dir; no test starts the real `claude`.
+// ---------------------------------------------------------------------------------------------
+
+const STUB_OK: &str = "printf '%s' \"$STUB_ANSWER\"";
+
+/// A temp HOME and a stub `claude` first on `PATH` (the old `PATH` stays after it, so `node` and
+/// `sh` tools resolve); both come back on drop. Holds `PATH_LOCK`: the environment is shared.
+struct AiEnv {
+    sb: Sandbox,
+    rec: PathBuf,
+    old: Vec<(&'static str, Option<std::ffi::OsString>)>,
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+fn answer_json(summary: &str) -> String {
+    json!({
+        "type": "result", "subtype": "success", "is_error": false,
+        "result": "ignored",
+        "structured_output": {
+            "title": "Buy a USB-C hub", "kind": "todo", "summary": summary,
+            "tags_suggested": ["hardware", "shopping"],
+        },
+        "modelUsage": {"claude-haiku-5-5": {"inputTokens": 10}},
+    })
+    .to_string()
+}
+
+impl AiEnv {
+    /// `script` is the stub's last step; it runs after argv, env and stdin are recorded.
+    fn new(name: &str, script: &str, answer: &str) -> AiEnv {
+        use std::os::unix::fs::PermissionsExt;
+        let lock = PATH_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let sb = Sandbox::new(name);
+        let home = sb.dir.path().join("home");
+        let bin = sb.dir.path().join("bin");
+        let rec = sb.dir.path().join("rec");
+        for d in [&home, &bin, &rec] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let stub = bin.join("claude");
+        std::fs::write(
+            &stub,
+            format!(
+                "#!/bin/sh\nfor a in \"$@\"; do printf '[%s]\\n' \"$a\"; done > '{r}/argv'\nenv > '{r}/env'\npwd > '{r}/pwd'\ncat > '{r}/stdin'\necho call >> '{r}/calls'\n{script}\n",
+                r = rec.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let mut old = vec![];
+        for (key, value) in [
+            ("HOME", home.as_os_str().to_owned()),
+            ("PATH", path.into()),
+            ("STUB_ANSWER", answer.into()),
+            ("ANTHROPIC_API_KEY", "must-not-reach-the-child".into()),
+        ] {
+            old.push((key, std::env::var_os(key)));
+            std::env::set_var(key, value);
+        }
+        AiEnv {
+            sb,
+            rec,
+            old,
+            _lock: lock,
+        }
+    }
+    fn ok(name: &str) -> AiEnv {
+        AiEnv::new(
+            name,
+            STUB_OK,
+            &answer_json("A reminder to buy a USB-C hub."),
+        )
+    }
+    fn config(&self, text: &str) {
+        let path = self
+            .sb
+            .dir
+            .path()
+            .join("home/.config/easy-note/config.toml");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    fn calls(&self) -> usize {
+        std::fs::read_to_string(self.rec.join("calls")).map_or(0, |c| c.lines().count())
+    }
+    fn recorded(&self, name: &str) -> String {
+        std::fs::read_to_string(self.rec.join(name)).unwrap_or_default()
+    }
+    fn ai_files(&self) -> Vec<PathBuf> {
+        let dir = self.sb.notes().join(".easy-note/ai");
+        if dir.exists() {
+            files(&dir)
+        } else {
+            vec![]
+        }
+    }
+}
+
+impl Drop for AiEnv {
+    fn drop(&mut self) {
+        for (key, value) in &self.old {
+            match value {
+                Some(v) => std::env::set_var(key, v),
+                None => std::env::remove_var(key),
+            }
+        }
+    }
+}
+
+const PLAIN: &str = "20261119-090000-0a11";
+
+fn plain_note(env: &AiEnv) -> PathBuf {
+    env.sb.note(
+        PLAIN,
+        "2026-11-19T09:00:00+07:00",
+        "tags: []\n",
+        "Buy a USB-C hub",
+    );
+    env.sb.notes().join("2026/11").join(format!("{PLAIN}.md"))
+}
+
+#[test]
+fn enrich_runs_the_per_note_step_and_answers_the_detail_with_the_ai_filled_in() {
+    let env = AiEnv::ok("enrich-ok");
+    let file = plain_note(&env);
+    // The Obsidian view `<notes dir>/ai/<id>.md` is written when a vault holds the notes dir.
+    std::fs::create_dir_all(env.sb.dir.path().join(".obsidian")).unwrap();
+    let before = std::fs::read(&file).unwrap();
+    // AC 1 + Q1 option A: no config.toml at all, and the click still runs with the defaults.
+    let out = call(&env.sb.store(), &json!({"cmd": "enrich", "id": PLAIN}));
+    assert!(out.get("error").is_none(), "{out}");
+    assert_eq!(out["id"], PLAIN, "{out}");
+    assert_eq!(out["ai"]["title"], "Buy a USB-C hub", "{out}");
+    assert_eq!(out["ai"]["kind"], "to-do", "{out}");
+    assert_eq!(
+        out["ai"]["summary"], "A reminder to buy a USB-C hub.",
+        "{out}"
+    );
+    assert_eq!(out["ai"]["tags_suggested"], json!(["hardware", "shopping"]));
+    assert_eq!(out["ai"]["model"], "claude-haiku-5-5", "{out}");
+    assert_eq!(out["ai"]["stale"], false, "{out}");
+    assert_eq!(
+        out["ai"],
+        call(&env.sb.store(), &json!({"cmd": "detail", "id": PLAIN}))["ai"]
+    );
+    // The same AI file and the same view as `ai enrich`.
+    let names: Vec<String> = env
+        .ai_files()
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, [format!("{PLAIN}.json")]);
+    assert!(env.sb.notes().join(format!("ai/{PLAIN}.md")).is_file());
+    // The same `claude -p` argv, env and stdin as `ai enrich`.
+    let settings = AiSettings::default();
+    let want: String = enrich::argv(&settings, &enrich::schema().to_string())[1..]
+        .iter()
+        .map(|a| format!("[{a}]\n"))
+        .collect();
+    assert_eq!(env.recorded("argv"), want);
+    assert!(!env.recorded("env").contains("ANTHROPIC_API_KEY"));
+    let stdin = env.recorded("stdin");
+    assert!(stdin.starts_with(enrich::PROMPT), "{stdin}");
+    assert!(
+        stdin.contains("<note>\nBuy a USB-C hub\n</note>"),
+        "{stdin}"
+    );
+    // AC 4 (NFR-012): the note file is byte for byte what it was.
+    assert_eq!(std::fs::read(&file).unwrap(), before);
+}
+
+#[test]
+fn enrich_runs_again_over_old_detail_and_the_stale_mark_goes() {
+    let env = AiEnv::ok("enrich-again");
+    plain_note(&env);
+    env.sb.enrich(PLAIN, "bug");
+    let path = env.sb.notes().join("2026/11").join(format!("{PLAIN}.md"));
+    let mut text = std::fs::read_to_string(&path).unwrap();
+    text.push_str("one more line\n");
+    std::fs::write(&path, text).unwrap();
+    let store = env.sb.store();
+    assert_eq!(
+        call(&store, &json!({"cmd": "detail", "id": PLAIN}))["ai"]["stale"],
+        true
+    );
+    let out = call(&store, &json!({"cmd": "enrich", "id": PLAIN}));
+    assert_eq!(out["ai"]["title"], "Buy a USB-C hub", "{out}");
+    assert_eq!(out["ai"]["stale"], false, "{out}");
+}
+
+#[test]
+fn enrich_errors_are_words_and_write_nothing() {
+    // AC 3: each failure is `{"error": "<words>"}`; no AI file, the note file unchanged.
+    let cases: [(&str, &str, &str, &str, &str); 6] = [
+        // (stub script, [ai] section, id, what the error holds, why)
+        ("exit 1", "", PLAIN, "log in once: claude", "not logged in"),
+        (
+            "echo not json",
+            "",
+            PLAIN,
+            "the answer is not JSON",
+            "bad answer",
+        ),
+        (
+            "exec sleep 30",
+            "[ai]\ntimeout_secs = 1\n",
+            PLAIN,
+            "timeout",
+            "timed out",
+        ),
+        (
+            STUB_OK,
+            "[ai]\ncommand = \"easy-note-no-such-claude\"\n",
+            PLAIN,
+            "[ai] command",
+            "claude not found",
+        ),
+        (
+            STUB_OK,
+            "[ai]\nmodel = \"-x\"\n",
+            PLAIN,
+            "[ai] model",
+            "bad config",
+        ),
+        (
+            STUB_OK,
+            "",
+            "20261119-090000-ffff",
+            "no such note",
+            "unknown id",
+        ),
+    ];
+    for (script, config, id, holds, why) in cases {
+        let env = AiEnv::new("enrich-err", script, &answer_json("s"));
+        let file = plain_note(&env);
+        let before = std::fs::read(&file).unwrap();
+        env.config(config);
+        let out = call(&env.sb.store(), &json!({"cmd": "enrich", "id": id}));
+        let error = out["error"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{why}: {out}"));
+        assert!(error.contains(holds), "{why}: {out}");
+        assert_eq!(
+            out.as_object().unwrap().len(),
+            1,
+            "{why}: only the error: {out}"
+        );
+        assert!(env.ai_files().is_empty(), "{why}: an AI file was written");
+        assert_eq!(std::fs::read(&file).unwrap(), before, "{why}");
+        if why == "unknown id" || why == "claude not found" || why == "bad config" {
+            assert_eq!(env.calls(), 0, "{why}: claude must not run");
+        }
+    }
+}
+
+#[test]
+fn enrich_refuses_a_trashed_a_bad_and_a_missing_id_without_running_claude() {
+    let env = AiEnv::ok("enrich-ids");
+    plain_note(&env);
+    let store = env.sb.store();
+    assert_eq!(
+        call(&store, &json!({"cmd": "trash", "id": PLAIN})),
+        json!({"trashed": PLAIN})
+    );
+    for (request, error) in [
+        (json!({"cmd": "enrich", "id": PLAIN}), "no such note"),
+        (
+            json!({"cmd": "enrich", "id": "../../etc/passwd"}),
+            "no such note",
+        ),
+        (json!({"cmd": "enrich", "id": ""}), "no such note"),
+        (json!({"cmd": "enrich"}), "missing id"),
+        (json!({"cmd": "enrich", "id": 7}), "missing id"),
+    ] {
+        assert_eq!(call(&store, &request), json!({"error": error}), "{request}");
+    }
+    assert_eq!(env.calls(), 0);
+    assert!(env.ai_files().is_empty());
+}
+
+#[test]
+fn enrich_masks_every_string_of_the_answer() {
+    // AC 7: a secret the AI wrote is masked in the file (`ai::enrich`) and again on output.
+    let cases = planted();
+    let (_, secret) = &cases[0];
+    let env = AiEnv::new(
+        "enrich-mask",
+        STUB_OK,
+        &answer_json(&format!("the key is {secret}")),
+    );
+    plain_note(&env);
+    let raw = handle(
+        &env.sb.store(),
+        &json!({"cmd": "enrich", "id": PLAIN}).to_string(),
+    );
+    assert!(!raw.contains(secret.as_str()), "secret in {raw}");
+    assert!(raw.contains("[masked:"), "{raw}");
+}
+
+#[test]
+fn a_slow_claude_does_not_hold_the_other_requests() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+    // AC 2: the stub sleeps 1 s before it answers; meanwhile `board` and `detail` are answered.
+    let env = AiEnv::new(
+        "enrich-slow",
+        &format!("sleep 1\n{STUB_OK}"),
+        &answer_json("slow"),
+    );
+    plain_note(&env);
+    let store = env.sb.store();
+    let running = Running::default();
+    let (tx, rx) = mpsc::channel::<String>();
+    let sent = tx.clone();
+    let body = json!({"req": 41, "cmd": "enrich", "id": PLAIN}).to_string();
+    let started = std::time::Instant::now();
+    ipc_threaded(&store, &running, ORIGIN, &body, &|_| {}, move |a| {
+        let _ = sent.send(a);
+    });
+    assert!(
+        started.elapsed() < Duration::from_millis(500),
+        "the call waited for claude"
+    );
+    // A second click on the same note while it runs: refused at once, claude is not started twice.
+    let again = tx.clone();
+    ipc_threaded(&store, &running, ORIGIN, &body, &|_| {}, move |a| {
+        let _ = again.send(a);
+    });
+    let refused: Value =
+        serde_json::from_str(&rx.recv_timeout(Duration::from_millis(500)).unwrap()).unwrap();
+    assert_eq!(refused["req"], 41, "{refused}");
+    assert!(
+        refused["error"]
+            .as_str()
+            .unwrap()
+            .contains("already running"),
+        "{refused}"
+    );
+    // Other requests (the page's `board`, `detail`) are answered while the child runs; so is
+    // an `enrich` of another note.
+    for request in [
+        json!({"req": 42, "cmd": "board"}),
+        json!({"req": 43, "cmd": "detail", "id": PLAIN}),
+    ] {
+        let sent = tx.clone();
+        ipc_threaded(
+            &store,
+            &running,
+            ORIGIN,
+            &request.to_string(),
+            &|_| {},
+            move |a| {
+                let _ = sent.send(a);
+            },
+        );
+        let got: Value =
+            serde_json::from_str(&rx.recv_timeout(Duration::from_millis(500)).unwrap()).unwrap();
+        assert_eq!(got["req"], request["req"], "{got}");
+        assert!(got.get("error").is_none(), "{got}");
+    }
+    assert!(
+        rx.try_recv().is_err(),
+        "the enrich answer came before the child ended"
+    );
+    // The answer reaches the page when the child ends, with the request's `req`.
+    let done: Value =
+        serde_json::from_str(&rx.recv_timeout(Duration::from_secs(10)).unwrap()).unwrap();
+    assert_eq!(done["req"], 41, "{done}");
+    assert_eq!(done["ai"]["summary"], "slow", "{done}");
+    assert_eq!(env.calls(), 1);
+    // The note may be run again once the first run ended.
+    let sent = tx.clone();
+    ipc_threaded(&store, &running, ORIGIN, &body, &|_| {}, move |a| {
+        let _ = sent.send(a);
+    });
+    let second: Value =
+        serde_json::from_str(&rx.recv_timeout(Duration::from_secs(10)).unwrap()).unwrap();
+    assert!(second.get("error").is_none(), "{second}");
+}
+
+#[test]
+fn a_request_from_another_page_is_dropped_before_any_child_starts() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+    let env = AiEnv::ok("enrich-origin");
+    plain_note(&env);
+    let (tx, rx) = mpsc::channel::<String>();
+    let body = json!({"req": 1, "cmd": "enrich", "id": PLAIN}).to_string();
+    ipc_threaded(
+        &env.sb.store(),
+        &Running::default(),
+        "https://evil.example/",
+        &body,
+        &|_| {},
+        move |a| {
+            let _ = tx.send(a);
+        },
+    );
+    assert!(rx.recv_timeout(Duration::from_millis(300)).is_err());
+    assert_eq!(env.calls(), 0);
+}
+
+// HUN-288 page side: the `Run AI` button and its states (AC 5, 6), over the stub IPC.
+
+#[test]
+fn run_ai_sits_in_the_actions_row_and_reads_again_when_the_note_has_ai_detail() {
+    let Some(run) = run_edit_page() else { return };
+    let none = &run["ai_idle"]["none"];
+    assert_eq!(
+        none["buttons"],
+        json!(["Edit", "Run AI", "Copy id", "Move to trash"]),
+        "{none}"
+    );
+    assert_eq!(none["disabled"], json!([]), "{none}");
+    let with = &run["ai_idle_with_ai"]["shown"];
+    assert_eq!(
+        with["buttons"],
+        json!([
+            "Add as tags",
+            "Edit",
+            "Run AI again",
+            "Copy id",
+            "Move to trash"
+        ]),
+        "{with}"
+    );
+}
+
+#[test]
+fn run_ai_shows_running_once_then_the_new_ai_detail() {
+    let Some(run) = run_edit_page() else { return };
+    let r = &run["ai_run"];
+    assert_eq!(r["markBefore"], "", "{r}");
+    // While it runs: the button is disabled and reads `AI running…`.
+    assert_eq!(r["running"]["disabled"], json!(["AI running…"]), "{r}");
+    assert!(
+        r["running"]["buttons"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("AI running…")),
+        "{r}"
+    );
+    // Two more clicks while it runs send nothing: one `enrich` request for the note.
+    let sent = r["sent"].as_array().unwrap();
+    assert_eq!(sent.len(), 1, "{r}");
+    assert_eq!(sent[0]["cmd"], "enrich", "{r}");
+    // The answer fills the AI detail section; the button comes back as `Run AI again`.
+    let shown = &r["shown"];
+    assert_eq!(shown["aiTitle"], "AI title new", "{r}");
+    assert_eq!(shown["aiKind"], "type: idea", "{r}");
+    assert_eq!(shown["aiSummary"], "AI summary new", "{r}");
+    assert_eq!(shown["aiTags"], json!(["#alpha", "#beta"]), "{r}");
+    assert_eq!(shown["disabled"], json!([]), "{r}");
+    assert!(
+        shown["buttons"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("Run AI again")),
+        "{r}"
+    );
+    // The board is asked again, so the row gets its AI mark.
+    assert_eq!(r["boards"], 1, "{r}");
+    assert_eq!(r["markAfter"], "AI", "{r}");
+    let again = &run["ai_again"];
+    assert_eq!(
+        again["running"]["disabled"],
+        json!(["AI running…"]),
+        "{again}"
+    );
+    assert_eq!(again["shown"]["aiTitle"], "AI title new", "{again}");
+    assert_eq!(again["shown"]["stale"], false, "{again}");
+}
+
+#[test]
+fn run_ai_error_is_a_toast_and_the_button_comes_back() {
+    let Some(run) = run_edit_page() else { return };
+    let r = &run["ai_error"];
+    let toast = r["first"]["toast"].as_str().unwrap();
+    assert!(toast.starts_with("Run AI failed: claude not found"), "{r}");
+    assert!(toast.contains("[ai] command"), "{r}");
+    assert_eq!(r["first"]["disabled"], json!([]), "{r}");
+    assert!(
+        r["first"]["buttons"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("Run AI")),
+        "{r}"
+    );
+    assert_eq!(r["first"]["aiTitle"], "", "no AI detail was invented: {r}");
+    // The button works again: a second click sends a second request, and it succeeds.
+    assert_eq!(r["sent"], 2, "{r}");
+    assert_eq!(r["second"]["aiTitle"], "AI title new", "{r}");
+}
+
+#[test]
+fn an_answer_for_a_note_no_longer_selected_is_not_lost() {
+    let Some(run) = run_edit_page() else { return };
+    // AC 6: select another note while AI runs.
+    let r = &run["ai_switch"];
+    assert_eq!(r["sent"], 1, "{r}");
+    assert_ne!(r["away"]["id"], r["back"]["id"], "{r}");
+    // Back on the note before the answer: it still shows it is running (one run per note).
+    assert_eq!(r["back"]["disabled"], json!(["AI running…"]), "{r}");
+    assert_eq!(r["back"]["aiTitle"], "", "{r}");
+    // The answer then fills the panel of the note that is selected again; the other panel is untouched.
+    assert_eq!(r["done"]["aiTitle"], "AI title new", "{r}");
+    assert_ne!(r["elsewhere"]["aiTitle"], "AI title new", "{r}");
+    assert_eq!(r["mark"], "AI", "{r}");
+    let r = &run["ai_answer_elsewhere"];
+    assert_ne!(
+        r["shownOther"]["aiTitle"], "AI title new",
+        "the panel of the selected note is not touched: {r}"
+    );
+    assert_eq!(r["mark"], "AI", "the row has its AI mark: {r}");
+    assert_eq!(
+        r["back"]["aiTitle"], "AI title new",
+        "coming back shows the AI detail: {r}"
+    );
+}
+
+#[test]
+fn an_answer_while_the_note_is_in_edit_mode_keeps_the_draft() {
+    let Some(run) = run_edit_page() else { return };
+    let r = &run["ai_while_editing"];
+    assert_eq!(r["editing"]["editing"], true, "{r}");
+    assert_eq!(r["editing"]["draft"], "my draft kept", "{r}");
+    assert_eq!(r["after"]["editing"], false, "{r}");
+    assert_eq!(r["after"]["aiTitle"], "AI title new", "{r}");
 }

@@ -91,6 +91,9 @@ async function scenario(run) {
   const msgs = [];
   const notes = JSON.parse(JSON.stringify(details || {}));
   const editErrors = [];
+  const enrichErrors = [];
+  const live = JSON.parse(JSON.stringify(board));
+  const slow = { enrichMs: ANSWER_MS };
   // The `edit` answer of the backend contract: whole new text and tags, `#` dropped, each tag once,
   // AI detail stale when the text changed. A queued error is answered first, writing nothing.
   const answerEdit = (m) => {
@@ -107,8 +110,19 @@ async function scenario(run) {
     if (changed && d.ai) d.ai.stale = true;
     return JSON.parse(JSON.stringify(d));
   };
+  // The `enrich` answer: the note's `detail` with new AI detail; its board row gets the AI mark. A queued error is answered first.
+  const answerEnrich = (m) => {
+    if (enrichErrors.length) return { error: enrichErrors.shift() };
+    const d = notes[m.id];
+    if (!d) return { error: 'no such note' };
+    d.ai = { title: 'AI title new', kind: 'idea', summary: 'AI summary new', tags_suggested: ['alpha', 'beta'], model: 'stub-model', at: '2026-11-19T10:00:00+07:00', stale: false };
+    const row = live.notes.find((n) => n.id === m.id);
+    if (row) Object.assign(row, { ai: true, kind: 'idea', stale: false });
+    return JSON.parse(JSON.stringify(d));
+  };
   const answer = (m) => {
-    if (m.cmd === 'board') return board;
+    if (m.cmd === 'board') return JSON.parse(JSON.stringify(live));
+    if (m.cmd === 'enrich') return answerEnrich(m);
     if (m.cmd === 'detail') return notes[m.id] ? JSON.parse(JSON.stringify(notes[m.id])) : { error: 'no such note' };
     if (m.cmd === 'edit') return answerEdit(m);
     return {};
@@ -120,8 +134,10 @@ async function scenario(run) {
       const m = JSON.parse(s);
       posts.push(m.cmd);
       msgs.push(m);
-      const result = answer(m);
-      setTimeout(() => ctx.__easyNote.reply(JSON.stringify(Object.assign({ req: m.req }, result))), ANSWER_MS);
+      // `enrich` writes when the child ends, not when it starts: its AI detail shows up in `detail` only after the delay.
+      const delay = m.cmd === 'enrich' ? slow.enrichMs : ANSWER_MS;
+      const now = m.cmd === 'enrich' ? null : answer(m);
+      setTimeout(() => ctx.__easyNote.reply(JSON.stringify(Object.assign({ req: m.req }, now || answer(m)))), delay);
     },
   };
   vm.runInContext('var __t = 0; Date.now = function () { return 1e12 + __t; };', ctx);
@@ -166,16 +182,22 @@ async function scenario(run) {
     error: findAll(panel(), (e) => e.className === 'error').map((e) => e.textContent).join(''),
     stale: findAll(panel(), (e) => e.className === 'ai-stale').length > 0,
     buttons: findAll(panel(), (e) => e.tag === 'button').map((e) => e.textContent),
+    disabled: findAll(panel(), (e) => e.tag === 'button' && e.disabled).map((e) => e.textContent),
+    aiTitle: findAll(panel(), (e) => e.className === 'ai-title').map((e) => e.textContent).join(''),
+    aiKind: findAll(panel(), (e) => e.className === 'ai-kind').map((e) => e.textContent).join(''),
+    aiSummary: findAll(panel(), (e) => e.className === 'ai-summary').map((e) => e.textContent).join(''),
+    aiTags: findAll(panel(), (e) => e.className === 'ai-tag').map((e) => e.textContent),
     readOnly: findAll(panel(), (e) => e.className === 'read-only').map((e) => e.textContent).join(''),
     id: findAll(panel(), (e) => e.className === 'card-id').map((e) => e.textContent).join(''),
     text: textOf(panel()),
     toast: doc.getElementById('toast-text').textContent,
     focusIsBox: !!box() && doc.activeElement === box(),
   });
+  const rowMark = (id) => findAll(rowButton(id), (e) => String(e.className).startsWith('row-mark'))[0].textContent;
   const sent = (cmd) => msgs.filter((m) => m.cmd === cmd);
   // A scenario that throws reports { crash } instead of stopping the others.
   try {
-    return await run({ ctx, doc, load, boards, advance, type, view, posts, button, box, key, edit, rowButton, shown, sent, editErrors, notes });
+    return await run({ ctx, doc, load, boards, advance, type, view, posts, button, box, key, edit, rowButton, rowMark, shown, sent, editErrors, enrichErrors, slow, notes });
   } catch (e) {
     return { crash: String(e && e.stack || e) };
   }
@@ -310,6 +332,100 @@ async function editScenarios(out) {
   });
 }
 
+// The HUN-288 scenarios: `Run AI` in the detail panel.
+async function runAiScenarios(out) {
+  const { editable, inbox, other, plain } = more.roles;
+  const open = async (s, id) => {
+    s.ctx.__easyNote = { initialNote: id };
+    s.load();
+    await sleep(80);
+  };
+  out.ai_idle = await scenario(async (s) => {
+    await open(s, plain);
+    const none = s.shown();
+    return { none };
+  });
+  out.ai_idle_with_ai = await scenario(async (s) => {
+    await open(s, editable);
+    return { shown: s.shown() };
+  });
+  out.ai_inbox = await scenario(async (s) => {
+    await open(s, inbox);
+    return { shown: s.shown() };
+  });
+  out.ai_run = await scenario(async (s) => {
+    await open(s, plain);
+    const boards = s.boards();
+    const markBefore = s.rowMark(plain);
+    s.button('Run AI').fire('click');
+    const running = s.shown();
+    s.button('AI running…').fire('click');
+    s.button('AI running…').fire('click');
+    await sleep(80);
+    return { markBefore, running, sent: s.sent('enrich'), shown: s.shown(), boards: s.boards() - boards, markAfter: s.rowMark(plain) };
+  });
+  out.ai_again = await scenario(async (s) => {
+    await open(s, editable);
+    s.button('Run AI again').fire('click');
+    const running = s.shown();
+    await sleep(80);
+    return { running, shown: s.shown() };
+  });
+  out.ai_error = await scenario(async (s) => {
+    await open(s, plain);
+    s.enrichErrors.push('claude not found (claude): install it, or set [ai] command in x');
+    s.button('Run AI').fire('click');
+    await sleep(80);
+    const first = s.shown();
+    s.button('Run AI').fire('click');
+    await sleep(80);
+    return { first, second: s.shown(), sent: s.sent('enrich').length };
+  });
+  out.ai_switch = await scenario(async (s) => {
+    await open(s, plain);
+    s.slow.enrichMs = 250;
+    s.button('Run AI').fire('click');
+    await sleep(20);
+    s.rowButton(other).fire('click');
+    await sleep(60);
+    const away = s.shown();
+    s.rowButton(plain).fire('click');
+    await sleep(60);
+    const back = s.shown();
+    await sleep(300);
+    const done = s.shown();
+    s.rowButton(other).fire('click');
+    await sleep(60);
+    const elsewhere = s.shown();
+    return { away, back, done, elsewhere, sent: s.sent('enrich').length, mark: s.rowMark(plain) };
+  });
+  out.ai_answer_elsewhere = await scenario(async (s) => {
+    await open(s, plain);
+    s.slow.enrichMs = 150;
+    s.button('Run AI').fire('click');
+    await sleep(20);
+    s.rowButton(other).fire('click');
+    await sleep(300);
+    const shownOther = s.shown();
+    s.rowButton(plain).fire('click');
+    await sleep(60);
+    return { shownOther, mark: s.rowMark(plain), back: s.shown() };
+  });
+  out.ai_while_editing = await scenario(async (s) => {
+    await open(s, plain);
+    s.slow.enrichMs = 100;
+    s.button('Run AI').fire('click');
+    await sleep(10);
+    s.button('Edit').fire('click');
+    s.edit('my draft kept');
+    await sleep(200);
+    const editing = s.shown();
+    s.button('Cancel').fire('click');
+    await sleep(20);
+    return { editing, after: s.shown() };
+  });
+}
+
 (async () => {
   const out = {};
   out.focus_before_answer = await scenario(async (s) => {
@@ -362,5 +478,6 @@ async function editScenarios(out) {
     return { body, none: s.view() };
   });
   if (details) await editScenarios(out);
+  if (details) await runAiScenarios(out);
   console.log(JSON.stringify(out));
 })();

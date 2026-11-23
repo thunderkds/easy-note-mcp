@@ -6,6 +6,9 @@
 
 pub mod api;
 
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
+
 use serde_json::Value;
 
 use crate::core::store::Store;
@@ -125,6 +128,67 @@ pub fn ipc_from_with(
     allowed_url(source).then(|| ipc_with(store, body, on_added))
 }
 
+/// The note ids with an `enrich` run in flight: one run per note at a time (HUN-288).
+#[derive(Clone, Default)]
+pub struct Running(Arc<Mutex<HashSet<String>>>);
+
+/// A claimed id; the id is free again when this drops, a panic of the run included.
+struct Slot(Running, String);
+
+impl Running {
+    fn start(&self, id: &str) -> Option<Slot> {
+        let mut ids = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        ids.insert(id.to_string())
+            .then(|| Slot(self.clone(), id.to_string()))
+    }
+}
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        let mut ids = (self.0).0.lock().unwrap_or_else(|e| e.into_inner());
+        ids.remove(&self.1);
+    }
+}
+
+/// `ipc_from_with`, with the answer handed to `send` instead of returned, and `enrich` (it waits
+/// for the person's `claude`, seconds) run on its own thread, so the caller never waits for it:
+/// the window keeps answering `board`, `detail` and the focus refresh meanwhile (HUN-288). `send`
+/// gets each answer once; a request from a page outside `ORIGIN` gets none. A second `enrich` of
+/// a note that is running is answered at once with an error and starts no child.
+pub fn ipc_threaded(
+    store: &Store,
+    running: &Running,
+    source: &str,
+    body: &str,
+    on_added: &dyn Fn(&str),
+    send: impl Fn(String) + Send + 'static,
+) {
+    if !allowed_url(source) {
+        return;
+    }
+    let request = serde_json::from_str::<Value>(body).unwrap_or(Value::Null);
+    let id = request
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|_| request.get("cmd").and_then(Value::as_str) == Some("enrich"));
+    let Some(id) = id else {
+        return send(ipc_with(store, body, on_added));
+    };
+    let Some(slot) = running.start(id) else {
+        let mut answer = serde_json::json!({ "error": "AI is already running for this note" });
+        if let Some(req) = request.get("req").filter(|r| r.is_number()) {
+            answer["req"] = req.clone();
+        }
+        return send(answer.to_string());
+    };
+    let (store, body) = (store.clone(), body.to_string());
+    std::thread::spawn(move || {
+        let answer = ipc_with(&store, &body, &|_| {});
+        drop(slot);
+        send(answer);
+    });
+}
+
 /// `open`'s error when the display cannot be used (GTK does not start): `dashboard` then takes
 /// the FR-034 Obsidian path instead (HUN-281).
 pub const NO_DISPLAY: &str = "the display cannot be used";
@@ -151,7 +215,8 @@ mod shell {
     use wry::{NewWindowResponse, WebViewBuilder, WebViewBuilderExtUnix};
 
     use super::{
-        allowed_url, asset, initial_note_script, ipc_from_with, reply_script, CSP, REFRESH, START,
+        allowed_url, asset, initial_note_script, ipc_threaded, reply_script, Running, CSP, REFRESH,
+        START,
     };
     use crate::core::config;
     use crate::core::store::Store;
@@ -199,6 +264,7 @@ mod shell {
         std::panic::set_hook(quiet);
         let event_loop = built.map_err(|_| super::NO_DISPLAY.to_string())?;
         let proxy = event_loop.create_proxy();
+        let running = Running::default();
         let window = WindowBuilder::new()
             .with_title("easy-note")
             .with_inner_size(LogicalSize::new(1280.0, 820.0))
@@ -224,9 +290,18 @@ mod shell {
                         enrich::after_save(&store.root, id);
                     }
                 };
-                if let Some(answer) = ipc_from_with(&store, &source, request.body(), &on_added) {
-                    let _ = proxy.send_event(answer);
-                }
+                // `enrich` runs on its own thread and answers through the proxy when the child ends.
+                let proxy = proxy.clone();
+                ipc_threaded(
+                    &store,
+                    &running,
+                    &source,
+                    request.body(),
+                    &on_added,
+                    move |a| {
+                        let _ = proxy.send_event(a);
+                    },
+                );
             })
             .with_navigation_handler(|url| allowed_url(&url))
             .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)

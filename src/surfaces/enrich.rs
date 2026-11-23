@@ -286,6 +286,24 @@ fn enrich_one(
     Ok(detail.id)
 }
 
+/// The per-note step for the window's `Run AI` (HUN-288): the same `enrich_one` as `ai enrich <id>`,
+/// with the same settings. The click is the opt-in: `[ai] enrich` is not asked (the defaults apply
+/// without an `[ai]` section), and `after_save` is not touched. `Err` is words for the toast.
+pub(crate) fn for_window(store: &Store, id: &str) -> Result<String, String> {
+    let settings = config::ai_settings().map_err(|e| e.to_string())?;
+    let program = resolve(&settings.command).ok_or_else(|| {
+        let file = config::config_path().map_or_else(
+            |_| "config.toml".to_string(),
+            |path| path.display().to_string(),
+        );
+        format!(
+            "claude not found ({}): install it, or set [ai] command in {file}",
+            settings.command
+        )
+    })?;
+    enrich_one(store, &settings, &program, id)
+}
+
 fn print(text: &str) {
     let mut out = io::stdout().lock();
     let _ = writeln!(out, "{text}");

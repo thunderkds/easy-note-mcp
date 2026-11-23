@@ -1,5 +1,6 @@
 //! The window's IPC API (FR-042, DDR 0009 item 3): one JSON request in, one JSON response out,
-//! over a `Store`. No window, no display; only the actions below write, through the core. A page
+//! over a `Store`. No window, no display; only the actions below write, through the core (`enrich`
+//! also reads config.toml for `[ai]`, as the CLI does). A page
 //! bug can send anything, so every command and id is checked and a bad request is an
 //! `{"error": ...}` object, never a panic.
 //! Every string in every response passes `guard::mask_for_output` (NFR-002).
@@ -19,6 +20,12 @@
 //!   outside the window`. Tags follow `easy-note tag` (no `#`, each once; a tag the note already
 //!   has is kept as it is); a changed text adds its `#words` as `easy-note edit` does. Empty text
 //!   is `empty`; no change writes nothing. `masked` is also true when the guard masked on this save
+//!
+//! - `{"cmd": "enrich", "id"}` → the updated `detail`, its AI detail filled in (HUN-288, `Run AI`): the
+//!   same per-note step as `easy-note ai enrich <id>` (`enrich::for_window`). It waits for the
+//!   person's `claude` (seconds), so the shell answers it off the event-loop thread. The click is
+//!   the opt-in: no `[ai]` section is needed. Errors are words (`claude` not found, not logged in,
+//!   timed out, bad answer, `[ai]` config, no such note) and nothing is written
 //!
 //! No command opens a note in another app (HUN-286: `open_in_editor` is gone).
 //!
@@ -44,6 +51,7 @@ use crate::core::context::Context;
 use crate::core::format::{Note, Value as Field};
 use crate::core::store::{Item, Store, StoreError};
 use crate::core::{ai, ai_view, guard, tags};
+use crate::surfaces::enrich;
 use crate::surfaces::quick::last_context;
 
 /// How many projects the counts strip shows as bars.
@@ -57,14 +65,14 @@ pub fn handle(store: &Store, request: &str) -> String {
 }
 
 /// `handle`, and `on_added` gets the id of each note `add` saved, after the save. The shell passes
-/// `enrich::after_save` there when `[ai] enrich` and `after_save` are on; this module reads no config.
+/// `enrich::after_save` there when `[ai] enrich` and `after_save` are on.
 pub fn handle_with(store: &Store, request: &str, on_added: &dyn Fn(&str)) -> String {
     let mut answer = answer(store, request, on_added).unwrap_or_else(|e| json!({ "error": e }));
     mask_all(&mut answer);
     answer.to_string()
 }
 
-fn answer(store: &Store, request: &str, on_added: &dyn Fn(&str)) -> Result<Value, &'static str> {
+fn answer(store: &Store, request: &str, on_added: &dyn Fn(&str)) -> Result<Value, String> {
     let request: Value = serde_json::from_str(request).map_err(|_| "bad request")?;
     let id = || {
         request
@@ -72,7 +80,11 @@ fn answer(store: &Store, request: &str, on_added: &dyn Fn(&str)) -> Result<Value
             .and_then(Value::as_str)
             .ok_or("missing id")
     };
-    match request.get("cmd").and_then(Value::as_str) {
+    let cmd = request.get("cmd").and_then(Value::as_str);
+    if cmd == Some("enrich") {
+        return enrich_note(store, id()?);
+    }
+    let local: Result<Value, &'static str> = match cmd {
         Some("board") => Ok(board(store)),
         Some("detail") => detail(store, id()?),
         Some("accept_ai") => accept_ai(store, id()?),
@@ -83,7 +95,8 @@ fn answer(store: &Store, request: &str, on_added: &dyn Fn(&str)) -> Result<Value
         Some("add") => add(store, &request, on_added),
         Some(_) => Err("unknown command"),
         None => Err("missing cmd"),
-    }
+    };
+    Ok(local?)
 }
 
 /// The page's short text for a store error; never the id or a path.
@@ -120,6 +133,13 @@ fn accept_ai(store: &Store, id: &str) -> Result<Value, &'static str> {
     store.update(id, None, Some(&now)).map_err(store_error)?;
     ai_view::sync(store, id);
     detail(store, id)
+}
+
+/// `ai enrich <id>` (`enrich::for_window`), then the note's `detail`. The error is the words of the
+/// failed step, not a fixed `&'static str`.
+fn enrich_note(store: &Store, id: &str) -> Result<Value, String> {
+    let done = enrich::for_window(store, id)?;
+    detail(store, &done).map_err(String::from)
 }
 
 /// `rm <id>` (`cli::write::rm`).
