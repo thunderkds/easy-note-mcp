@@ -224,8 +224,8 @@ If Obsidian is not installed, `dashboard` says so and opens the notes folder ins
 
 ## One key press
 
-From anywhere on the Linux desktop or in an editor, one key press or one click opens a one-line
-box. Type, press Enter, and the note is saved with `source: quick`. A `✓ noted ...` desktop
+From anywhere on the Linux desktop or in an editor, one key press or one click opens a small
+input box. Type, press Enter, and the note is saved with `source: quick`. A `✓ noted ...` desktop
 notification confirms it. Esc, or an empty box, saves nothing.
 
 In a build with the window (the `.deb`, or `--features window`), the box is a small easy-note

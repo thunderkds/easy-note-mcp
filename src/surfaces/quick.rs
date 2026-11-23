@@ -1,4 +1,4 @@
-//! `quick`: one key press or one click opens a one-line box; Enter saves the note (FR-022).
+//! `quick`: one key press or one click opens a small input box; Enter saves the note (FR-022).
 //!
 //! In a `window` build with `$DISPLAY` or `$WAYLAND_DISPLAY` set, the box is a small window of ours
 //! that holds only the dashboard's capture dialog (HUN-289, `window::open_capture`): Enter saves,

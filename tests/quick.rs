@@ -1,4 +1,4 @@
-//! HUN-260: `easy-note quick`, the one-line box, through the real binary (FR-022, FR-027,
+//! HUN-260: `easy-note quick`, the small input box, through the real binary (FR-022, FR-027,
 //! NFR-011). Every test puts stub `zenity`, `kdialog` and `notify-send` scripts on a temp `PATH`
 //! that holds nothing else (plus `git` by symlink when a repo is read), sets `DISPLAY` to a dummy
 //! value and uses a temp HOME and EASY_NOTE_DIR. No test opens a real dialog or notification.

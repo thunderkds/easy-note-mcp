@@ -185,7 +185,7 @@ pub enum Command {
     Path,
     /// Claude Code `UserPromptSubmit` hook: read the event on stdin, save a `/note ...` prompt.
     HookPrompt,
-    /// Open a one-line box and save the answer as a note (for a key binding or a click).
+    /// Open a small input box (easy-note's own window in a window build, else zenity or kdialog) and save the answer as a note.
     Quick {
         /// Take repo, branch and task from this folder (an editor passes its project folder).
         #[arg(long)]

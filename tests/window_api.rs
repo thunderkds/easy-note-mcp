@@ -2270,6 +2270,28 @@ fn the_quick_window_refuses_text_over_the_limit_and_keeps_the_dialog() {
 }
 
 #[test]
+fn the_quick_window_limit_counts_the_trimmed_text() {
+    // Review P3: `quick::run` saves the trimmed text, so padding does not count against the limit.
+    let padded = format!("{}\n\n\n", "a".repeat(19_999));
+    assert_eq!(
+        capture_ipc(
+            &json!({"req": 9, "cmd": "add", "text": padded}).to_string(),
+            &chip_context()
+        ),
+        Capture::Save {
+            text: padded,
+            keep_context: false
+        }
+    );
+    let padded_over = format!("  {}\n\n", "a".repeat(20_001));
+    let got = reply_of(capture_ipc(
+        &json!({"req": 10, "cmd": "add", "text": padded_over}).to_string(),
+        &chip_context(),
+    ));
+    assert_eq!(got, json!({"req": 10, "error": "the text is too long"}));
+}
+
+#[test]
 fn the_quick_window_refuses_every_other_command() {
     // AC 7: no board, detail, edit or trash in the quick window.
     for cmd in [
@@ -2396,7 +2418,7 @@ fn the_quick_page_keys_follow_the_dashboard_dialog() {
     // AC 1: open at start with the chip and the caret in the box; it asks for the context only.
     assert_eq!(
         run["start"],
-        json!({"open": true, "chip": "easy-note-mcp · HUN-289", "focusIsBox": true, "sent": [ctx]}),
+        json!({"open": true, "chip": "easy-note-mcp · HUN-289", "focusIsBox": true, "textLen": 0, "error": null, "sent": [ctx]}),
         "{run}"
     );
     // AC 2: Enter sends one `add` with the text and the chip kept; a second Enter sends nothing more.
@@ -2429,4 +2451,10 @@ fn the_quick_page_keys_follow_the_dashboard_dialog() {
         "{run}"
     );
     assert_eq!(run["no_chip"]["chip"], Value::Null, "{run}");
+    // Review P2: an `add` error reply keeps the dialog and the text and shows the message.
+    let err = &run["add_error"];
+    assert_eq!(err["open"], json!(true), "{run}");
+    assert_eq!(err["error"], json!("the text is too long"), "{run}");
+    assert_eq!(err["textLen"], json!(20_001), "{run}");
+    assert_eq!(run["enter"]["error"], Value::Null, "{run}");
 }

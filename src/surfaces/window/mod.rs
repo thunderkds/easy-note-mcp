@@ -158,7 +158,7 @@ pub fn capture_ipc(body: &str, context: &Context) -> Capture {
     let answer = match request.get("cmd").and_then(Value::as_str) {
         Some("close") => return Capture::Close,
         Some("add") => match request.get("text").and_then(Value::as_str) {
-            Some(text) if !text.trim().is_empty() && check_text(text).is_err() => {
+            Some(text) if !text.trim().is_empty() && check_text(text.trim()).is_err() => {
                 serde_json::json!({ "error": "the text is too long" })
             }
             Some(text) if !text.trim().is_empty() => {
