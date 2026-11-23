@@ -9,12 +9,14 @@
 use std::path::{Path, PathBuf};
 
 use easy_note_mcp::core::ai;
+use easy_note_mcp::core::context::Context;
 use easy_note_mcp::core::store::Store;
 use easy_note_mcp::surfaces::dashboard::use_window;
 use easy_note_mcp::surfaces::window::{
     allowed_url,
     api::{handle, handle_with},
-    asset, initial_note_script, ipc, ipc_from, ipc_from_with, ipc_with, reply_script, CSP, REFRESH,
+    asset, capture_from, capture_ipc, initial_note_script, ipc, ipc_from, ipc_from_with, ipc_with,
+    reply_script, Capture, CSP, QUICK_START, REFRESH,
 };
 use serde_json::{json, Value};
 
@@ -1070,13 +1072,22 @@ fn the_page_asks_only_for_commands_the_api_answers() {
         "edit",
         "context",
         "add",
+        "close",
     ];
     assert_eq!(cmds, all.into_iter().collect(), "commands in ipc.js");
     let sb = Sandbox::new("page-cmds");
     let store = sb.store();
     for cmd in &cmds {
-        let out = call(&store, &json!({"cmd": cmd}));
-        assert_ne!(out["error"], "unknown command", "{cmd}: {out}");
+        // HUN-289: `close` is the quick window's own command (`capture_ipc`), not the dashboard's.
+        if *cmd == "close" {
+            assert_eq!(
+                capture_ipc(r#"{"cmd": "close"}"#, &Context::default()),
+                Capture::Close
+            );
+        } else {
+            let out = call(&store, &json!({"cmd": cmd}));
+            assert_ne!(out["error"], "unknown command", "{cmd}: {out}");
+        }
         // The contract comment at the top of ipc.js names each request and its result.
         assert!(
             ipc_js.contains(&format!(r#""cmd": "{cmd}""#)),
@@ -1541,8 +1552,10 @@ fn the_page_has_the_design_capture_dialog() {
 
 #[test]
 fn the_capture_keys_and_save_follow_the_guide() {
+    // HUN-289: the dialog code is capture.js, shared by the dashboard and the quick window.
     let app = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
-    let keys = js_function(app, "capKey");
+    let cap = std::str::from_utf8(asset("/capture.js").unwrap().1).unwrap();
+    let keys = js_function(cap, "capKey");
     // AC 3: Enter saves, Shift+Enter is a new line, Esc closes, Backspace on empty drops the chip.
     // IME composition: Enter while composing does not save.
     for must in [
@@ -1553,30 +1566,36 @@ fn the_capture_keys_and_save_follow_the_guide() {
     ] {
         assert!(keys.contains(must), "capKey lacks {must}");
     }
-    let save = js_function(app, "saveCapture");
+    let save = js_function(cap, "saveCapture");
     // AC 4: empty or whitespace-only text sends no request.
-    let guard = save
-        .find("if (!text.trim()) return;")
-        .expect("no empty guard");
+    let guard = save.find("if (!text.trim()) {").expect("no empty guard");
     let ask = save
         .find("easyNoteIpc.add(text, keepContext)")
         .expect("no add request");
     assert!(guard < ask, "the empty guard comes after the request");
-    // AC 5: close, saved toast, board reload, select the new note. An error keeps the dialog.
+    // AC 5: close, then the page's own reaction; an error keeps the dialog.
     for must in [
         "closeCapture()",
-        "'✓ noted'",
-        "loadBoard()",
-        "select(d.id)",
-        "'could not save: ' + err.message",
+        "call('onSaved', d)",
+        "call('onError', err.message)",
     ] {
         assert!(save.contains(must), "saveCapture lacks {must}");
     }
-    let open = js_function(app, "openCapture");
+    // The dashboard's reaction: saved toast, board reload, select the new note.
+    for must in [
+        "'✓ noted'",
+        "loadBoard()",
+        "select(d.id)",
+        "'could not save: ' + message",
+        "window.easyNoteCapture.attach(",
+    ] {
+        assert!(app.contains(must), "app.js lacks {must}");
+    }
+    let open = js_function(cap, "openCapture");
     assert!(open.contains("easyNoteIpc.context()"), "{open}");
     assert!(open.contains(".focus()"), "{open}");
     // A click on the backdrop keeps focus in the text box, so the keys above still reach capKey.
-    assert!(app.contains("$('cap').addEventListener('mousedown'"));
+    assert!(cap.contains("$('cap').addEventListener('mousedown'"));
     // The focus refresh rebuilds the list only; it never touches the dialog.
     assert!(!js_function(app, "loadBoard").contains("Capture"));
 }
@@ -2149,4 +2168,236 @@ fn an_inbox_note_has_no_edit_button_and_says_read_only() {
     assert_eq!(r["id"], "inbox/p", "{r}");
     assert_eq!(r["buttons"], json!(["Copy id", "Move to trash"]), "{r}");
     assert_eq!(r["readOnly"], "Inbox notes are read-only.", "{r}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-289: `easy-note quick` in a `window` build opens the capture dialog alone, in a small window.
+// The page talks `context`, `add` and `close` only; Rust keeps the answer and `quick` saves it.
+// ---------------------------------------------------------------------------------------------
+
+fn chip_context() -> Context {
+    Context {
+        repo: Some("easy-note-mcp".into()),
+        task: Some("HUN-289".into()),
+        branch: Some("feat/HUN-289-quick".into()),
+        ..Context::default()
+    }
+}
+
+fn reply_of(got: Capture) -> Value {
+    match got {
+        Capture::Reply(answer) => serde_json::from_str(&answer).unwrap(),
+        other => panic!("not a reply: {other:?}"),
+    }
+}
+
+#[test]
+fn the_quick_window_answers_context_from_the_chip_quick_computed() {
+    // AC 5: the chip is the one `quick` computed (`--cwd` or the last context), not a store read.
+    let out = reply_of(capture_ipc(
+        r#"{"req": 1, "cmd": "context"}"#,
+        &chip_context(),
+    ));
+    assert_eq!(
+        out,
+        json!({"req": 1, "context": {"repo": "easy-note-mcp", "task": "HUN-289"}})
+    );
+    let none = reply_of(capture_ipc(
+        r#"{"req": 2, "cmd": "context"}"#,
+        &Context {
+            branch: Some("main".into()),
+            ..Context::default()
+        },
+    ));
+    assert_eq!(none, json!({"req": 2, "context": null}));
+}
+
+#[test]
+fn the_quick_window_add_hands_the_text_back_and_close_closes() {
+    // AC 2 and 3: the text and the chip choice go back to `quick`, which saves them as it always did.
+    assert_eq!(
+        capture_ipc(
+            r#"{"req": 3, "cmd": "add", "text": "fix the tray\nsecond line", "keep_context": true}"#,
+            &chip_context()
+        ),
+        Capture::Save {
+            text: "fix the tray\nsecond line".into(),
+            keep_context: true
+        }
+    );
+    assert_eq!(
+        capture_ipc(r#"{"cmd": "add", "text": "x"}"#, &chip_context()),
+        Capture::Save {
+            text: "x".into(),
+            keep_context: false
+        }
+    );
+    assert_eq!(
+        capture_ipc(r#"{"req": 4, "cmd": "close"}"#, &chip_context()),
+        Capture::Close
+    );
+    // Empty text is never a save: the page closes on it, and a bad page gets the `add` error.
+    let empty = reply_of(capture_ipc(
+        r#"{"req": 5, "cmd": "add", "text": " \n "}"#,
+        &chip_context(),
+    ));
+    assert_eq!(empty, json!({"req": 5, "error": "empty"}));
+    let missing = reply_of(capture_ipc(r#"{"req": 6, "cmd": "add"}"#, &chip_context()));
+    assert_eq!(missing, json!({"req": 6, "error": "missing text"}));
+}
+
+#[test]
+fn the_quick_window_refuses_every_other_command() {
+    // AC 7: no board, detail, edit or trash in the quick window.
+    for cmd in [
+        "board",
+        "detail",
+        "edit",
+        "trash",
+        "restore",
+        "accept_ai",
+        "x",
+    ] {
+        let body = json!({"req": 7, "cmd": cmd, "id": "20261119-090000-aaaa"}).to_string();
+        let out = reply_of(capture_ipc(&body, &chip_context()));
+        assert_eq!(out, json!({"req": 7, "error": "unknown command"}), "{cmd}");
+    }
+    assert_eq!(
+        reply_of(capture_ipc("not json", &chip_context())),
+        json!({"error": "bad request"})
+    );
+    assert_eq!(
+        reply_of(capture_ipc(r#"{"req": 8}"#, &chip_context())),
+        json!({"req": 8, "error": "missing cmd"})
+    );
+    // The same origin check as the dashboard's IPC.
+    let body = r#"{"req": 1, "cmd": "close"}"#;
+    assert_eq!(
+        capture_from("easy-note://localhost/quick.html", body, &chip_context()),
+        Some(Capture::Close)
+    );
+    for source in ["easy-note://localhost.evil/quick.html", "https://x/", ""] {
+        assert_eq!(
+            capture_from(source, body, &chip_context()),
+            None,
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn the_quick_window_masks_a_secret_in_the_chip() {
+    let (_, secret) = planted().into_iter().next().expect("a planted secret");
+    let ctx = Context {
+        repo: Some(secret.clone()),
+        ..Context::default()
+    };
+    let raw = match capture_ipc(r#"{"req": 1, "cmd": "context"}"#, &ctx) {
+        Capture::Reply(raw) => raw,
+        other => panic!("{other:?}"),
+    };
+    assert!(!raw.contains(&secret), "secret in {raw}");
+}
+
+#[test]
+fn the_quick_page_is_served_and_loads_only_the_dialog() {
+    let (mime, body) = asset("/quick.html").expect("the quick page");
+    assert_eq!(mime, "text/html; charset=utf-8");
+    let html = std::str::from_utf8(body).unwrap();
+    assert!(html.contains(&format!(
+        r#"http-equiv="Content-Security-Policy" content="{CSP}""#
+    )));
+    assert!(html.contains(r#"role="dialog" aria-modal="true" aria-label="New note""#));
+    assert!(
+        html.contains(r#"id="cap" hidden"#),
+        "open() must see a closed dialog"
+    );
+    for gone in ["id=\"groups\"", "id=\"search\"", "app.js", "id=\"detail\""] {
+        assert!(!html.contains(gone), "quick.html has {gone}");
+    }
+    // The shared dialog code, then the quick page's own few lines: one implementation (AC 4).
+    let order: Vec<usize> = ["ipc.js", "capture.js", "quick.js"]
+        .iter()
+        .map(|s| {
+            html.find(&format!(r#"src="{s}""#))
+                .unwrap_or_else(|| panic!("{s}"))
+        })
+        .collect();
+    assert!(order.windows(2).all(|w| w[0] < w[1]), "{order:?}");
+    let index = std::str::from_utf8(asset("/").unwrap().1).unwrap();
+    let cap_at = index
+        .find(r#"src="capture.js""#)
+        .expect("dashboard loads capture.js");
+    assert!(cap_at < index.find(r#"src="app.js""#).unwrap());
+    // The quick page asks for nothing but `context`, `add` and `close`.
+    let quick = std::str::from_utf8(asset("/quick.js").unwrap().1).unwrap();
+    for gone in ["board", "detail", ".edit(", "trash"] {
+        assert!(!quick.contains(gone), "quick.js uses {gone}");
+    }
+    assert_eq!(asset("/quick.css").unwrap().0, "text/css; charset=utf-8");
+    assert_eq!(
+        asset("/capture.js").unwrap().0,
+        "text/javascript; charset=utf-8"
+    );
+    assert!(QUICK_START.ends_with("/quick.html") && allowed_url(QUICK_START));
+}
+
+/// The quick page, run for real: `ipc.js`, `capture.js` and `quick.js` in node over a fake DOM
+/// (`tests/fixtures/window/quick_harness.js`). Skipped, with a printed note, without `node`.
+fn run_quick_page() -> Option<Value> {
+    let harness =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/window/quick_harness.js");
+    let out = match std::process::Command::new("node")
+        .arg(harness)
+        .arg(assets_dir())
+        .output()
+    {
+        Ok(out) => out,
+        Err(e) => {
+            eprintln!("skipped: no node to run the page ({e})");
+            return None;
+        }
+    };
+    assert!(
+        out.status.success(),
+        "quick harness failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    Some(serde_json::from_slice(&out.stdout).unwrap())
+}
+
+#[test]
+fn the_quick_page_keys_follow_the_dashboard_dialog() {
+    let Some(run) = run_quick_page() else { return };
+    let ctx = json!({"cmd": "context"});
+    // AC 1: open at start with the chip and the caret in the box; it asks for the context only.
+    assert_eq!(
+        run["start"],
+        json!({"open": true, "chip": "easy-note-mcp · HUN-289", "focusIsBox": true, "sent": [ctx]}),
+        "{run}"
+    );
+    // AC 2: Enter sends one `add` with the text and the chip kept; a second Enter sends nothing more.
+    assert_eq!(
+        run["enter"]["sent"],
+        json!([ctx, {"cmd": "add", "text": "fix the tray", "keep_context": true}]),
+        "{run}"
+    );
+    // AC 4: Shift+Enter and Enter while composing are not a save.
+    assert_eq!(run["shift_enter"]["sent"], json!([ctx]), "{run}");
+    assert_eq!(run["composing"]["sent"], json!([ctx]), "{run}");
+    // AC 3: Esc and an empty Enter ask to close; nothing is added.
+    assert_eq!(run["esc"]["sent"], json!([ctx, {"cmd": "close"}]), "{run}");
+    assert_eq!(
+        run["empty_enter"]["sent"],
+        json!([ctx, {"cmd": "close"}]),
+        "{run}"
+    );
+    // AC 4: Backspace on the empty box drops the chip; the save then keeps no context.
+    assert_eq!(
+        run["drop_chip"]["sent"],
+        json!([ctx, {"cmd": "add", "text": "no context", "keep_context": false}]),
+        "{run}"
+    );
+    assert_eq!(run["drop_chip"]["chip"], Value::Null, "{run}");
+    assert_eq!(run["no_chip"]["chip"], Value::Null, "{run}");
 }

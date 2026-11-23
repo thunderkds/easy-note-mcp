@@ -51,11 +51,11 @@ Today: tray `New note` and the `Ctrl+Alt+N` hotkey both run `easy-note quick`, w
 
 ### Requirement Fidelity Gate (sign off BEFORE implementation)
 
-- [ ] Restated intent confirmed to match the user's request
-- [ ] Domain terms align with `PROJECT_SPEC.md` glossary
-- [ ] Every Acceptance Criterion below traces to a line in the Requirement
+- [X] Restated intent confirmed to match the user's request — owner, chat 2026-11-23 ("Start HUN-289 now")
+- [X] Domain terms align with `PROJECT_SPEC.md` glossary — Supervisor 2026-11-23
+- [X] Every Acceptance Criterion below traces to a line in the Requirement — Supervisor 2026-11-23
 - [ ] All Requirement Refs exist in `PRD.md` and are covered (FR-022 wording to be updated by the Supervisor)
-- [ ] Questions Log Q1 answered by the owner
+- [X] Questions Log Q1 answered by the owner — "measure, then decide" (2026-11-23); the number is below, the choice is still open
 
 ---
 
@@ -216,3 +216,6 @@ Path choice as a unit test. The capture page with a stub IPC in the page harness
 * 2026-11-22 DECIDED the styled dialog opens on its own, without the dashboard (owner, chat 2026-11-22: "anyway to style from the dialog without open the dashboard")
 * 2026-11-23 DECIDED tray `New note` and the hotkey both get it, because both run `quick` (Supervisor; the owner's request names the tray, and one `quick` path keeps them the same)
 * 2026-11-23 OPEN Q1 (owner): NFR-011 asks for the quick box visible p95 < 300 ms. A WebKitGTK window may take longer to show than zenity. If the measured p95 is over 300 ms: Option A — keep the styled window and change NFR-011 to the measured figure; Option B — keep zenity as the hotkey path and use the styled window for the tray only. Supervisor recommendation: measure first (AC 8), then decide with the number.
+* 2026-11-23 DECIDED owner: build it now; for Q1, measure first and bring the number before changing the hotkey path
+* 2026-11-23 MEASURED Q1 (release build, owner's machine, GNOME, under XWayland, temp notes dir): window mapped p50 95 ms, p95 114 ms (20 runs); dialog painted (accent border on screen) in 6/10 runs at 300 ms, 8/10 at 350 ms, 10/10 at 400 ms. So the dialog is visible at about p50 300 ms and p95 400–450 ms: over NFR-011's 300 ms. Owner to choose Option A or B
+* 2026-11-23 DECIDED two quick runs at once: two windows (no single instance; cut list). Each saves on its own

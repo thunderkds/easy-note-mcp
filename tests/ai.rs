@@ -1031,8 +1031,12 @@ async fn add_note_add_and_quick_cwd_store_the_short_commit() {
         .find(|p| p.is_file())
         .unwrap();
     std::os::unix::fs::symlink(real_git, bin.join("git")).unwrap();
+    // HUN-289: no usable display (X11 only, on the dummy `:99`), so a `window` build cannot open its
+    // window and takes the stub zenity, as every build does.
     let out = cli_command(&sb, &["quick", "--cwd", repo.to_str().unwrap()])
         .env("PATH", &bin)
+        .env_remove("WAYLAND_DISPLAY")
+        .env("GDK_BACKEND", "x11")
         .env("DISPLAY", ":99")
         .output()
         .unwrap();

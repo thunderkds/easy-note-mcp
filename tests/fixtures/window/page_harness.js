@@ -127,8 +127,8 @@ async function scenario(run) {
   vm.runInContext('var __t = 0; Date.now = function () { return 1e12 + __t; };', ctx);
   const advance = (ms) => vm.runInContext('__t += ' + ms, ctx);
   const load = () => {
-    vm.runInContext(fs.readFileSync(path.join(assets, 'ipc.js'), 'utf8'), ctx);
-    vm.runInContext(fs.readFileSync(path.join(assets, 'app.js'), 'utf8'), ctx);
+    // index.html's script order: the shared capture dialog (HUN-289) before app.js.
+    ['ipc.js', 'capture.js', 'app.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(assets, f), 'utf8'), ctx));
   };
   const boards = () => posts.filter((c) => c === 'board').length;
   const type = (value) => doc.byId.search.fire('input', { target: { value } });

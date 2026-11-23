@@ -1,0 +1,5 @@
+/* The quick window (HUN-289): the capture dialog of app.css, alone in a small window of its own. The
+   window is the backdrop, so there is no dim layer and no top gap; the dialog keeps its design look. */
+body.quick { background: #121413; font-family: 'IBM Plex Sans', system-ui, sans-serif; overflow: hidden; }
+.quick .cap-back { position: static; min-height: 100vh; box-sizing: border-box; padding: 16px; background: #121413; align-items: center; }
+.quick .cap { max-width: 100%; }

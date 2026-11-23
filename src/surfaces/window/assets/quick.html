@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src easy-note:">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>easy-note — new note</title>
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="quick.css">
+</head>
+<body class="quick">
+<div class="cap-back" id="cap" hidden>
+<div class="cap" id="cap-dialog" role="dialog" aria-modal="true" aria-label="New note">
+<div class="cap-ctx" id="cap-ctx" hidden>
+<span class="cap-chip"><span class="cap-chip-text" id="cap-chip-text"></span><button type="button" class="cap-drop" id="cap-drop" aria-label="Drop context"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg></button></span>
+<span class="cap-from">from your last note</span>
+</div>
+<textarea class="cap-text" id="cap-text" rows="2" placeholder="Note…" aria-label="Note text"></textarea>
+<div class="cap-keys">
+<span><kbd>Enter</kbd> save</span>
+<span><kbd>Shift+Enter</kbd> new line</span>
+<span><kbd>Esc</kbd> cancel</span>
+<span><kbd>Backspace</kbd> on empty: drop context</span>
+</div>
+</div>
+</div>
+<script src="ipc.js"></script>
+<script src="capture.js"></script>
+<script src="quick.js"></script>
+</body>
+</html>

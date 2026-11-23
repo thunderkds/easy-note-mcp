@@ -16,6 +16,7 @@
  *         "base_tags": ["<the `tags` of that detail>", ...] }
  *       { "req": 7, "cmd": "context" }
  *       { "req": 8, "cmd": "add", "text": "<the typed text>", "keep_context": true }
+ *       { "req": 9, "cmd": "close" }   (the quick window only, HUN-289)
  *   The correlation key is `req`, not `id`, because `id` is already the note id in the `detail`
  *   request and in every note object of a reply.
  *
@@ -56,6 +57,12 @@
  *   add            -> the new note's `detail` (`easy-note add` with `source: quick`; the last context when
  *                     keep_context is true, else none; a secret is masked on write)
  *                     errors: "empty", "missing text", "the text is too long", "cannot use the note"
+ *   close          -> no reply: the quick window closes, nothing saved. The dashboard answers "unknown command".
+ *
+ * The quick window (`easy-note quick`, HUN-289) answers only `context`, `add` and `close`; any other
+ * command is "unknown command". Its `context` is the chip `quick` computed (the `--cwd` folder's, or
+ * the last context); its `add` gets no reply either: Rust saves the text as `quick` does and closes the
+ * window.
  *   A trashed id is "no such note" for detail, accept_ai and edit.
  *   Copy id needs no request: the page uses navigator.clipboard.
  *   No request opens a note in another app (HUN-286 removed the xdg-open request).
@@ -118,6 +125,7 @@
       return request('edit', { id: noteId, text: text, tags: tags, base: base, base_tags: baseTags });
     },
     context: function () { return request('context'); },
-    add: function (text, keepContext) { return request('add', { text: text, keep_context: !!keepContext }); }
+    add: function (text, keepContext) { return request('add', { text: text, keep_context: !!keepContext }); },
+    close: function () { return request('close'); }
   };
 })();
