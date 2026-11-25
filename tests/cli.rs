@@ -715,6 +715,27 @@ fn doctor_on_a_clean_dir_says_so_and_n_as_ours_is_no_clash() {
     assert!(!report.contains("clash"), "{report}");
 }
 
+#[test]
+fn doctor_prints_the_ai_schedule_line_from_the_file() {
+    let home = sandbox("doctor-sched");
+    add(&home, &["a note"]);
+    let cfg = home.join(".config/easy-note");
+    std::fs::create_dir_all(&cfg).unwrap();
+    std::fs::write(
+        cfg.join("config.toml"),
+        "[ai]\nenrich = \"claude\"\nschedule = \"tray\"\ninterval_min = 15\nmax_per_run = 30\nbatch_size = 5\njobs = [\"organize\"]\ndigest_hour = 6\n",
+    )
+    .unwrap();
+    let out = run(&bin(), &["doctor"], &home);
+    let report = text(&out.stdout);
+    assert!(
+        report.contains(
+            "ai schedule: tray, every 15 min, up to 30 notes per run, batch 5, jobs organize, digest at 6h"
+        ),
+        "{report}"
+    );
+}
+
 fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     fn walk(dir: &Path, out: &mut Vec<(PathBuf, Vec<u8>)>) {
         let Ok(entries) = std::fs::read_dir(dir) else {

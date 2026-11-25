@@ -70,7 +70,32 @@ pub fn notes_dir() -> Result<PathBuf, ConfigError> {
     dir_of(read_table(&path)?.as_ref(), &path)
 }
 
-/// The `[ai]` section of config.toml (FR-038). `enrich` is true for `"claude"`.
+/// `schedule` of `[ai]`: whether the tray runs the AI on a timer (FR-048, NFR-014).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Schedule {
+    Off,
+    Tray,
+}
+
+/// One kind of scheduled AI work (`jobs` of `[ai]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Job {
+    Organize,
+    Drafts,
+    Digest,
+}
+
+impl Job {
+    pub fn name(self) -> &'static str {
+        match self {
+            Job::Organize => "organize",
+            Job::Drafts => "drafts",
+            Job::Digest => "digest",
+        }
+    }
+}
+
+/// The `[ai]` section of config.toml (FR-038, FR-048). `enrich` is true for `"claude"`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AiSettings {
     pub enrich: bool,
@@ -79,6 +104,19 @@ pub struct AiSettings {
     pub model: String,
     pub timeout_secs: u64,
     pub after_save: bool,
+    pub schedule: Schedule,
+    pub interval_min: u32,
+    pub max_per_run: u32,
+    pub batch_size: u32,
+    pub jobs: Vec<Job>,
+    pub digest_hour: u8,
+}
+
+impl AiSettings {
+    /// The timer runs only when `schedule = "tray"` and `enrich = "claude"` (NFR-014).
+    pub fn effective_schedule(&self) -> bool {
+        self.schedule == Schedule::Tray && self.enrich
+    }
 }
 
 impl Default for AiSettings {
@@ -90,6 +128,12 @@ impl Default for AiSettings {
             model: "haiku".to_string(),
             timeout_secs: 120,
             after_save: false,
+            schedule: Schedule::Off,
+            interval_min: 60,
+            max_per_run: 20,
+            batch_size: 10,
+            jobs: vec![Job::Organize, Job::Drafts, Job::Digest],
+            digest_hour: 3,
         }
     }
 }
@@ -135,6 +179,53 @@ fn ai_of(data: Option<&toml::Table>, path: &Path) -> Result<AiSettings, ConfigEr
         None => false,
         Some(toml::Value::Boolean(b)) => *b,
         Some(_) => return Err(bad("after_save", "must be true or false")),
+    };
+    settings.schedule = match ai.get("schedule") {
+        None => Schedule::Off,
+        Some(toml::Value::String(s)) if s == "off" => Schedule::Off,
+        Some(toml::Value::String(s)) if s == "tray" => Schedule::Tray,
+        Some(_) => return Err(bad("schedule", "must be \"off\" or \"tray\"")),
+    };
+    let whole = |key: &str, default: u32, low: u32, high: u32| match ai.get(key) {
+        None => Ok(default),
+        Some(toml::Value::Integer(n)) if (i64::from(low)..=i64::from(high)).contains(n) => {
+            Ok(u32::try_from(*n).unwrap_or(default))
+        }
+        Some(_) => Err(bad(
+            key,
+            &format!("must be a whole number from {low} to {high}"),
+        )),
+    };
+    settings.interval_min = whole("interval_min", settings.interval_min, 5, u32::MAX)?;
+    settings.max_per_run = whole("max_per_run", settings.max_per_run, 1, 200)?;
+    settings.batch_size = whole("batch_size", settings.batch_size, 1, 50)?;
+    if settings.batch_size > settings.max_per_run {
+        return Err(bad("batch_size", "must not be above max_per_run"));
+    }
+    settings.digest_hour = u8::try_from(whole("digest_hour", 3, 0, 23)?).unwrap_or(3);
+    settings.jobs = match ai.get("jobs") {
+        None => settings.jobs,
+        Some(toml::Value::Array(items)) => {
+            let mut jobs = Vec::new();
+            for item in items {
+                let job = match item.as_str() {
+                    Some("organize") => Job::Organize,
+                    Some("drafts") => Job::Drafts,
+                    Some("digest") => Job::Digest,
+                    _ => {
+                        return Err(bad(
+                            "jobs",
+                            "must list only \"organize\", \"drafts\", \"digest\"",
+                        ))
+                    }
+                };
+                if !jobs.contains(&job) {
+                    jobs.push(job);
+                }
+            }
+            jobs
+        }
+        Some(_) => return Err(bad("jobs", "must be a list")),
     };
     Ok(settings)
 }

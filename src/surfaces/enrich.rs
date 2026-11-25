@@ -392,6 +392,39 @@ pub fn doctor_line() -> String {
     }
 }
 
+/// The `ai schedule:` line of `doctor` (FR-048): every scheduling key on one line.
+pub fn schedule_line() -> String {
+    match config::ai_settings() {
+        Err(e) => format!("ai schedule: {e}"),
+        Ok(settings) => describe_schedule(&settings),
+    }
+}
+
+fn describe_schedule(settings: &AiSettings) -> String {
+    let schedule = match settings.schedule {
+        config::Schedule::Off => "off",
+        config::Schedule::Tray => "tray",
+    };
+    let jobs = if settings.jobs.is_empty() {
+        "none".to_string()
+    } else {
+        settings
+            .jobs
+            .iter()
+            .map(|j| j.name())
+            .collect::<Vec<_>>()
+            .join("+")
+    };
+    let mut line = format!(
+        "ai schedule: {schedule}, every {} min, up to {} notes per run, batch {}, jobs {jobs}, digest at {}h",
+        settings.interval_min, settings.max_per_run, settings.batch_size, settings.digest_hour
+    );
+    if settings.schedule == config::Schedule::Tray && !settings.enrich {
+        line.push_str(" (not running: schedule needs enrich = claude)");
+    }
+    line
+}
+
 fn describe(settings: &AiSettings, found: Option<&Path>) -> String {
     if !settings.enrich {
         return "ai: off".to_string();

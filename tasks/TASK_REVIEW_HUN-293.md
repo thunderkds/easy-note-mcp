@@ -48,8 +48,8 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | tests/enrich.rs (schedule_keys_are_read_and_the_bounds_hold, a_bad_schedule_value_names_the_key_not_the_value, tray_schedule_without_enrich_reads_but_is_not_effective, the_schedule_line_shows_every_key, settings_default_when_the_file_or_the_section_is_missing); tests/cli.rs (doctor_prints_the_ai_schedule_line_from_the_file) |
+| Verification command run | ☑ pass | fmt --check and clippy -D warnings clean; cargo test --locked all `test result: ok`, 0 failed (lib 68; tests/enrich.rs 38; tests/cli.rs 48 after +1; others unchanged/ok). Tests were written with the code in one pass, so no separate red run was captured. |
 | Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
