@@ -85,7 +85,10 @@ impl Owner {
     /// gets the note id of each valid request. The lock stays held by the thread.
     pub fn serve(self, on_request: impl Fn(Option<String>) + Send + 'static) {
         std::thread::spawn(move || {
-            for stream in self.listener.incoming().flatten() {
+            // Take the whole value into the thread: a closure that names only `self.listener`
+            // would move just that field, and the lock file would close when `serve` returns.
+            let owner = self;
+            for stream in owner.listener.incoming().flatten() {
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
                 // A request line is short; a longer one is cut and then fails `parse`.
                 let mut line = Vec::new();

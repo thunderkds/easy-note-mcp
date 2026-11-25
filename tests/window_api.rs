@@ -3080,6 +3080,18 @@ fn hun290_ac4_the_lock_is_a_file_in_the_notes_dir_and_only_one_owner_holds_it() 
 }
 
 #[test]
+fn hun290_serving_requests_keeps_the_lock_held() {
+    let sb = Sandbox::new("single-serve");
+    let root = sb.dir.path().to_path_buf();
+    let owner = single::acquire(&root).unwrap().expect("first call owns");
+    owner.serve(|_| {});
+    assert!(
+        single::acquire(&root).unwrap().is_none(),
+        "a serving window still holds the lock"
+    );
+}
+
+#[test]
 fn hun290_ac4_a_killed_window_leaves_a_lock_the_next_start_takes_over() {
     let sb = Sandbox::new("single-stale");
     let root = sb.dir.path().to_path_buf();
