@@ -259,3 +259,42 @@ fn dashboard_help_names_the_note_option() {
         text(&o.stdout)
     );
 }
+
+/// HUN-290 AC 1, 3, 5: with the window lock held, `dashboard` (and `dashboard --note`, the tray's
+/// recent-note click) starts no window and no Obsidian, sends a focus request and exits 0.
+#[cfg(feature = "window")]
+#[test]
+fn hun290_a_second_dashboard_call_focuses_the_open_window() {
+    use easy_note_mcp::surfaces::window::single;
+    let sb = with_stubs("second");
+    let owner = single::acquire(&sb.notes()).unwrap().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    owner.serve(move |n| {
+        let _ = tx.send(n);
+    });
+    for (args, want) in [
+        (vec!["dashboard"], None),
+        (
+            vec!["dashboard", "--note", "20261119-090000-abcd"],
+            Some("20261119-090000-abcd".to_string()),
+        ),
+    ] {
+        let began = std::time::Instant::now();
+        let o = Command::new(env!("CARGO_BIN_EXE_easy-note"))
+            .args(&args)
+            .env_clear()
+            .env("PATH", sb.root().join("bin"))
+            .env("HOME", sb.root().join("home"))
+            .env("DISPLAY", ":99")
+            .env("EASY_NOTE_DIR", sb.notes())
+            .env("STUB_LOG", sb.root().join("log"))
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+        assert!(began.elapsed() < std::time::Duration::from_secs(2));
+        let got = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        assert_eq!(got, want);
+    }
+    assert_eq!(sb.log("open.calls"), "", "no Obsidian, no second window");
+}
