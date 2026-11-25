@@ -1,5 +1,5 @@
 # PROJECT_KANBAN.md
-**Last updated**: 2026-11-21
+**Last updated**: 2026-11-25
 
 > Board cache, pulled from the board by `python3 scripts/board_sync.py pull`. Do not edit it by hand:
 > the board is the source of truth, and the next pull overwrites this file.
@@ -10,25 +10,24 @@
 
 ### Todo
 - [ ] **HUN-266** — Manual run: measure how Cursor starts a stdio MCP server (HUN-251 follow-up) | Owner | C0 | Risk: Low | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-266.md`
+- [ ] **HUN-290** — One dashboard window: a second open focuses the window that is open | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-290.md`
+- [ ] **HUN-291** — Show the time a note was last edited: \`updated\` in lists, MCP and the window | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-291.md`
+- [ ] **HUN-292** — AI file keys, overrides, change log, \`ai set\` and \`ai undo\` (core) | Backend-Implementer | C2 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-292.md`
+- [ ] **HUN-293** — \`[ai]\` config keys for the scheduler and batch run, and a \`doctor\` line | Backend-Implementer | C1 | Risk: Low | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-293.md`
+- [ ] **HUN-294** — Batch organizer engine: one model call per batch, checked item by item | Backend-Implementer | C2 | Risk: High | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-294.md`
+- [ ] **HUN-295** — \`easy-note ai run\`: caps, batches, a run lock, back-off and \`--dry-run\` | Backend-Implementer | C2 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-295.md`
+- [ ] **HUN-296** — Tray timer: run \`ai run\` on the schedule while the tray is up | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-296.md`
+- [ ] **HUN-297** — Daily digest per project and topic, and the read-only \`note_context\` MCP tool | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-297.md`
+- [ ] **HUN-298** — Window views: group by project, topic or kind; Drafts view; AI status; \`Run now\` | Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-298.md`
+- [ ] **HUN-299** — Window fixes: change project, topic or kind, rename or merge a topic, Undo | Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-299.md`
+- [ ] **HUN-300** — Settings screen: AI switches, schedule and limits, with the one-time "what is sent" notice | Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-300.md`
+- [ ] **HUN-301** — UX pass: keyboard keys, first-run empty state, and a \`ux-evaluate\` check of every screen | Frontend-Implementer | C1 | Risk: Low | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-301.md`
 
 ### In Progress
 
 ### Ready for Review
-- [ ] **HUN-287** — Debian package: `scripts/build_deb.sh` builds an installable .deb (window + tray) | Common-Infrastructure-Agent | C2 | Risk: Low | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-287.md`
 
 ### Done
-- [x] **HUN-280** — Dashboard window capture dialog: + New note in the window (Enter save, Esc cancel) | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-280.md` | Done 2026-11-20: merged 06cf56a by the Supervisor under [admin] (auto verify pass; app.js, window/mod.rs, tests/window_api.rs conflicts with HUN-282/HUN-284 resolved by the Supervisor, both kept; cargo test default and --features window pass, clippy clean)
-- [x] **HUN-284** — Dashboard window hardening: stricter CSP, pinned origin, sticky detail panel at 800 px (HUN-278 reviews) | Frontend-Implementer + Backend-Implementer | C1 | Risk: Medium | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-284.md` | Done 2026-11-20: merged efd6780 by the owner (auto verify pass; mod.rs conflict with HUN-281 resolved by the Supervisor, both kept, window tests 554 passed)
-- [x] **HUN-282** — Dashboard window page: load the board once at start, faster search render, slimmer board payload (HUN-278 review P2) | Frontend-Implementer + Backend-Implementer | C1 | Risk: Low | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-282.md` | Done 2026-11-20: merged d48b6c0 by the owner (auto verify pass; mod.rs conflict with HUN-281 resolved by the Supervisor, both kept, window tests 554 passed)
-- [x] **HUN-283** — Docs out of date after the dashboard window: CLI help and PRD non-goal (HUN-278 review P2) | Backend-Implementer | C0 | Risk: Low | P2 | @hungnh1110 | Done 2026-11-20: merged b729aec by the owner (auto verify pass)
-- [x] **HUN-281** — Dashboard window: an unusable display makes tao panic instead of falling back to Obsidian (HUN-278 review P2) | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Done 2026-11-20: merged d148f16 by the owner (auto verify pass)
-- [x] **HUN-279** — Dashboard window actions: Add as tags, Move to trash with Undo, Open in editor, Copy id | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-279.md` | Done 2026-11-20: merged 525a335 by the owner (auto verify pass)
-- [x] **HUN-278** — Dashboard window, read-only board: easy-note dashboard opens our own window (wry webview, feature window) | Backend-Implementer + Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-278.md` | Done 2026-11-20: merged 996fe74 by the owner (auto verify pass; companion score 74 false-positive fail, owner override)
-- [x] **HUN-273** — Obsidian dashboard: easy-note dashboard + install/uninstall obsidian (easy-note.base) | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-273.md` | Done 2026-11-19 (owner moved: merged, auto verify pass)
-- [x] **HUN-274** — AI detail visible in Obsidian: <notes dir>/ai/<id>.md views + easy-note ai render | Backend-Implementer | C1 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-274.md` | Done 2026-11-19 (owner moved: merged, auto verify pass)
-- [x] **HUN-275** — AI detail from the local claude CLI: easy-note ai enrich (claude -p) + [ai] settings section | Backend-Implementer | C2 | Risk: High | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-275.md` | Done 2026-11-19 (owner moved: merged, auto verify pass)
-- [x] **HUN-276** — Icons from the design: app icon, launcher opens the dashboard, tray Open dashboard + saved badge | Backend-Implementer | C2 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-276.md` | Done 2026-11-19 (owner moved: merged, auto verify pass)
-- [x] **HUN-277** — easy-note setup: one command sets up launcher, tray and the Obsidian vault (registers the notes dir in obsidian.json) | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-277.md` | Done 2026-11-19: auto verify pass (session 57adcf06-698d-4fd2-ae01-d55a73e5839c, commit c00391b7f352d0d7f2626d9c9bc5fc09744e7de2)
 - [x] **HUN-251** — Spike: how Claude Code, Codex and Cursor start stdio MCP servers, and what the prompt hook sees | QA-Automation-Agent | C1 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-251.md`
 - [x] **HUN-252** — Repo skeleton: uv project, src/easy_note/{core,surfaces}, CLI and MCP entry points over one core, CI | Common-Infrastructure-Agent | C1 | Risk: Low | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-252.md`
 - [x] **HUN-253** — Note format and store: parse/render, ID, atomic write, clash suffix, trash/restore, skipped files | Backend-Implementer | C2 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-253.md`
@@ -49,6 +48,23 @@
 - [x] **HUN-270** — R3 Secret guard in Rust: declared patterns, mask on write and read, leak test suite | ? | C1 | Risk: High | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-270.md`
 - [x] **HUN-271** — R4 Context capture in Rust: cwd order, main-worktree repo name, remote sanitizing, task patterns | ? | C1 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-271.md`
 - [x] **HUN-272** — R5 Query engine in Rust: list, search, stats, bounded results | ? | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-272.md`
+- [x] **HUN-273** — Obsidian dashboard: easy-note dashboard + install/uninstall obsidian (easy-note.base) | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-273.md`
+- [x] **HUN-274** — AI detail visible in Obsidian: <notes dir>/ai/<id>.md views + easy-note ai render | Backend-Implementer | C1 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-274.md`
+- [x] **HUN-275** — AI detail from the local claude CLI: easy-note ai enrich (claude -p) + [ai] settings section | Backend-Implementer | C2 | Risk: High | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-275.md`
+- [x] **HUN-276** — Icons from the design: app icon, launcher opens the dashboard, tray Open dashboard + saved badge | Backend-Implementer | C2 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-276.md`
+- [x] **HUN-277** — easy-note setup: one command sets up launcher, tray and the Obsidian vault (registers the notes dir in obsidian.json) | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-277.md`
+- [x] **HUN-278** — Dashboard window, read-only board: easy-note dashboard opens our own window (wry webview, feature window) | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-278.md`
+- [x] **HUN-279** — Dashboard window actions: Add as tags, Move to trash with Undo, Open in editor, Copy id | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-279.md`
+- [x] **HUN-280** — Dashboard window capture dialog: + New note in the window (Enter save, Esc cancel) | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-280.md`
+- [x] **HUN-281** — Dashboard window: an unusable display makes tao panic instead of falling back to Obsidian | ? | ? | Risk: ? | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-281.md`
+- [x] **HUN-282** — Dashboard window page: load the board once at start, render search faster, slimmer board payload | ? | ? | Risk: ? | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-282.md`
+- [x] **HUN-283** — Docs out of date after the dashboard window: CLI help and PRD non-goal | ? | ? | Risk: ? | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-283.md`
+- [x] **HUN-284** — Dashboard window hardening: stricter CSP and a pinned origin; sticky detail panel at 800 px | ? | ? | Risk: ? | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-284.md`
+- [x] **HUN-285** — Tray: starts at login and with the app, menu texts from the design | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-285.md`
+- [x] **HUN-286** — Dashboard window: read and edit a note in the app, not in Obsidian | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-286.md`
+- [x] **HUN-287** — Debian package: scripts/build_deb.sh builds an installable .deb (window + tray) | ? | ? | Risk: ? | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-287.md`
+- [x] **HUN-288** — Dashboard window: Run AI button in the detail panel enriches that note now | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-288.md`
+- [x] **HUN-289** — quick: the design's capture dialog in its own small window, not the zenity box | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-289.md`
 
 ### Closed (will not do)
 - [~] **HUN-255** — Secret guard: declared patterns, mask on write and read, leak test suite | Backend-Implementer | C1 | Risk: High | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-255.md`

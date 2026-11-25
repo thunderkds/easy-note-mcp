@@ -109,6 +109,11 @@ flowchart LR
 - **Guard** — the declared secret patterns; mask on write and on read, never refuse (D21).
 - **Trash** — `<notes dir>/.easy-note/trash/`; restorable.
 - **Skipped** — a file in the notes dir the parser cannot read; counted and reported, never changed.
+- **Organizer** *(round 6)* — the AI job `easy-note ai run`: batches of pending notes go to the person's own `claude` CLI; results land in AI files only, never in a note (NFR-012, NFR-015).
+- **Project / Topic / Kind** *(round 6)* — AI-arranged labels per note. Project = the note's `repo`, else the model's name. Topic = a short keyword phrase. Kind = `idea`, `todo`, `bug`, `question`, `draft` or `other`.
+- **Override** *(round 6)* — a person's fix of project, topic or kind, kept in `.easy-note/ai-overrides.json`; the AI never overwrites it.
+- **Digest** *(round 6)* — a short AI summary per project or topic, `.easy-note/ai/digest/`; read through `note_context`.
+- **Draft** *(round 6)* — a note the AI judges unfinished; the AI flags it and suggests a completion in its AI file; the person finishes it by editing.
 
 ---
 
@@ -180,6 +185,7 @@ No Frontend-Implementer in v1: the UI is the one-line OS box and a tray menu (`k
 | `note_stats` | filters optional | counts (FR-015), `skipped`, `enriched` | No |
 | `note_pending_enrich` | `limit≤20` | notes needing AI detail (FR-029) | No |
 | `note_enrich` | `id`, `title`, `kind`, `summary`, `tags_suggested`, `model` | `id`, `based_on` | Yes — one AI file only |
+| `note_context` *(round 6, owner approval pending: PRD Open Question 8)* | `project`, `topic`, `limit≤10` | digest + items (FR-016 shape, plus `project`, `topic`, `kind`), `total`, `truncated`; no args = project and topic lists | No |
 | prompt `enrich_notes` | — | fixed instructions (FR-031) | — |
 
 Tool descriptions must say: "Call `note_add` only when the person asks to note something."
