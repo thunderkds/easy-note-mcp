@@ -10,39 +10,6 @@
 
 ---
 
-<!-- Optional: the final report, only for a task run in auto mode (the user's `[auto]` or `[admin]` tag; with `[admin]`, the `Not done:` line names `merge (admin: after the auto verify pass)`,
-`docs/claude-md/tracks.md` `## Auto mode`). To use it, copy the block below out of this comment, to this
-place, and replace every <...>. Keep `Mode: auto` as its first line, exactly as written: T182's hook reads
-it. Write it to this file before the run ends; the chat message is a copy, not the report. The same
-block is the Supervisor's final chat message. It is not the `delivery-report` page and not
-Evidence. A taste decision (what the user wants) also ends with the flag. Write `DEBATED` only when ≥2
-Advocate `Agent` calls ran for that question, naming each Advocate's option. A decision with no Advocates is
-labelled `RULE`, `FACT` or `SAFER OPTION`, never `DEBATED`. A decision flagged `⚠ decided for you` is a choice, and is never labelled `FACT`. A
-safety action a rule requires (for example the backup before a delete) is `RULE` without the flag.
-At Risk Medium or High, a `RULE:` counts only when it names a written rule (`path:line`,
-`path § <heading>`, or `docs/claude-md/tracks.md` `### <section>`), and a `FACT:` needs a Citation
-(`path:line "quoted text"`); without one it is a choice and must be `DEBATED`. Good: `2. backed up the CSV
-— RULE: `docs/claude-md/tracks.md` `### Stops that stay``. Bad: `1. kept recurring.csv — RULE: Surgical Changes`.
-`Memory:` records the diff-driven memory pass you run before you stop: each entry written, or `nothing new`.
-After an auto verify pass the hook, never you, adds `Closed: row moved to Done <date> — …` and moves the row,
-or adds `Paused: done not moved — <reason>`. It moves the row only when this block holds `Mode: auto`, a
-numbered decision, `Checks:`, `Memory:`, the `Not done:` auto verify slot with its result, and `Not done:`
-naming the merge — no `<...>` left (`docs/claude-md/tracks.md` `### Auto close-out`).
-With `/verify (yours)`, your pass goes in the `verify` row below: Result `☑ pass`, Notes `/verify by the user, session <id>, commit <sha>`.
-
-## Auto decisions
-
-Mode: auto
-1. <what was decided> — RULE: <the rule>
-2. <what was decided> — FACT: <path>:<line> "<quoted text>"
-3. <what was decided> — DEBATED: <option> (Advocate 1: <its proposal>; Advocate 2: <its proposal>) ⚠ decided for you — please review
-4. <what was decided> — SAFER OPTION: <why> ⚠ decided for you — please review
-Paused: <only when a stop that stays paused the task: which one, and why>
-Checks: tests `<command>` — <result>; reviews <skill — result>; real run `<command>` — printed `<what it printed>` (auto-checked, not /verify)
-Memory: <each entry the memory pass wrote, as `file — entry` | nothing new>
-Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | /verify (yours), with [admin] only after the one retry also ended blocked>
-
--->
 
 ## Evidence
 
@@ -50,14 +17,14 @@ Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | 
 |-------|--------|------------------------|
 | **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/overrides.rs` (12 tests, AC 1-8 and edge cases), `tests/leak.rs` (new surface `overrides`, all planted secrets); `src/core/ai.rs` unit tests unchanged |
 | Verification command run | ☑ pass | `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` -> exit=0, 627 passed, 0 failed (summed over all `test result:` lines), run 2026-11-25 |
-| Negative cases hold | ☑ pass | Mutation: in `ai::effective` the override and AI value swapped (`git diff --stat -- src/core/ai.rs` non-empty) -> `tests/overrides.rs`: 10 passed, 2 FAILED (`effective_applies_the_override_...`, `undo_restores_...`); reverted. Pin test `tests/format.rs` note_format_doc... failed on the word `draft` in NOTE_FORMAT.md until narrowed to `**Status**: Draft`. |
+| Negative cases hold | ☑ pass | Implementer mutation run (first report): override and AI precedence swapped in `ai::effective`; 2 tests in `tests/overrides.rs` failed; reverted. Second reviewer tried to break the P2-1 fix with the real binary: a file with one good `project`, an over-cap `topic`, an unknown key and an orphan `ghost.kind=rant`; `ai set` and `ai undo` both exited 1 and named `<id>.<key>` without the value; md5 of `ai-overrides.json` and `ai-log.jsonl` identical before and after. |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
-| **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Two fresh-context reviews (315b8b8, then 61624ce) over `main...61624ce`: `src/core/ai.rs`, `src/core/overrides.rs` (new), `src/core/ai_view.rs`, `src/surfaces/cli.rs`, `cli/read.rs`, `cli/write.rs`, `docs/NOTE_FORMAT.md`, `tests/overrides.rs` (new), `tests/leak.rs`, `tests/format.rs`. Callers of `ai::enrich` and `Detail` checked; `note_enrich` kind schema unchanged (`KINDS` stays 5). |
+| Full smoke suite still green (no regression) | ☑ pass | `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` exit 0, 631 passed, 0 failed (implementer after the fixes); reviewer ran it again: every `test result` ok. |
+| **Companion score (easy-verifier)** | ☑ N/A | Not run in this session: the easy-verifier tool is not available here. The merge gate blocks on a `fail` row only. |
+| **UI: Visual regression (diff or verdict pasted)** | ☑ N/A | No UI in this task (core and CLI only). |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ N/A | No UI in this task. |
+| **UI: Responsiveness at target viewports** | ☑ N/A | No UI in this task. |
 
 ---
 
@@ -153,3 +120,41 @@ Verdict: pass with findings
 - P3-1: `set` and `undo` return an error `the change was saved, but ai-log.jsonl could not be written` (exit 1) when the log append fails. Test: `a_failed_log_append_after_a_saved_override_is_an_error`.
 - Tests were added after the code in this round, not red first.
 - Verification: `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` -> exit=0, 631 passed, 0 failed (summed over all `test result:` lines), 2026-11-25.
+
+## Stage 4 review (second, 61624ce)
+
+Reviewer: fresh context, `code-review` + `security-review` over `main...61624ce`, fix delta `315b8b8..61624ce` read line by line. Gate run: `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` -> exit 0, no warning or error, every `test result` line ok, 0 failed.
+
+No P0, no P1, no P2.
+
+### First-review P2s
+
+- P2-1 (invalid entry silently dropped on write): fixed. `load_for_write` (`src/core/overrides.rs` ~151-170) refuses when `parse` returns any dropped entry. Break attempt by hand with the real binary: one note with a good `project`, plus `topic` of 70 chars, an unknown key `bogus`, and an orphan `ghost.kind=rant`. `ai set <id> kind idea` -> exit 1, `ai undo <id>` -> exit 1, md5 of `ai-overrides.json` and `ai-log.jsonl` identical before and after. The message names `<id>.<key>`, never the value. `doctor` lists each entry. Reads still use the good entry. Pass.
+- P2-2 (re-parse and re-warn per call): fixed. `ai::effective_with(store, id, &Overrides)` (`src/core/ai.rs` ~378-392) does no I/O on the overrides; `effective` is `effective_with(.., &read(store))`. Test `two_effective_with_calls_over_one_load_warn_once` checks one warning for two calls. Use is correct: the in-tree caller passes a borrowed value loaded once; `canonical_id` still runs per call, as before. Pass.
+- P3-1 (log failure ignored): fixed for `set` and `undo` (`log_line(..).map_err(log_failed)?`, exit 1, message says the change was saved). Pass; see P3-6.
+
+### New findings
+
+- P3-6 `overrides.rs` `set`/`undo`: when the log append fails, the override stays saved and the error is returned. The change is then live with no log line, so `ai undo` cannot take it back. The message is honest about it. Acceptable for this slice; a rollback (re-save the old data) would close NFR-015 fully. Optional.
+- P3-7 `overrides.rs` `load_for_write` refusal message: `dropped` names are masked but not length-capped. A hand-edited key of megabytes is echoed to stderr whole, and in `doctor` lines. Cut each name to ~80 chars (`cut`) and cap the count.
+- P3-8 `overrides.rs` `parse`: an orphan or trashed note's invalid entry (`ghost.kind`) blocks `set` for every note. Consistent with P2-1's rule and fixable by hand, but the person has no CLI way to remove an entry; the message says "fix or remove" without saying the file path. Consider naming the path.
+- Still open from the first review, unchanged: P3-2 (rename map has no write path; map keys unmasked, values not cap-checked and not reported as invalid), P3-3, P3-4, P3-5. Not made worse by the fix.
+
+### Security
+
+No new input path, process spawn or network call. New stderr text carries only masked `<id>.<key>`. Files unchanged in location (`.easy-note/`). Notes bytes are not opened for write. Pass.
+
+Verdict: pass with findings
+
+## Auto decisions
+
+Mode: auto
+1. Fixed both review P2s on the branch (hand-edited entries dropped silently on write; `effective` re-parsing per call) — RULE: `tasks/TASK_GUIDE_HUN-292.md` Edge Case Checklist "Hand-edited, invalid `ai-overrides.json`: named by `doctor`, never overwritten silently"
+2. Left P3-2 to P3-8 as follow-ups (no rename-map writer, undo of an AI change when the AI file is gone, empty project/topic in `organize`, undo logged as `person`, no rollback after a log failure, uncapped names in errors, one bad entry blocks every `set`) — RULE: `docs/claude-md/tracks.md` `### Every user stop and its auto rule` row 17 (P3 is reported, not a blocker); the rename-map writer belongs to the window-fixes slice (guide `## Requirement` of its task)
+3. `ai::organize` refuses a note with no AI file; the batch engine must call `ai::enrich` first, then `ai::organize`, so the enriched count rule holds — FACT: `tasks/TASK_REVIEW_HUN-292.md` second-review design point "for a note with no AI file, the batch engine calls `ai::enrich` first (title, kind, summary, tags) and then `ai::organize`"; recorded for the batch-engine guide
+4. The task was under-labelled: lane check printed `EXCEEDS (lines 1216 > 500)`, so C3 fits; no split now because the slice is merged-ready and reviewed twice — SAFER OPTION: re-labelling after review changes no code; the C3 label goes on the board with the merge ⚠ decided for you — please review
+Checks: tests `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` — exit 0, 631 passed, 0 failed; reviews code-review and security-review by a fresh-context reviewer on 315b8b8 and again on 61624ce — pass with findings (P3 only after the fixes), code-review by the Supervisor over the diff — lane `C2, 11 files, 1216 lines, EXCEEDS`; real run `easy-note ai set` and `ai undo` on a temp notes dir by the second reviewer — exit 1 with a named entry on a bad file, bytes unchanged (auto-checked, not /verify)
+Memory: nothing new on this branch; the HUN-292 decision entry is written on main after the merge
+Not done: merge (admin: after the auto verify pass); the P3 follow-ups above; auto verify: running (T182)
+
+Code-review (Supervisor, `Skill({ skill: "code-review" })` over `main...61624ce`, bounded to the diff): no P0, P1 or P2 open. Lane check: `lane: C2, 11 files, 1216 lines, EXCEEDS (lines 1216 > 500); unpredicted: src/core/ai_view.rs, src/surfaces/cli/read.rs, src/surfaces/cli/write.rs, tests/format.rs` — C3 would fit. The unpredicted files are the test sample for the new fields, the `doctor` lines and `ai set`/`ai undo` wiring, and the pin test narrowed from the word "draft" to `**Status**: Draft`.
