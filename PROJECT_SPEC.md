@@ -93,11 +93,12 @@ flowchart LR
 ## Readiness
 
 - **Requirements**: PRD.md
-- **Direction**: BRAINSTORMING_LOG.md (Option B; rounds 2–3: BRAINSTORMING_LOG_capture.md, BRAINSTORMING_LOG_oneclick-enrich.md)
+- **Direction**: BRAINSTORMING_LOG.md (Option B; rounds 2–3: BRAINSTORMING_LOG_capture.md, BRAINSTORMING_LOG_oneclick-enrich.md; round 6: BRAINSTORMING_LOG_round6.md, GRILL_round6.md)
 - **Codebase map**: memory/codebase-map.md
 - **Tech stack**: Rust (stable), `rmcp`, `clap`, cargo (DDR 0005); storage = plain Markdown files; hosting = the owner's machine, native install, no Docker
 - **Main flow**: PROJECT_SPEC.md (Mermaid flowchart in Architecture Summary)
 - **Approved by**: 
+- **Waived**: user 2026-11-25 — the owner confirmed the round 6 context, grilling decisions, Path B and the 12-slice breakdown in chat; earlier rounds shipped on the same design (DDR 0005 to 0009)
 
 ---
 
