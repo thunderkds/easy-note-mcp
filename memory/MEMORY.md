@@ -54,3 +54,4 @@
 - [Hand-filled verify row blocks the hook](learnings.md#gotchas) — leave `verify` empty for stop_auto_verify.py; verifier score payload via jq; Xvfb + XTEST recipe for window checks (HUN-288/289)
 - [Round 6: AI organizes, raw note stays](decisions.md#2026-11-25--round-6-the-ai-organizes-the-raw-note-stays-hun-293-ai-schedule-keys-merged) — Path B batch `ai run`, overrides, tray timer, `note_context`; HUN-293 merged; HUN-290 to HUN-301 plan
 - [Round 6 gotchas: gate binding, parked tasks, GTK](learnings.md#2026-11-25--round-6-gotchas-gate-binding-parked-tasks-gtk-hashes-hun-290-to-hun-293) — one task per merge ask; park unverifiable tasks in Backlog; full 40-hex hash; window build needs GTK
+- [HUN-292 overrides, log, ai set/undo merged](decisions.md#2026-11-25--hun-292-ai-overrides-change-log-ai-set--ai-undo-merged) — `.easy-note/ai-overrides.json`, `ai-log.jsonl`, `effective_with`; invalid file refuses writes; enrich then organize
