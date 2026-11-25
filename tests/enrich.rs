@@ -191,8 +191,28 @@ fn settings_default_when_the_file_or_the_section_is_missing() {
         model: "haiku".into(),
         timeout_secs: 120,
         after_save: false,
+        ..config::AiSettings::default()
     };
     assert_eq!(config::ai_settings().unwrap(), want);
+    assert_eq!(want.schedule, config::Schedule::Off);
+    assert_eq!(
+        (
+            want.interval_min,
+            want.max_per_run,
+            want.batch_size,
+            want.digest_hour
+        ),
+        (60, 20, 10, 3)
+    );
+    assert_eq!(
+        want.jobs,
+        vec![
+            config::Job::Organize,
+            config::Job::Drafts,
+            config::Job::Digest
+        ]
+    );
+    assert!(!want.effective_schedule());
     sb.config("dir = \"/x\"\n");
     assert_eq!(config::ai_settings().unwrap(), want);
 }
@@ -213,6 +233,7 @@ fn settings_read_every_key_expand_the_account_dir_and_ignore_unknown_keys() {
             model: "sonnet".into(),
             timeout_secs: 30,
             after_save: true,
+            ..config::AiSettings::default()
         }
     );
 }
@@ -799,5 +820,91 @@ fn doctor_prints_the_ai_line() {
     assert_eq!(
         line(&sb),
         "ai: claude via gone-claude (not on PATH), account dir /acct, model sonnet, after_save true"
+    );
+}
+
+#[test]
+fn schedule_keys_are_read_and_the_bounds_hold() {
+    let sb = Sandbox::new("sched-ok");
+    let _env = HomeGuard::new(&sb.home());
+    sb.config(
+        "[ai]\nenrich = \"claude\"\nschedule = \"tray\"\ninterval_min = 5\nmax_per_run = 200\nbatch_size = 50\njobs = [\"digest\", \"organize\"]\ndigest_hour = 23\n",
+    );
+    let ai = config::ai_settings().unwrap();
+    assert_eq!(ai.schedule, config::Schedule::Tray);
+    assert_eq!(
+        (
+            ai.interval_min,
+            ai.max_per_run,
+            ai.batch_size,
+            ai.digest_hour
+        ),
+        (5, 200, 50, 23)
+    );
+    assert_eq!(ai.jobs, vec![config::Job::Digest, config::Job::Organize]);
+    assert!(ai.effective_schedule());
+    sb.config("[ai]\njobs = []\nbatch_size = 1\nmax_per_run = 1\ndigest_hour = 0\n");
+    let ai = config::ai_settings().unwrap();
+    assert!(ai.jobs.is_empty());
+    assert_eq!((ai.batch_size, ai.digest_hour), (1, 0));
+}
+
+#[test]
+fn a_bad_schedule_value_names_the_key_not_the_value() {
+    let sb = Sandbox::new("sched-bad");
+    let _env = HomeGuard::new(&sb.home());
+    for (body, key) in [
+        ("schedule = \"cronzz\"", "schedule"),
+        ("schedule = true", "schedule"),
+        ("interval_min = 1", "interval_min"),
+        ("interval_min = \"60\"", "interval_min"),
+        ("max_per_run = 0", "max_per_run"),
+        ("max_per_run = 201", "max_per_run"),
+        ("batch_size = 0", "batch_size"),
+        ("batch_size = 51", "batch_size"),
+        ("batch_size = 11\nmax_per_run = 10", "batch_size"),
+        ("batch_size = 21", "batch_size"),
+        ("jobs = \"organize\"", "jobs"),
+        ("jobs = [\"sweep77\"]", "jobs"),
+        ("jobs = [3]", "jobs"),
+        ("digest_hour = 24", "digest_hour"),
+        ("digest_hour = -1", "digest_hour"),
+        ("digest_hour = \"3\"", "digest_hour"),
+    ] {
+        sb.config(&format!("[ai]\n{body}\n"));
+        let err = config::ai_settings().unwrap_err().to_string();
+        assert!(err.contains(&format!("[ai] {key}")), "{body}: {err}");
+        assert!(err.contains("config.toml"), "{body}: {err}");
+        for leak in ["cronzz", "sweep77", "201", "\"60\"", "-1"] {
+            assert!(!err.contains(leak), "{body}: {err}");
+        }
+    }
+}
+
+#[test]
+fn tray_schedule_without_enrich_reads_but_is_not_effective() {
+    let sb = Sandbox::new("sched-no-enrich");
+    let _env = HomeGuard::new(&sb.home());
+    sb.config("[ai]\nschedule = \"tray\"\n");
+    let ai = config::ai_settings().unwrap();
+    assert_eq!(ai.schedule, config::Schedule::Tray);
+    assert!(!ai.effective_schedule());
+    let line = easy_note_mcp::surfaces::enrich::schedule_line();
+    assert!(line.contains("schedule needs enrich = claude"), "{line}");
+}
+
+#[test]
+fn the_schedule_line_shows_every_key() {
+    let sb = Sandbox::new("sched-line");
+    let _env = HomeGuard::new(&sb.home());
+    sb.config("[ai]\nenrich = \"claude\"\nschedule = \"tray\"\ninterval_min = 30\nmax_per_run = 40\nbatch_size = 8\njobs = [\"drafts\", \"digest\"]\ndigest_hour = 4\n");
+    assert_eq!(
+        easy_note_mcp::surfaces::enrich::schedule_line(),
+        "ai schedule: tray, every 30 min, up to 40 notes per run, batch 8, jobs drafts+digest, digest at 4h"
+    );
+    sb.config("");
+    assert_eq!(
+        easy_note_mcp::surfaces::enrich::schedule_line(),
+        "ai schedule: off, every 60 min, up to 20 notes per run, batch 10, jobs organize+drafts+digest, digest at 3h"
     );
 }

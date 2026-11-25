@@ -146,6 +146,12 @@ model = "haiku"                          # the default
 timeout_secs = 120                       # 1 to 600
 after_save = false                       # true: enrich each note just after you save it
 command = "claude"                       # the CLI, on PATH or a full path
+schedule = "off"                         # "off" (the default) or "tray"; "tray" needs enrich = "claude"
+interval_min = 60                        # minutes between scheduled runs, 5 or more
+max_per_run = 20                         # notes per run, 1 to 200
+batch_size = 10                          # notes per model call, 1 to 50, not above max_per_run
+jobs = ["organize", "drafts", "digest"]  # which scheduled work runs
+digest_hour = 3                          # hour of day for the digest, 0 to 23
 ```
 
 Log in once for each account dir: run `CLAUDE_CONFIG_DIR=~/.claude-personal claude` and type
