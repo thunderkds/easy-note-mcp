@@ -667,6 +667,8 @@
   });
   // The Rust shell calls window.__easyNote.refresh() on each window focus (mod.rs REFRESH).
   window.__easyNote.refresh = refreshBoard;
+  // A second `easy-note dashboard --note <id>` (HUN-290): the shell asks the open window to show a note.
+  window.__easyNote.show = function (id) { select(id, true); focusRow(id); };
   buildFilters();
   renderList();
   // `easy-note dashboard --note <id>` (HUN-286): select that note once the first board answer is in,

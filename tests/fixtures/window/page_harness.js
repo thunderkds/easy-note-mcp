@@ -217,6 +217,15 @@ async function editScenarios(out) {
     const row = s.rowButton(editable);
     return { posts: s.posts.slice(), detail: s.sent('detail').map((m) => m.id), shown: s.shown(), current: row.attrs['aria-current'] };
   });
+  // HUN-290: a second `dashboard --note <id>` call; the shell asks the open page to show a note.
+  out.show_request = await scenario(async (s) => {
+    s.load();
+    await sleep(80);
+    s.ctx.__easyNote.show(editable);
+    await sleep(80);
+    const row = s.rowButton(editable);
+    return { detail: s.sent('detail').map((m) => m.id), shown: s.shown(), current: row.attrs['aria-current'] };
+  });
   out.initial_unknown = await scenario(async (s) => {
     await open(s, '20261119-090000-ffff');
     return { shown: s.shown() };

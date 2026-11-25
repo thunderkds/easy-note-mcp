@@ -204,7 +204,8 @@ easy-note dashboard
 
 `dashboard` opens the window when a desktop is running (`WAYLAND_DISPLAY` or `DISPLAY` is set). In a build without
 `window`, or with no desktop, it opens the Obsidian dashboard below instead. `easy-note dashboard --note <id>` opens
-the window on that note.
+the window on that note. Only one window opens per notes folder: a second `dashboard` (a tray click, the launcher)
+brings the open window to the front, and shows the note when you give `--note`.
 
 ## Obsidian dashboard
 

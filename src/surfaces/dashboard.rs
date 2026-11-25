@@ -174,16 +174,29 @@ pub fn window_here() -> bool {
     )
 }
 
+/// A window is open already: ask it to come to the front. A window that does not answer in time is
+/// one line on stderr, never a failure (the exit code stays 0).
+fn focus_open_window(dir: &Path, note: Option<&str>) -> Result<(), String> {
+    if let Err(e) = super::window::single::request_focus(dir, note) {
+        eprintln!("easy-note: the dashboard window is open but did not answer ({e})");
+    }
+    Ok(())
+}
+
 /// `note` is the id the window selects (`dashboard --note`, already checked); the Obsidian path
 /// opens the dashboard without it.
 pub fn run(note: Option<&str>) -> Result<(), String> {
+    let dir = config::notes_dir().map_err(|e| e.to_string())?;
     if window_here() {
-        match super::window::open(note, super::tray::start_with_app) {
+        // One window per notes dir (HUN-290): an open window gets a focus request instead.
+        let Some(owner) = super::window::single::acquire(&dir)? else {
+            return focus_open_window(&dir, note);
+        };
+        match super::window::open(note, owner, super::tray::start_with_app) {
             Err(e) if e == super::window::NO_DISPLAY => {}
             done => return done,
         }
     }
-    let dir = config::notes_dir().map_err(|e| e.to_string())?;
     let base: PathBuf = std::path::absolute(dir.join(BASE_NAME)).map_err(|e| e.to_string())?;
     match choose(&handler(), base.is_file()) {
         Plan::NoDashboard => Err("no dashboard yet: run easy-note install obsidian".to_string()),

@@ -5,6 +5,7 @@
 //! functions here so the default build tests them; only the shell needs the feature.
 
 pub mod api;
+pub mod single;
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -90,6 +91,15 @@ pub fn initial_note_script(id: &str) -> String {
     format!(
         "window.__easyNote = {};",
         serde_json::json!({ "initialNote": id })
+    )
+}
+
+/// What the shell runs when a second `dashboard --note <id>` call arrives (HUN-290): the page shows
+/// that note. The id goes in as one JSON string, never spliced in raw.
+pub fn show_script(id: &str) -> String {
+    format!(
+        "window.__easyNote && window.__easyNote.show && window.__easyNote.show({})",
+        Value::String(id.to_string())
     )
 }
 
@@ -275,7 +285,11 @@ pub const NO_DISPLAY: &str = "the display cannot be used";
 
 /// Without the feature, `dashboard` never asks for the window (`dashboard::use_window`).
 #[cfg(not(feature = "window"))]
-pub fn open(_initial_note: Option<&str>, _on_shown: impl FnOnce()) -> Result<(), String> {
+pub fn open(
+    _initial_note: Option<&str>,
+    _owner: single::Owner,
+    _on_shown: impl FnOnce(),
+) -> Result<(), String> {
     Err("this easy-note is built without the window feature".to_string())
 }
 
@@ -298,13 +312,13 @@ mod shell {
     use tao::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
     use tao::platform::run_return::EventLoopExtRunReturn;
     use tao::platform::unix::WindowExtUnix;
-    use tao::window::WindowBuilder;
+    use tao::window::{UserAttentionType, WindowBuilder};
     use wry::http::{header, Response, StatusCode};
     use wry::{NewWindowResponse, WebViewBuilder, WebViewBuilderExtUnix};
 
     use super::{
-        allowed_url, asset, capture_from, initial_note_script, ipc_threaded, reply_script, Capture,
-        Running, CSP, QUICK_START, REFRESH, START,
+        allowed_url, asset, capture_from, initial_note_script, ipc_threaded, reply_script,
+        show_script, single, Capture, Running, CSP, QUICK_START, REFRESH, START,
     };
     use crate::core::config;
     use crate::core::context::Context;
@@ -441,15 +455,26 @@ mod shell {
             .unwrap_or_else(|_| Response::new(Cow::Borrowed(b"")))
     }
 
+    /// What reaches the dashboard's event loop: an answer for the page, or a request from a second call.
+    enum Ui {
+        Answer(String),
+        Focus(Option<String>),
+    }
+
     /// Open the window and run its event loop until it is closed (the process then exits).
+    /// `owner` holds the window lock and serves the focus requests of a second call (HUN-290).
     /// `initial_note` is the id the page selects after its first board load (`dashboard --note`).
     /// `on_shown` runs once, after the window and webview exist and before the loop starts; it
     /// does not run when the display cannot be used.
-    pub fn open(initial_note: Option<&str>, on_shown: impl FnOnce()) -> Result<(), String> {
+    pub fn open(
+        initial_note: Option<&str>,
+        owner: single::Owner,
+        on_shown: impl FnOnce(),
+    ) -> Result<(), String> {
         // One config read at start: the same `[ai] enrich` + `after_save` rule as `easy-note add`.
         let (dir, after_save) = config::notes_dir_and_after_save().map_err(|e| e.to_string())?;
         let store = Store::system(dir);
-        let event_loop = event_loop::<String>()?;
+        let event_loop = event_loop::<Ui>()?;
         let proxy = event_loop.create_proxy();
         let running = Running::default();
         let window = WindowBuilder::new()
@@ -486,7 +511,7 @@ mod shell {
                     request.body(),
                     &on_added,
                     move |a| {
-                        let _ = proxy.send_event(a);
+                        let _ = proxy.send_event(Ui::Answer(a));
                     },
                 );
             })
@@ -496,13 +521,26 @@ mod shell {
             .with_url(START)
             .build_gtk(vbox)
             .map_err(|e| e.to_string())?;
+        let focus = event_loop.create_proxy();
+        owner.serve(move |note| {
+            let _ = focus.send_event(Ui::Focus(note));
+        });
         on_shown();
         event_loop.run(move |event, _, flow| {
             *flow = ControlFlow::Wait;
-            let _ = &window;
             match event {
-                Event::UserEvent(answer) => {
+                Event::UserEvent(Ui::Answer(answer)) => {
                     let _ = webview.evaluate_script(&reply_script(&answer));
+                }
+                Event::UserEvent(Ui::Focus(note)) => {
+                    window.set_minimized(false);
+                    window.set_visible(true);
+                    window.set_focus();
+                    // Where the window manager refuses the focus, this still marks the window.
+                    window.request_user_attention(Some(UserAttentionType::Informational));
+                    if let Some(id) = note {
+                        let _ = webview.evaluate_script(&show_script(&id));
+                    }
                 }
                 Event::WindowEvent {
                     event: WindowEvent::Focused(true),

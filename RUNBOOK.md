@@ -92,7 +92,7 @@ Another `n` may already be on PATH (for example the Node version manager `n`). `
 
 Install target: the owner's machine, Linux, `cargo install` or the `.deb` (PROJECT_SPEC Deployment target). No server, no migration: the note format (`easy-note: 1`) does not change.
 
-**Smoke test and pass condition (fixed before the steps):** with a temp notes dir (`EASY_NOTE_DIR="$(mktemp -d)"`), the installed binary prints `easy-note 0.2.0`; `easy-note add release check` prints `✓ noted …`; `easy-note doctor` exits 0; `easy-note dashboard` opens the window on a desktop session and shows the note; `easy-note quick` opens the small capture window, and Enter saves a note with `source: quick`. Any of these failing is a NO-GO for the install.
+**Smoke test and pass condition (fixed before the steps):** with a temp notes dir (`EASY_NOTE_DIR="$(mktemp -d)"`), the installed binary prints `easy-note 0.2.0`; `easy-note add release check` prints `✓ noted …`; `easy-note doctor` exits 0; `easy-note dashboard` opens the window on a desktop session and shows the note, and a second `easy-note dashboard` brings that window to the front instead of opening another; `easy-note quick` opens the small capture window, and Enter saves a note with `source: quick`. Any of these failing is a NO-GO for the install.
 
 1. On a clean `main` at `8057f5d` (`git status --short` empty in a fresh clone), set `version = "0.2.0"` in `Cargo.toml`, run `cargo build` so `Cargo.lock` follows, commit `release: v0.2.0`.
 2. Run the local checks above and the verification command with `--features window,tray`; CI (`.github/workflows/ci.yml`) must be green on the release commit.

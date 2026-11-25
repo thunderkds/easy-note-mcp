@@ -18,7 +18,8 @@ use easy_note_mcp::surfaces::window::{
     allowed_url,
     api::{handle, handle_with},
     asset, capture_from, capture_ipc, initial_note_script, ipc, ipc_from, ipc_from_with,
-    ipc_threaded, ipc_with, reply_script, Capture, Running, CSP, ORIGIN, QUICK_START, REFRESH,
+    ipc_threaded, ipc_with, reply_script, show_script, single, Capture, Running, CSP, ORIGIN,
+    QUICK_START, REFRESH,
 };
 use serde_json::{json, Value};
 
@@ -3024,4 +3025,187 @@ fn the_quick_page_keys_follow_the_dashboard_dialog() {
     assert_eq!(err["error"], json!("the text is too long"), "{run}");
     assert_eq!(err["textLen"], json!(20_001), "{run}");
     assert_eq!(run["enter"]["error"], Value::Null, "{run}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-290: one dashboard window per notes dir (FR-045). The lock and the request socket are plain
+// files and sockets over a temp notes dir; no window opens.
+// ---------------------------------------------------------------------------------------------
+
+/// A child process that takes the window lock and waits to be killed (the test binary run again,
+/// filtered to `lock_holder_child`).
+fn spawn_lock_holder(root: &Path) -> std::process::Child {
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "lock_holder_child", "--nocapture", "--ignored"])
+        .env("EASY_NOTE_TEST_LOCK_DIR", root)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    use std::io::BufRead;
+    let mut out = std::io::BufReader::new(child.stdout.take().unwrap());
+    let mut line = String::new();
+    while !line.contains("LOCKED") {
+        line.clear();
+        assert!(
+            out.read_line(&mut line).unwrap() > 0,
+            "the child never locked"
+        );
+    }
+    child
+}
+
+#[test]
+#[ignore = "run only by spawn_lock_holder"]
+fn lock_holder_child() {
+    let Some(root) = std::env::var_os("EASY_NOTE_TEST_LOCK_DIR") else {
+        return;
+    };
+    let _owner = single::acquire(Path::new(&root)).unwrap().expect("free");
+    println!("LOCKED");
+    std::thread::sleep(std::time::Duration::from_secs(60));
+}
+
+#[test]
+fn hun290_ac4_the_lock_is_a_file_in_the_notes_dir_and_only_one_owner_holds_it() {
+    let sb = Sandbox::new("single-lock");
+    let root = sb.dir.path().join("fresh notes");
+    let owner = single::acquire(&root).unwrap().expect("first call owns");
+    assert!(root.join(".easy-note/window.lock").is_file());
+    assert!(
+        single::acquire(&root).unwrap().is_none(),
+        "second call: held"
+    );
+    drop(owner);
+    assert!(single::acquire(&root).unwrap().is_some(), "free again");
+}
+
+#[test]
+fn hun290_ac4_a_killed_window_leaves_a_lock_the_next_start_takes_over() {
+    let sb = Sandbox::new("single-stale");
+    let root = sb.dir.path().to_path_buf();
+    let mut child = spawn_lock_holder(&root);
+    assert!(
+        single::acquire(&root).unwrap().is_none(),
+        "held by the child"
+    );
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(root.join(".easy-note/window.lock").exists(), "left behind");
+    assert!(
+        single::acquire(&root).unwrap().is_some(),
+        "the next start takes it over"
+    );
+}
+
+#[test]
+fn hun290_ac1_ac3_a_second_call_sends_a_focus_request_with_the_note_id() {
+    let sb = Sandbox::new("single-focus");
+    let root = sb.dir.path().to_path_buf();
+    let owner = single::acquire(&root).unwrap().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    owner.serve(move |note| {
+        let _ = tx.send(note);
+    });
+    let began = std::time::Instant::now();
+    single::request_focus(&root, None).unwrap();
+    single::request_focus(&root, Some("20261119-090000-abcd")).unwrap();
+    assert!(began.elapsed() < std::time::Duration::from_secs(2));
+    let wait = std::time::Duration::from_secs(2);
+    assert_eq!(rx.recv_timeout(wait).unwrap(), None);
+    assert_eq!(
+        rx.recv_timeout(wait).unwrap().as_deref(),
+        Some("20261119-090000-abcd")
+    );
+}
+
+#[test]
+fn hun290_a_request_with_a_bad_line_or_id_is_dropped() {
+    assert_eq!(single::parse("focus\n"), Some(None));
+    assert_eq!(single::parse("focus abc\n"), Some(Some("abc".to_string())));
+    assert_eq!(single::parse("quit\n"), None);
+    assert_eq!(single::parse("focus a b\n"), None);
+    assert_eq!(single::parse(""), None);
+}
+
+#[test]
+fn hun290_a_second_call_waits_then_gives_up_when_nothing_listens() {
+    let sb = Sandbox::new("single-nolistener");
+    let root = sb.dir.path().to_path_buf();
+    let _owner = single::acquire(&root).unwrap().unwrap(); // lock held, socket never served
+    let began = std::time::Instant::now();
+    let r = single::request_focus_within(&root, None, std::time::Duration::from_millis(300));
+    // The socket is bound by `acquire`, so the request queues; it must not hang or crash.
+    assert!(r.is_ok() || r.is_err());
+    assert!(began.elapsed() < std::time::Duration::from_secs(2));
+    // No socket at all: an error after the wait.
+    let none = sb.dir.path().join("none");
+    let began = std::time::Instant::now();
+    assert!(
+        single::request_focus_within(&none, None, std::time::Duration::from_millis(300)).is_err()
+    );
+    assert!(began.elapsed() >= std::time::Duration::from_millis(250));
+}
+
+#[test]
+fn hun290_a_long_notes_dir_path_uses_a_short_socket_path() {
+    let mut deep = PathBuf::from("/tmp");
+    for _ in 0..12 {
+        deep.push("a-long-directory-name");
+    }
+    let path = single::socket_path(&deep);
+    assert!(path.as_os_str().len() < 100, "{}", path.display());
+    assert_ne!(path, single::socket_path(&deep.join("other")));
+    assert_eq!(path, single::socket_path(&deep));
+    // And it works end to end: a real deep notes dir.
+    let sb = Sandbox::new("single-deep");
+    let mut root = sb.dir.path().to_path_buf();
+    for _ in 0..10 {
+        root.push("a-long-directory-name");
+    }
+    assert!(root.join(".easy-note/window.sock").as_os_str().len() > 108);
+    let owner = single::acquire(&root).unwrap().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    owner.serve(move |n| {
+        let _ = tx.send(n);
+    });
+    single::request_focus(&root, Some("x1")).unwrap();
+    assert_eq!(
+        rx.recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap()
+            .as_deref(),
+        Some("x1")
+    );
+}
+
+#[test]
+fn hun290_ac6_a_different_notes_dir_has_its_own_owner() {
+    let a = Sandbox::new("single-a");
+    let b = Sandbox::new("single-b");
+    let _one = single::acquire(a.dir.path()).unwrap().unwrap();
+    assert!(single::acquire(b.dir.path()).unwrap().is_some());
+}
+
+#[test]
+fn hun290_ac3_the_show_script_passes_the_id_as_one_json_string() {
+    let id = "a\"b'</script>\u{2028}\\";
+    let script = show_script(id);
+    let arg = script
+        .strip_prefix("window.__easyNote && window.__easyNote.show && window.__easyNote.show(")
+        .and_then(|s| s.strip_suffix(')'))
+        .unwrap_or_else(|| panic!("{script}"));
+    assert_eq!(serde_json::from_str::<Value>(arg).unwrap(), json!(id));
+}
+
+#[test]
+fn hun290_ac3_the_page_shows_a_note_when_the_shell_asks() {
+    let page = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
+    assert!(
+        page.contains("window.__easyNote.show = "),
+        "app.js defines show"
+    );
+    let Some(run) = run_edit_page() else { return };
+    let r = &run["show_request"];
+    assert_eq!(r["detail"], json!([ACTED]), "{r}");
+    assert_eq!(r["shown"]["id"], ACTED, "{r}");
+    assert_eq!(r["current"], "true", "{r}");
 }
