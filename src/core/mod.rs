@@ -8,6 +8,7 @@ pub mod context;
 pub mod format;
 pub(crate) mod fsutil;
 pub mod guard;
+pub mod overrides;
 pub mod query;
 pub mod store;
 pub mod tags;

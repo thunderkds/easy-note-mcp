@@ -12,7 +12,7 @@ use super::scratch::Scratch;
 use super::{confirmation, count, safe, say, Fail, Outcome};
 use crate::core::format::{parse, render, Note, Value};
 use crate::core::store::{trash_label, AiCarry, Store};
-use crate::core::{ai, ai_view, config, context, guard, tags};
+use crate::core::{ai, ai_view, config, context, guard, overrides, tags};
 
 /// `init [--dir PATH]`: make the dir and save it in the config file (FR-001).
 pub fn init(dir: Option<PathBuf>) -> Outcome {
@@ -304,6 +304,34 @@ pub fn ai_rm(id: &str) -> Outcome {
         return Err(Fail::runtime(format!("no AI detail for {id}")));
     }
     say(&format!("✓ removed AI detail of {}", safe(id)))
+}
+
+/// A refused value of `ai set` / `ai undo` exits 1 (not the usage code 2) and names what is allowed.
+fn refused(err: ai::AiError) -> Fail {
+    match err {
+        ai::AiError::Refused(msg) => Fail::runtime(msg),
+        other => other.into(),
+    }
+}
+
+/// `ai set <id> project|topic|kind VALUE` (FR-050).
+pub fn ai_set(id: &str, field: &str, value: &str) -> Outcome {
+    let store = Store::open()?;
+    overrides::set(&store, id, field, value).map_err(refused)?;
+    say(&format!("✓ {} of {} set", safe(field), safe(id)))
+}
+
+/// `ai undo <id>`: take back the latest change of the note (exit 1 with `nothing to undo`).
+pub fn ai_undo(id: &str) -> Outcome {
+    let store = Store::open()?;
+    let done = overrides::undo(&store, id).map_err(refused)?;
+    let now = done.now.as_deref().map_or("no override".to_string(), safe);
+    say(&format!(
+        "✓ undone: {} of {} is now {}",
+        safe(&done.field),
+        safe(&done.id),
+        now
+    ))
 }
 
 /// `ai render`: rewrite every Obsidian view from the AI files (FR-036).

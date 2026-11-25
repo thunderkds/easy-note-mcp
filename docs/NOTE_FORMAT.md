@@ -117,7 +117,7 @@ its keys win, except `id`, which is always the inbox id above (`show`, `rm` and 
  "based_on": "sha256:…", "model": "claude-…", "at": "2026-11-15T09:00:00+07:00"}
 ```
 
-`kind` ∈ `bug`, `idea`, `question`, `todo`, `other`; `title` ≤ 120 chars, `summary` ≤ 600 chars, at most 5
+`kind` ∈ `bug`, `idea`, `question`, `todo`, `draft`, `other`; `title` ≤ 120 chars, `summary` ≤ 600 chars, at most 5
 `tags_suggested`, each a valid tag. `based_on` is `sha256:<hex>` of the note body exactly as stored (the text after
 the closing `---`; the whole file for an inbox note without front matter); `based_on` and `at` are set by easy-note.
 Stale when `based_on` ≠ that hash. Unknown keys are ignored. A file that is not valid JSON, has a wrong type or is over
@@ -129,6 +129,29 @@ pending again.
 
 A file written by `note_add(detail)` has `model: "capture"`, `kind: "other"`, `tags_suggested: []`, `title` = the
 note's title and `summary` = the detail; it counts as enriched until the note changes.
+
+Round 6 adds five optional keys to the AI file: `project` ≤ 60 chars, `topic` ≤ 60, `draft_reason` ≤ 200,
+`draft_suggestion` ≤ 600, `organized_at` (ISO 8601). A file without them is valid. Every string is masked. Over a cap,
+the file is no AI file.
+
+### Overrides and the change log (round 6)
+
+Two files in `<notes dir>/.easy-note/`, neither a note, neither read by easy-personal.
+
+`ai-overrides.json`, written whole (temp file, then rename). A person's fix wins over the AI file; the AI file is not changed.
+`project` and `topic` ≤ 60 chars, `kind` one of the AI kinds. `topics` renames a topic wherever it shows.
+
+```json
+{"easy-note-overrides": 1,
+ "notes": {"20261114-164713-a1b2": {"topic": "firefox flaky", "kind": "bug"}},
+ "topics": {"ff": "firefox"}}
+```
+
+`ai-log.jsonl`, append only, one line per change: `id`, `field`, `old`, `new` (`null` = no value), `who` (`ai` or
+`person`), `at`; an undo line adds `"undo": true`. Values are masked and cut to 200 chars. `easy-note ai set <id>
+project|topic|kind VALUE` writes the first file and one log line; `easy-note ai undo <id>` takes back the latest change
+of a note that no later undo took back. An override of a trashed or missing note is kept and ignored; `doctor` lists
+it as an orphan. An invalid file is ignored, named by `doctor`, and never overwritten.
 
 Readers that must not hold note text (easy-personal) must not read AI files either.
 

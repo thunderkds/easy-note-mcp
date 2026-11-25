@@ -172,6 +172,7 @@ fn findings(store: &Store) -> (Vec<String>, usize) {
             }
         }
     }
+    lines.extend(crate::core::overrides::problems(store));
     for path in scratch::leftovers(&store.root) {
         let name = path.file_name().unwrap_or_default().to_string_lossy();
         lines.push(format!(
