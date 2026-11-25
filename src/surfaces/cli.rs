@@ -78,6 +78,16 @@ pub enum Target {
 pub enum AiAction {
     /// Delete the AI detail of a note (the note stays as it is).
     Rm { id: String },
+    /// Fix the project, topic or kind of a note yourself; your value wins over the AI (`undo` takes it back).
+    Set {
+        id: String,
+        /// `project`, `topic` or `kind`.
+        field: String,
+        /// The new value (kind: idea, todo, bug, question, draft or other).
+        value: String,
+    },
+    /// Undo the latest change of a note (yours or the AI's), one step at a time.
+    Undo { id: String },
     /// Rewrite the Obsidian view of every AI detail (needs a `.obsidian` folder in or above the notes dir).
     Render,
     /// Ask your own `claude` CLI to write the AI detail of notes (needs `[ai] enrich = "claude"`).
@@ -428,6 +438,12 @@ fn dispatch(command: Command) -> Outcome {
         Command::Ai {
             action: AiAction::Rm { id },
         } => write::ai_rm(&id),
+        Command::Ai {
+            action: AiAction::Set { id, field, value },
+        } => write::ai_set(&id, &field, &value),
+        Command::Ai {
+            action: AiAction::Undo { id },
+        } => write::ai_undo(&id),
         Command::Ai {
             action: AiAction::Render,
         } => write::ai_render(),

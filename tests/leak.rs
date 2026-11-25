@@ -1073,7 +1073,61 @@ const SURFACES: &[(&str, Surface)] = &[
     ("ai", surface_ai),
     ("ai_view", surface_ai_view),
     ("enrich", surface_enrich),
+    ("overrides", surface_overrides),
 ];
+
+/// HUN-292: the planted text as a project, topic and kind value, an AI-file key and a draft text,
+/// through `ai::organize`, `overrides::set`, `overrides::undo`, `ai::effective` and the CLI `ai
+/// set`. Returns what each call gave back, the effective values and the two new files.
+fn surface_overrides(text: &str) -> Captured {
+    use easy_note_mcp::core::ai::{self, Input, Organized};
+    use easy_note_mcp::core::overrides;
+    use std::process::Command;
+
+    let notes = PathBuf::from(std::env::var("EASY_NOTE_DIR").unwrap());
+    let store = store::Store::system(notes.clone());
+    let id = store.add("a clean note", SOURCE, &[], &[]).unwrap().id;
+    let input = Input {
+        title: "t",
+        kind: "bug",
+        summary: "s",
+        tags_suggested: &[],
+        model: "m",
+    };
+    ai::enrich(&store, &id, &input).unwrap();
+    let mut got = Captured {
+        objects: vec![],
+        stdout: String::new(),
+        stderr: String::new(),
+    };
+    // A planted text may be over a cap once masked; a refusal is fine, a leak is not.
+    let organized = Organized {
+        project: Some(text),
+        topic: Some(text),
+        draft_reason: Some(text),
+        draft_suggestion: Some(text),
+        ..Organized::default()
+    };
+    got.objects
+        .push(format!("{:?}", ai::organize(&store, &id, &organized)));
+    for field in ["project", "topic", "kind"] {
+        got.objects
+            .push(format!("{:?}", overrides::set(&store, &id, field, text)));
+    }
+    got.objects
+        .push(format!("{:?}", overrides::undo(&store, &id)));
+    got.objects
+        .push(format!("{:?}", ai::effective(&store, &id)));
+    got.objects.push(format!("{:?}", overrides::read(&store)));
+    let out = Command::new(env!("CARGO_BIN_EXE_easy-note"))
+        .args(["ai", "set", &id, "topic", text])
+        .output()
+        .unwrap();
+    got.stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    got.stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+    got.objects.push("ai set ran".into());
+    got
+}
 
 /// `ai enrich` (HUN-275): the real binary with a fake `claude` that echoes the planted text back
 /// (in the answer fields, as raw non-JSON output, in an `is_error` result and on its stderr), and

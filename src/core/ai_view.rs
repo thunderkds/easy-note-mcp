@@ -168,6 +168,11 @@ mod tests {
             based_on: "sha256:x".into(),
             model: "m".into(),
             at: "2026-11-19T10:00:00+07:00".into(),
+            project: None,
+            topic: None,
+            draft_reason: None,
+            draft_suggestion: None,
+            organized_at: None,
         }
     }
 

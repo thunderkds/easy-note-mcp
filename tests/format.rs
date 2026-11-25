@@ -249,7 +249,8 @@ fn doc() -> String {
 fn note_format_doc_is_final_and_its_example_round_trips() {
     let doc = doc();
     assert!(doc.contains("**Status**: Final for `easy-note: 1`"));
-    assert!(!doc.contains("Draft") && !doc.contains("draft"));
+    // The round 6 kind `draft` is a word in the doc now; only a Draft status is wrong.
+    assert!(!doc.contains("**Status**: Draft"));
     let example = doc
         .split("```markdown\n")
         .nth(1)

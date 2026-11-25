@@ -27,7 +27,14 @@ use crate::core::store::{Item, Store, StoreError};
 use crate::core::tags;
 
 pub const VERSION: i64 = 1;
+/// The kinds `note_enrich` accepts (its tool schema is frozen).
 pub const KINDS: [&str; 5] = ["bug", "idea", "question", "todo", "other"];
+/// The kinds an AI file may hold and a person may set: `KINDS` plus `draft` (round 6).
+pub const ORGANIZER_KINDS: [&str; 6] = ["bug", "idea", "question", "todo", "draft", "other"];
+pub const MAX_PROJECT: usize = 60;
+pub const MAX_TOPIC: usize = 60;
+pub const MAX_DRAFT_REASON: usize = 200;
+pub const MAX_DRAFT_SUGGESTION: usize = 600;
 pub const MAX_AI_TITLE: usize = MAX_TITLE;
 pub const MAX_SUMMARY: usize = 600;
 pub const MAX_SUGGESTED: usize = 5;
@@ -52,6 +59,28 @@ pub struct Detail {
     pub based_on: String,
     pub model: String,
     pub at: String,
+    /// Round 6 keys, all optional: a file without them still reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topic: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft_suggestion: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organized_at: Option<String>,
+}
+
+/// What `organize` gives to an AI file: `None` leaves that key as it is. `organized_at` is set by
+/// the server.
+#[derive(Debug, Default, Clone)]
+pub struct Organized<'a> {
+    pub project: Option<&'a str>,
+    pub topic: Option<&'a str>,
+    pub kind: Option<&'a str>,
+    pub draft_reason: Option<&'a str>,
+    pub draft_suggestion: Option<&'a str>,
 }
 
 /// What a caller gives `enrich`. `based_on` and `at` are set by the server, never given.
@@ -150,16 +179,36 @@ fn refuse_tag(index: usize) -> AiError {
     ))
 }
 
+/// Refuse a kind that is not in `ORGANIZER_KINDS`; the message names the allowed values.
+pub fn check_kind(kind: &str) -> Result<(), AiError> {
+    if !ORGANIZER_KINDS.contains(&kind) {
+        return Err(AiError::Refused(format!(
+            "kind must be one of {}",
+            ORGANIZER_KINDS.join(", ")
+        )));
+    }
+    Ok(())
+}
+
 /// The checks on a detail, the same on write and on read: caps, kind, tags.
 fn check(detail: &Detail) -> Result<(), AiError> {
     check_len("title", &detail.title, MAX_AI_TITLE)?;
     check_len("summary", &detail.summary, MAX_SUMMARY)?;
-    if !KINDS.contains(&detail.kind.as_str()) {
-        return Err(AiError::Refused(format!(
-            "kind must be one of {}",
-            KINDS.join(", ")
-        )));
+    for (field, text, limit) in [
+        ("project", &detail.project, MAX_PROJECT),
+        ("topic", &detail.topic, MAX_TOPIC),
+        ("draft_reason", &detail.draft_reason, MAX_DRAFT_REASON),
+        (
+            "draft_suggestion",
+            &detail.draft_suggestion,
+            MAX_DRAFT_SUGGESTION,
+        ),
+    ] {
+        if let Some(text) = text {
+            check_len(field, text, limit)?;
+        }
     }
+    check_kind(&detail.kind)?;
     let count = detail.tags_suggested.len();
     if count > MAX_SUGGESTED {
         return Err(AiError::Refused(format!(
@@ -194,6 +243,18 @@ fn mask_detail(detail: &mut Detail) {
     for tag in &mut detail.tags_suggested {
         *tag = mask(tag);
     }
+    for text in [
+        &mut detail.project,
+        &mut detail.topic,
+        &mut detail.draft_reason,
+        &mut detail.draft_suggestion,
+        &mut detail.organized_at,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        *text = mask(text);
+    }
 }
 
 /// Write the AI file of one note (`note_enrich`), replacing an old one. Caps are checked on the
@@ -222,15 +283,117 @@ pub fn enrich(store: &Store, note_id: &str, input: &Input) -> Result<Detail, AiE
         based_on: String::new(),
         model: mask(input.model),
         at: String::new(),
+        project: None,
+        topic: None,
+        draft_reason: None,
+        draft_suggestion: None,
+        organized_at: None,
     };
     check(&detail)?;
     let (id, body) = store.raw_body(note_id)?;
+    // A re-run of `enrich` keeps what the organizer wrote.
+    if let Some(old) = load(&path(&store.root, &id)) {
+        detail.project = old.project;
+        detail.topic = old.topic;
+        detail.draft_reason = old.draft_reason;
+        detail.draft_suggestion = old.draft_suggestion;
+        detail.organized_at = old.organized_at;
+    }
     detail.based_on = based_on(&body);
     detail.at = store.now_stamp();
     detail.id = id;
     write(store, &detail)?;
     crate::core::ai_view::sync(store, &detail.id);
     Ok(detail)
+}
+
+/// Write the organizer keys into the AI file of a note that already has a valid one (HUN-292).
+/// Masks, checks caps and kind, sets `organized_at`, logs each changed key with `who: ai`
+/// (`overrides::log_change`), and never touches the note. Refused when the note has no AI file.
+pub fn organize(store: &Store, note_id: &str, input: &Organized) -> Result<Detail, AiError> {
+    let (id, _) = store.raw_body(note_id)?;
+    let Some(mut detail) = load(&path(&store.root, &id)) else {
+        return Err(AiError::Refused(format!(
+            "no AI detail for {id} to organize"
+        )));
+    };
+    let before = detail.clone();
+    let put = |slot: &mut Option<String>, new: Option<&str>| {
+        if let Some(new) = new {
+            *slot = Some(mask(new));
+        }
+    };
+    put(&mut detail.project, input.project);
+    put(&mut detail.topic, input.topic);
+    put(&mut detail.draft_reason, input.draft_reason);
+    put(&mut detail.draft_suggestion, input.draft_suggestion);
+    if let Some(kind) = input.kind {
+        detail.kind = mask(kind);
+    }
+    check(&detail)?;
+    detail.organized_at = Some(store.now_stamp());
+    write(store, &detail)?;
+    crate::core::ai_view::sync(store, &detail.id);
+    crate::core::overrides::log_ai_diff(store, &id, &before, &detail);
+    Ok(detail)
+}
+
+/// Put one of `project`, `topic`, `kind` back to `old` in the AI file (undo of an AI change).
+/// `None` removes `project` / `topic`; a `kind` has no empty state, so `None` leaves it. A note
+/// with no AI file is left as it is.
+pub(crate) fn restore_field(
+    store: &Store,
+    id: &str,
+    field: &str,
+    old: Option<&str>,
+) -> Result<(), AiError> {
+    let Some(mut detail) = load(&path(&store.root, id)) else {
+        return Ok(());
+    };
+    match (field, old) {
+        ("project", old) => detail.project = old.map(mask),
+        ("topic", old) => detail.topic = old.map(mask),
+        ("kind", Some(old)) => detail.kind = mask(old),
+        _ => return Ok(()),
+    }
+    check(&detail)?;
+    write(store, &detail)?;
+    crate::core::ai_view::sync(store, id);
+    Ok(())
+}
+
+/// What a person sees for a note: the AI value of each key with the person's override applied,
+/// and the topic rename map applied to the topic. All `None` for a note that is not live.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
+pub struct Effective {
+    pub project: Option<String>,
+    pub topic: Option<String>,
+    pub kind: Option<String>,
+    pub draft_reason: Option<String>,
+    pub draft_suggestion: Option<String>,
+}
+
+/// The effective values of one note (FR-050). An override of a note that is not live (trashed or
+/// gone) is kept in its file and ignored here; it applies again after `restore`.
+pub fn effective(store: &Store, note_id: &str) -> Effective {
+    let Ok(id) = store.canonical_id(note_id) else {
+        return Effective::default();
+    };
+    let detail = load(&path(&store.root, &id));
+    let all = crate::core::overrides::read(store);
+    let mine = all.notes.get(&id);
+    let pick = |field: &str, ai: Option<&String>| -> Option<String> {
+        mine.and_then(|m| m.get(field)).or(ai).cloned()
+    };
+    let topic = pick("topic", detail.as_ref().and_then(|d| d.topic.as_ref()))
+        .map(|t| all.topics.get(&t).cloned().unwrap_or(t));
+    Effective {
+        project: pick("project", detail.as_ref().and_then(|d| d.project.as_ref())),
+        topic,
+        kind: pick("kind", detail.as_ref().map(|d| &d.kind)),
+        draft_reason: detail.as_ref().and_then(|d| d.draft_reason.clone()),
+        draft_suggestion: detail.as_ref().and_then(|d| d.draft_suggestion.clone()),
+    }
 }
 
 /// The AI file of `note_add(detail)`: the note's title, kind `other`, no tags, model `capture`.
@@ -406,6 +569,11 @@ mod tests {
             based_on: based_on("b"),
             model: "m".into(),
             at: "a".into(),
+            project: None,
+            topic: None,
+            draft_reason: None,
+            draft_suggestion: None,
+            organized_at: None,
         }
     }
 
