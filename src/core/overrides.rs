@@ -77,11 +77,12 @@ fn mask(text: &str) -> String {
     guard::mask(text).0
 }
 
-/// The file, parsed; `Err` when it exists and is not valid. A missing file is no overrides.
-fn parse(store: &Store) -> Result<Overrides, ()> {
+/// The file, parsed, and the `<id>.<key>` names of the entries dropped as invalid; `Err` when the
+/// whole file is not valid. A missing file is no overrides.
+fn parse(store: &Store) -> Result<(Overrides, Vec<String>), ()> {
     let raw = match fs::read(overrides_path(store)) {
         Ok(raw) => raw,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Overrides::default()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok((Overrides::default(), vec![])),
         Err(_) => return Err(()),
     };
     let mut found: Overrides = serde_json::from_slice(&raw).map_err(|_| ())?;
@@ -89,28 +90,41 @@ fn parse(store: &Store) -> Result<Overrides, ()> {
         return Err(());
     }
     // A hand-edited file is masked on read too; an entry out of its caps or lists is dropped.
-    for fields in found.notes.values_mut() {
+    let mut dropped = vec![];
+    for (id, fields) in found.notes.iter_mut() {
         fields.retain(|key, value| {
             *value = mask(value);
-            check_value(key, value).is_ok()
+            let ok = check_value(key, value).is_ok();
+            if !ok {
+                dropped.push(mask(&format!("{id}.{key}")));
+            }
+            ok
         });
     }
     found.notes.retain(|_, fields| !fields.is_empty());
     for to in found.topics.values_mut() {
         *to = mask(to);
     }
-    Ok(found)
+    Ok((found, dropped))
 }
 
 /// The overrides, masked. A missing file is no overrides; an invalid one is no overrides too, with
 /// one warning line on stderr (`doctor` names it). Never writes.
 pub fn read(store: &Store) -> Overrides {
-    parse(store).unwrap_or_else(|()| {
-        eprintln!(
-            "easy-note: ai-overrides.json is not valid; ignoring it (run `easy-note doctor`)"
-        );
-        Overrides::default()
-    })
+    match parse(store) {
+        Ok((found, dropped)) => {
+            if !dropped.is_empty() {
+                eprintln!("easy-note: ai-overrides.json has invalid entries; ignoring them (run `easy-note doctor`)");
+            }
+            found
+        }
+        Err(()) => {
+            eprintln!(
+                "easy-note: ai-overrides.json is not valid; ignoring it (run `easy-note doctor`)"
+            );
+            Overrides::default()
+        }
+    }
 }
 
 fn check_value(field: &str, value: &str) -> Result<(), AiError> {
@@ -150,12 +164,18 @@ fn save(store: &Store, data: &Overrides) -> Result<(), AiError> {
 
 /// The file to change: never an invalid one (it is not overwritten silently).
 fn load_for_write(store: &Store) -> Result<Overrides, AiError> {
-    let mut data = parse(store).map_err(|()| {
+    let (mut data, dropped) = parse(store).map_err(|()| {
         AiError::Refused(
             "ai-overrides.json is not valid; fix or remove it first (see `easy-note doctor`)"
                 .into(),
         )
     })?;
+    if !dropped.is_empty() {
+        return Err(AiError::Refused(format!(
+            "ai-overrides.json has invalid entries ({}); fix or remove them first (see `easy-note doctor`)",
+            dropped.join(", ")
+        )));
+    }
     data.version = VERSION;
     Ok(data)
 }
@@ -167,16 +187,23 @@ fn cut(text: &str) -> String {
     }
 }
 
-fn append(store: &Store, line: &Line) {
+fn append(store: &Store, line: &Line) -> io::Result<()> {
     let mut text = serde_json::to_string(line).expect("a log line serializes");
     text.push('\n');
-    let _ = fs::create_dir_all(dir(store));
+    fs::create_dir_all(dir(store))?;
     // One write call on an append-mode file: the line lands whole or not at all.
-    let _ = OpenOptions::new()
+    OpenOptions::new()
         .create(true)
         .append(true)
         .open(log_path(store))
-        .and_then(|mut f| f.write_all(text.as_bytes()));
+        .and_then(|mut f| f.write_all(text.as_bytes()))
+}
+
+fn log_failed(err: &io::Error) -> AiError {
+    AiError::Refused(format!(
+        "the change was saved, but ai-log.jsonl could not be written: {}",
+        err.kind()
+    ))
 }
 
 /// Append one change to the log. `old` / `new` are masked and cut; `who` is `ai` or `person`.
@@ -188,7 +215,7 @@ pub fn log_change(
     new: Option<&str>,
     who: &str,
 ) {
-    log_line(store, id, field, old, new, who, false);
+    let _ = log_line(store, id, field, old, new, who, false);
 }
 
 fn log_line(
@@ -199,7 +226,7 @@ fn log_line(
     new: Option<&str>,
     who: &str,
     undo: bool,
-) {
+) -> io::Result<()> {
     append(
         store,
         &Line {
@@ -211,7 +238,7 @@ fn log_line(
             at: store.now_stamp(),
             undo,
         },
-    );
+    )
 }
 
 /// Log each key that differs between two AI files, `who: ai`.
@@ -259,7 +286,16 @@ pub fn set(store: &Store, note_id: &str, field: &str, value: &str) -> Result<(),
     let entry = data.notes.entry(id.clone()).or_default();
     let old = entry.insert(field.to_string(), value.clone());
     save(store, &data)?;
-    log_change(store, &id, field, old.as_deref(), Some(&value), "person");
+    log_line(
+        store,
+        &id,
+        field,
+        old.as_deref(),
+        Some(&value),
+        "person",
+        false,
+    )
+    .map_err(|e| log_failed(&e))?;
     Ok(())
 }
 
@@ -322,7 +358,8 @@ pub fn undo(store: &Store, note_id: &str) -> Result<Undone, AiError> {
         back,
         "person",
         true,
-    );
+    )
+    .map_err(|e| log_failed(&e))?;
     Ok(Undone {
         id,
         field: line.field,
@@ -333,21 +370,27 @@ pub fn undo(store: &Store, note_id: &str) -> Result<Undone, AiError> {
 /// Lines for `doctor`: an invalid overrides file, and overrides of notes that are neither live nor
 /// in the trash.
 pub fn problems(store: &Store) -> Vec<String> {
-    let data = match parse(store) {
-        Ok(data) => data,
+    let (data, dropped) = match parse(store) {
+        Ok(found) => found,
         Err(()) => {
             return vec!["ai-overrides.json is not valid; it is ignored until you fix it".into()]
         }
     };
     let trashed = store.trash_ids();
-    data.notes
-        .keys()
-        .filter(|id| store.canonical_id(id).is_err() && !trashed.contains(id))
-        .map(|id| {
-            format!(
-                "orphan override: no note {} (the override is kept)",
-                mask(id)
-            )
-        })
-        .collect()
+    let mut lines: Vec<String> = dropped
+        .iter()
+        .map(|name| format!("ai-overrides.json: invalid entry {name} (ignored; fix or remove it)"))
+        .collect();
+    lines.extend(
+        data.notes
+            .keys()
+            .filter(|id| store.canonical_id(id).is_err() && !trashed.contains(&id.to_string()))
+            .map(|id| {
+                format!(
+                    "orphan override: no note {} (the override is kept)",
+                    mask(id)
+                )
+            }),
+    );
+    lines
 }

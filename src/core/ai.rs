@@ -376,11 +376,20 @@ pub struct Effective {
 /// The effective values of one note (FR-050). An override of a note that is not live (trashed or
 /// gone) is kept in its file and ignored here; it applies again after `restore`.
 pub fn effective(store: &Store, note_id: &str) -> Effective {
+    effective_with(store, note_id, &crate::core::overrides::read(store))
+}
+
+/// `effective` over overrides loaded once with `overrides::read`: a caller that loops over notes
+/// reads and parses the file once, and an invalid file warns once.
+pub fn effective_with(
+    store: &Store,
+    note_id: &str,
+    all: &crate::core::overrides::Overrides,
+) -> Effective {
     let Ok(id) = store.canonical_id(note_id) else {
         return Effective::default();
     };
     let detail = load(&path(&store.root, &id));
-    let all = crate::core::overrides::read(store);
     let mine = all.notes.get(&id);
     let pick = |field: &str, ai: Option<&String>| -> Option<String> {
         mine.and_then(|m| m.get(field)).or(ai).cloned()

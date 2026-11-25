@@ -414,3 +414,85 @@ fn doctor_names_an_invalid_file_and_an_orphan_and_set_never_overwrites_an_invali
     );
     assert_eq!(ai::effective(&sb.store(), &id).project, None);
 }
+
+// Fixes after review -----------------------------------------------------------------------------
+
+#[test]
+fn an_invalid_entry_blocks_set_and_undo_and_the_file_bytes_stay() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    let other = sb.add("another");
+    overrides::set(&sb.store(), &id, "project", "web").unwrap();
+    let mut file: Value =
+        serde_json::from_str(&std::fs::read_to_string(sb.overrides_file()).unwrap()).unwrap();
+    file["notes"][id.as_str()]["topic"] = json!("x".repeat(61));
+    std::fs::write(sb.overrides_file(), file.to_string()).unwrap();
+    let before = std::fs::read(sb.overrides_file()).unwrap();
+    let log_before = sb.log().len();
+
+    let out = sb.cli(&["ai", "set", &other, "topic", "t"]);
+    assert_eq!(out.status.code(), Some(1));
+    let err = text(&out.stderr);
+    assert!(
+        err.contains("ai-overrides.json") && err.contains(&format!("{id}.topic")),
+        "{err}"
+    );
+    assert!(!err.contains(&"x".repeat(61)));
+    let out = sb.cli(&["ai", "undo", &id]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(std::fs::read(sb.overrides_file()).unwrap(), before);
+    assert_eq!(sb.log().len(), log_before);
+    // Reads still use the good entry; doctor names the bad one.
+    assert_eq!(
+        ai::effective(&sb.store(), &id).project.as_deref(),
+        Some("web")
+    );
+    let out = text(&sb.cli(&["doctor"]).stdout);
+    assert!(out.contains(&format!("invalid entry {id}.topic")), "{out}");
+}
+
+/// Child half of the next test: one load, two `effective_with` calls.
+#[test]
+fn child_two_effective_with_calls_over_one_load() {
+    let Ok(dir) = std::env::var("OVR_CHILD_NOTES") else {
+        return;
+    };
+    let store = Store::system(PathBuf::from(dir));
+    let all = overrides::read(&store);
+    ai::effective_with(&store, "a", &all);
+    ai::effective_with(&store, "b", &all);
+}
+
+#[test]
+fn two_effective_with_calls_over_one_load_warn_once() {
+    let sb = Sb::new();
+    sb.add("a note");
+    std::fs::create_dir_all(sb.notes().join(".easy-note")).unwrap();
+    std::fs::write(sb.overrides_file(), "{ not json").unwrap();
+    let out = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "child_two_effective_with_calls_over_one_load",
+            "--exact",
+            "--nocapture",
+        ])
+        .env("OVR_CHILD_NOTES", sb.notes())
+        .output()
+        .unwrap();
+    let err = text(&out.stderr);
+    assert_eq!(
+        err.matches("ai-overrides.json is not valid").count(),
+        1,
+        "{err}"
+    );
+}
+
+#[test]
+fn a_failed_log_append_after_a_saved_override_is_an_error() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    // A directory where the log file goes makes the append fail.
+    std::fs::create_dir_all(sb.notes().join(".easy-note/ai-log.jsonl")).unwrap();
+    let out = sb.cli(&["ai", "set", &id, "topic", "t"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).contains("ai-log.jsonl could not be written"));
+}

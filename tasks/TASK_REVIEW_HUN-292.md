@@ -97,3 +97,59 @@ ai-log.jsonl:
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/Txxx.jsonl`, never the
 implementing agent alone]
+
+---
+
+## Stage 4 review
+
+Reviewer: fresh context, commit 315b8b8, `code-review` + `security-review` bounded to the diff. Gate run: `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` -> exit 0, every `test result` line ok, 0 failed.
+
+### Acceptance Criteria trace
+
+| # | Verdict | Where |
+| -- | -- | -- |
+| 1 Detail keys, caps, masking, `draft` kind | pass | `src/core/ai.rs` `Detail`, `check`, `mask_detail`, `ORGANIZER_KINDS`; tests/overrides.rs:105 |
+| 2 overrides file, temp+rename, caps, masking, unknown id refused | pass (rename map write path: see P3-2) | `overrides.rs:138-149` (`save`), `:251-264` (`set`) |
+| 3 `effective` + rename map | pass | `ai.rs` `effective` |
+| 4 log line fields, append only, whole line | pass | `overrides.rs:170-180` |
+| 5 `ai set`, exit 1 with allowed values | pass | `write.rs` `refused`, tests/overrides.rs:291 |
+| 6 `ai undo`, `nothing to undo` exit 1 | pass | `overrides.rs:266-331`, tests/overrides.rs:312 |
+| 7 override of trashed note kept, applies after restore | pass | `effective` ignores non-live id; test :347 |
+| 8 note bytes identical | pass | tests/overrides.rs:367 |
+
+### Findings
+
+No P0, no P1.
+
+- P2-1 `src/core/overrides.rs:80-103` + `:151-161` + `:259`: `parse` drops hand-edited entries that are over a cap or have a bad kind, and `set`/`undo` then write the filtered data back. One `ai set` therefore silently deletes the person's other hand-edited, invalid-looking entries (data loss, no warning). An invalid whole file is protected (refused), a single bad entry is not. Fix: keep the raw entry in the writeback, or refuse the write and name the entry.
+- P2-2 `src/core/ai.rs` `effective` (calls `overrides::read` each time): the overrides file is read and parsed on every call, and an invalid file prints one stderr warning per call. A window or list that calls `effective` for N notes reads the file N times and prints N warnings. Not wrong today (no caller yet); fix before the window or `ai run` loops over notes: add a variant that takes an already-read `Overrides`, and warn once.
+- P3-1 `src/core/overrides.rs:170-180` `append` ignores every error (`let _`). If the log write fails after the override was saved, the change has no log line and cannot be undone, with exit 0. NFR-015 says every AI change can be undone. Return or report the error (stderr line at least).
+- P3-2 `overrides.rs` has no write function for the topic rename map `topics` (FR-050: "Renaming or merging a topic ... rewrites the override"). Out of this slice's vital slice only if a later task owns it; confirm the owner. Map keys are not masked on read (`:99-101` masks values only) and values are not cap-checked. Hand-edited only, low risk.
+- P3-3 `overrides.rs:293-331` `undo` of an AI line when the AI file is gone: `ai::restore_field` returns `Ok` silently, then the undo is logged and the CLI prints "undone". Misleading. Also an AI `kind` change made by `enrich` (not logged by `enrich`) is overwritten by undoing an older logged AI kind change.
+- P3-4 `ai.rs` `organize`: an empty or blank `Organized.project` / `topic` is accepted and stored as `Some("")`. `set` refuses empty; organize should too (treat as "no value").
+- P3-5 `overrides.rs:317-325`: an undo of an AI change is logged `who: "person"`. Acceptable (a person ran it) but the log cannot tell it from a person's own `set` except by `undo: true`. Document in NOTE_FORMAT if the window will show it.
+
+### Focus points
+
+- Raw note bytes (NFR-015): no function in the diff opens a note path for write; `organize` and `restore_field` write only `.easy-note/ai/<id>.json` via `write`. Test :367 snapshots the whole tree. Pass.
+- Masking and caps on every new string: `set` masks then caps; `organize`/`restore_field` mask, then `check`; log values masked then cut to 200 chars; `load` re-masks. Gap: rename map keys (P3-2). tests/leak.rs `surface_overrides` covers set/organize/undo/effective/CLI. Pass.
+- Atomic whole-file write: `save` uses `create_temp` + fsync + `store.rename`, temp unlinked. Pass. Two writers race on read-modify-write (last wins), accepted in the guide edge cases.
+- Log line size: ids come from `canonical_id` (bounded by `is_note_id` / inbox file name), values cut to 200 chars; worst case JSON escaping stays well under 4 KiB, below PIPE_BUF-style single-write atomicity of O_APPEND. Pass.
+- Undo for the right note: `latest` filters `line.id == id`, undo lines pop the stack, non-undoable fields skipped, bad lines skipped. Pass.
+- Invalid `ai-overrides.json` never overwritten: `load_for_write` refuses; `read` and `problems` do not write; test :389. Pass.
+- Escaping the notes dir: `canonical_id` -> `resolve` -> `note_path` requires `is_note_id`; inbox ids come from the directory listing. The field name is checked against `FIELDS` before use. No user string builds a path. Pass.
+- Security: no new process spawn, no network, new files live under `.easy-note/`. Secrets in values are masked before storage and before the log. Pass.
+
+### Design point: FR-047 and `ai::organize` without an AI file
+
+Yes, the API as built supports it, in two steps, with no change to the `enriched` count (NFR-012). `organize` refuses a note without a valid AI file because `Detail` needs `title`, `summary` and `kind`. For a note with no AI file the batch engine should call `ai::enrich` (title, kind, summary, tags, which FR-047 returns in the same answer item) and then `ai::organize` (project, topic, draft keys, kind `draft`). `enrich` already keeps the organizer keys on a re-run (stale notes). `enriched` counts only notes with a fresh valid AI file (`query.rs:191`), and FR-047 notes get that file anyway, so the count rule is unchanged: it counts AI files, nothing new feeds it. Caveats for the `ai run` task: (a) `enrich` accepts only the 5 `KINDS`, so a draft needs `enrich` with `other` and then `organize` with `draft`; the log then shows `other -> draft` as an AI change; (b) the two writes are not atomic, so a failure between them leaves an AI file with no `organized_at` (it stays pending; acceptable); (c) `enrich`'s own kind is not logged (P3-3). Do not add an organizer-only AI file: it would not parse and would raise the file count.
+
+Verdict: pass with findings
+
+## Fixes after review
+
+- P2-1: `parse` now returns the dropped `<id>.<key>` names; `load_for_write` refuses when any entry was dropped (exit 1, names the file and the key, never the value). Reads still ignore the bad entry with one warning; `doctor` names each invalid entry. Test: `an_invalid_entry_blocks_set_and_undo_and_the_file_bytes_stay` (file bytes and log unchanged).
+- P2-2: new `ai::effective_with(store, id, &Overrides)`; `effective` loads once and calls it. Test: `two_effective_with_calls_over_one_load_warn_once` (child process, stderr has one warning).
+- P3-1: `set` and `undo` return an error `the change was saved, but ai-log.jsonl could not be written` (exit 1) when the log append fails. Test: `a_failed_log_append_after_a_saved_override_is_an_error`.
+- Tests were added after the code in this round, not red first.
+- Verification: `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` -> exit=0, 631 passed, 0 failed (summed over all `test result:` lines), 2026-11-25.
