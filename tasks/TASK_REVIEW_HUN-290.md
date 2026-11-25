@@ -10,54 +10,21 @@
 
 ---
 
-<!-- Optional: the final report, only for a task run in auto mode (the user's `[auto]` or `[admin]` tag; with `[admin]`, the `Not done:` line names `merge (admin: after the auto verify pass)`,
-`docs/claude-md/tracks.md` `## Auto mode`). To use it, copy the block below out of this comment, to this
-place, and replace every <...>. Keep `Mode: auto` as its first line, exactly as written: T182's hook reads
-it. Write it to this file before the run ends; the chat message is a copy, not the report. The same
-block is the Supervisor's final chat message. It is not the `delivery-report` page and not
-Evidence. A taste decision (what the user wants) also ends with the flag. Write `DEBATED` only when ≥2
-Advocate `Agent` calls ran for that question, naming each Advocate's option. A decision with no Advocates is
-labelled `RULE`, `FACT` or `SAFER OPTION`, never `DEBATED`. A decision flagged `⚠ decided for you` is a choice, and is never labelled `FACT`. A
-safety action a rule requires (for example the backup before a delete) is `RULE` without the flag.
-At Risk Medium or High, a `RULE:` counts only when it names a written rule (`path:line`,
-`path § <heading>`, or `docs/claude-md/tracks.md` `### <section>`), and a `FACT:` needs a Citation
-(`path:line "quoted text"`); without one it is a choice and must be `DEBATED`. Good: `2. backed up the CSV
-— RULE: `docs/claude-md/tracks.md` `### Stops that stay``. Bad: `1. kept recurring.csv — RULE: Surgical Changes`.
-`Memory:` records the diff-driven memory pass you run before you stop: each entry written, or `nothing new`.
-After an auto verify pass the hook, never you, adds `Closed: row moved to Done <date> — …` and moves the row,
-or adds `Paused: done not moved — <reason>`. It moves the row only when this block holds `Mode: auto`, a
-numbered decision, `Checks:`, `Memory:`, the `Not done:` auto verify slot with its result, and `Not done:`
-naming the merge — no `<...>` left (`docs/claude-md/tracks.md` `### Auto close-out`).
-With `/verify (yours)`, your pass goes in the `verify` row below: Result `☑ pass`, Notes `/verify by the user, session <id>, commit <sha>`.
-
-## Auto decisions
-
-Mode: auto
-1. <what was decided> — RULE: <the rule>
-2. <what was decided> — FACT: <path>:<line> "<quoted text>"
-3. <what was decided> — DEBATED: <option> (Advocate 1: <its proposal>; Advocate 2: <its proposal>) ⚠ decided for you — please review
-4. <what was decided> — SAFER OPTION: <why> ⚠ decided for you — please review
-Paused: <only when a stop that stays paused the task: which one, and why>
-Checks: tests `<command>` — <result>; reviews <skill — result>; real run `<command>` — printed `<what it printed>` (auto-checked, not /verify)
-Memory: <each entry the memory pass wrote, as `file — entry` | nothing new>
-Not done: merge (yours); <auto verify: running (T182) | auto verify: <result> | /verify (yours), with [admin] only after the one retry also ended blocked>
-
--->
 
 ## Evidence
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
 | **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/window_api.rs` (9 tests `hun290_*`: lock file, stale-lock takeover by a killed child, focus request with and without id, bad line, no-listener wait, long path, other notes dir, show script, page `show`), `tests/dashboard.rs` (`hun290_a_second_dashboard_call_focuses_the_open_window`, `window` feature only: NOT run here, see below). Run 2026-11-25: `cargo test --locked --test window_api hun290` -> `test result: ok. 9 passed; 0 failed` |
-| Verification command run | ☐ pass / ☐ fail | Default-build half passed (exit 0): `cargo fmt --check` clean, `cargo clippy --all-targets --locked -- -D warnings` clean, `cargo test --locked` all 17 test binaries `test result: ok` (e.g. dashboard 8 passed, lib 68 passed). The `--features window,tray` half could NOT run in this sandbox: `cargo test --locked --features window,tray` fails in `libdbus-sys` build: `The pkg-config command could not be found` (no pkg-config / libdbus-1-dev / GTK dev packages). The window shell code (`window/mod.rs` `shell`) and the `window`-gated dashboard test are therefore uncompiled here; the reviewer must run that half. |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| Verification command run | ☑ pass (default build); window half not run | `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` exit 0, every `test result` ok, 0 failed (implementer and reviewer). The two `--features window,tray` steps did NOT run: this machine has no pkg-config or GTK dev packages (`libdbus-sys` build fails). `shell::open` and the window-gated test `hun290_a_second_dashboard_call_focuses_the_open_window` were read, not run. |
+| Negative cases hold | ☑ pass | Mutation run by the Supervisor: in `src/surfaces/window/single.rs:57` `return Ok(None)` on `WouldBlock` changed to `{}` (a held lock no longer stops the second caller). `cargo test --locked --test window_api hun290` then printed `hun290_ac4_the_lock_is_a_file_in_the_notes_dir_and_only_one_owner_holds_it ... FAILED`, `hun290_ac4_a_killed_window_leaves_a_lock_the_next_start_takes_over ... FAILED` and `test result: FAILED. 7 passed; 2 failed`. Reverted with `git checkout src/surfaces/window/single.rs`. |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
-| **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Fresh-context reviewer read `main...375dc7d`: `src/surfaces/window/single.rs` (new), `window/mod.rs`, `dashboard.rs::run`, `app.js`, `page_harness.js`, `tests/window_api.rs`, `tests/dashboard.rs`, README, RUNBOOK. Tray was checked to call `dashboard` unchanged. Callers of `window::open` read for the new `Owner` argument. |
+| Full smoke suite still green (no regression) | ☑ pass | Default build: all test binaries ok, 0 failed. Window,tray build not run (see above). |
+| **Companion score (easy-verifier)** | ☑ N/A | Not run in this session: the easy-verifier tool is not available here. The merge gate blocks on a `fail` row only. |
+| **UI: Visual regression (diff or verdict pasted)** | ☑ N/A | No visible UI change: a second `dashboard` call focuses the existing window. Only an invisible `__easyNote.show` page hook was added (page-harness tested). |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ N/A | No CSS or markup change. |
+| **UI: Responsiveness at target viewports** | ☑ N/A | No layout change. |
 
 ---
 
@@ -92,3 +59,48 @@ test result: ok. 9 passed; 0 failed
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/Txxx.jsonl`, never the
 implementing agent alone]
+
+## Stage 4 review
+
+Reviewer: fresh-context, read-only, commit 375dc7deff9c7b4f48af539ff8b841c2dc207e8d, diff `main...375dc7d`. Scope: `src/surfaces/window/single.rs` (new), `window/mod.rs`, `dashboard.rs::run`, `app.js` `show`, and the new tests. Skipped: tray, quick window, unrelated modules (no code change there).
+
+### Commands run (default build, in the worktree)
+
+`cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` -> exit 0 (fmt clean, clippy clean, all test binaries `test result: ok`, 0 failed).
+
+### Could not verify
+
+* `--features window,tray` build: no pkg-config / GTK here. NOT compiled or run: `shell::open` and the `Ui` enum in `src/surfaces/window/mod.rs`, and `tests/dashboard.rs` `hun290_a_second_dashboard_call_focuses_the_open_window` (`#[cfg(feature = "window")]`). Checked by reading only. The Supervisor or CI must run `cargo clippy/test --locked --features window,tray`.
+* Real focus behaviour on X11/Wayland (AC 2) cannot be observed here.
+
+### Acceptance Criteria
+
+| # | Verdict | Evidence |
+|---|---------|----------|
+| 1 | pass (window half read-only) | `dashboard.rs:190-196` acquire returns None -> `focus_open_window` -> Ok (exit 0). Lock/request channel tested in `tests/window_api.rs` `hun290_ac1_ac3_*`; end-to-end CLI test is window-gated, not run. |
+| 2 | pass by reading | `mod.rs` Focus arm: `set_minimized(false)`, `set_visible(true)`, `set_focus()`, `request_user_attention(Informational)`; no unwrap, no crash path; exit stays 0. |
+| 3 | pass | `single.rs` `request_focus_within` sends `focus <id>`; `show_script` passes id as one JSON string (`mod.rs` `show_script`); `app.js` `__easyNote.show`; page-harness scenario `show_request`; test `hun290_ac3_*`. |
+| 4 | pass | `single.rs:acquire` uses `.easy-note/window.lock` + `File::try_lock`; killed-child takeover test `hun290_ac4_a_killed_window_*` passes. |
+| 5 | pass | Tray goes through the `dashboard` command (unchanged); no tray text change in diff. |
+| 6 | pass | Per-notes-dir lock (`hun290_ac6_*`); quick window and Obsidian path untouched (`NO_DISPLAY` falls through, owner dropped on return). |
+
+Edge cases: long socket path -> hash path under `$XDG_RUNTIME_DIR` (tested, `single.rs:socket_path`); simultaneous calls -> exclusive lock; window still starting -> client retries 50 ms steps up to 2 s, then one stderr line and exit 0 (tested). Wayland refusal -> attention request only.
+
+### Findings
+
+* P3 `src/surfaces/window/single.rs:34-38` (socket_path fallback): with no `$XDG_RUNTIME_DIR` the socket goes in the shared temp dir (`/tmp`) under a predictable name. Another local user can pre-create that path; `acquire` then fails at `remove_file`/`bind` with "cannot listen", so `dashboard` errors (denial of service only; the request carries just a note id). Suggest a 0700 per-user subdirectory, or accept as Low risk.
+* P3 `single.rs:acquire` (lines 62-72) / `dashboard.rs:190`: on a `window` build with no usable display, `acquire` binds the socket and `open` returns `NO_DISPLAY`; the lock is released but a dead socket file stays. Harmless (next owner removes it, clients get connection refused and retry up to 2 s), but a second call arriving during that fallback window loses its focus line silently. Cosmetic.
+* P3 `single.rs:7-9`: `std::os::unix` imports are unconditional in a module compiled in every build, so a non-unix build breaks. Out of scope per the guide's cut list (Windows/macOS); note only.
+* P3 `tests/dashboard.rs` (new test): a `window`-gated test asserts `elapsed < 2 s` per call; on a loaded CI machine this is timing-sensitive. Not run here.
+
+No P0/P1/P2 findings. Evidence rows "Verification command run" and "Full smoke suite" are satisfied for the default build only; the feature half is open.
+
+## Auto decisions
+
+Mode: auto
+1. Merged nothing on the window-feature gap; the `--features window,tray` half stays under `Not done:` — RULE: `docs/claude-md/tracks.md` `### Every user stop and its auto rule` row 5 (the Supervisor changes no system setting or package; `sudo apt install` is a system change)
+2. The four P3 findings (shared `/tmp` socket fallback, dead socket on `NO_DISPLAY`, unix-only imports, timing-sensitive test) are follow-ups, not fixed here — RULE: `docs/claude-md/tracks.md` `### Every user stop and its auto rule` row 17 (P3 is reported, not a blocker)
+3. Marked the three UI rows N/A because the task changes no visible UI — FACT: `tasks/TASK_GUIDE_HUN-290.md` Out of scope "The capture-only quick window (HUN-289)" and AC list name focus behavior only, no screen
+Checks: tests `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` — exit 0, 0 failed (default build; window,tray half not run, no GTK here); reviews code-review by a fresh-context reviewer on 375dc7d — pass with findings (P3 only); real run: not possible without a display and the window build (auto-checked, not /verify)
+Memory: nothing new on this branch; the HUN-290 decision entry is written on main after the merge
+Not done: merge (admin: after the auto verify pass); the `--features window,tray` build and window-gated test (no pkg-config or GTK on this machine); real focus behavior on X11 and Wayland; auto verify: running (T182)
