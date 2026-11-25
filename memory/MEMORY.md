@@ -55,3 +55,5 @@
 - [Round 6: AI organizes, raw note stays](decisions.md#2026-11-25--round-6-the-ai-organizes-the-raw-note-stays-hun-293-ai-schedule-keys-merged) — Path B batch `ai run`, overrides, tray timer, `note_context`; HUN-293 merged; HUN-290 to HUN-301 plan
 - [Round 6 gotchas: gate binding, parked tasks, GTK](learnings.md#2026-11-25--round-6-gotchas-gate-binding-parked-tasks-gtk-hashes-hun-290-to-hun-293) — one task per merge ask; park unverifiable tasks in Backlog; full 40-hex hash; window build needs GTK
 - [HUN-292 overrides, log, ai set/undo merged](decisions.md#2026-11-25--hun-292-ai-overrides-change-log-ai-set--ai-undo-merged) — `.easy-note/ai-overrides.json`, `ai-log.jsonl`, `effective_with`; invalid file refuses writes; enrich then organize
+- [HUN-290 one dashboard window merged](decisions.md#2026-11-25--hun-290-one-dashboard-window-per-notes-dir-merged) — `window.lock` + `window.sock`, second call focuses; quick window excluded
+- [Closure moves only named fields; window tests need GTK](learnings.md#2026-11-25--a-rust-2021-closure-moves-only-the-fields-it-names-hun-290-lock-dropped-at-once) — `let owner = self;`; the scan walks every worktree target

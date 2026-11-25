@@ -108,3 +108,10 @@
 - **Pattern**: the window feature (`--features window,tray`) needs `pkg-config`, `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libdbus-1-dev`; without them every window task's guide command is `blocked` in the headless verify.
 - **Pattern**: the `[admin]` attributes scan walks the whole checkout and refuses after 10 s; it failed once while cargo builds were running, and passed at 0.3 s when idle.
 **Files**: .claude/hooks/pre_bash_block_unsafe_merge.py, scripts/board_sync.py, tasks/TASK_REVIEW_HUN-290.md, tasks/TASK_REVIEW_HUN-293.md
+
+### 2026-11-25 — A Rust 2021 closure moves only the fields it names (HUN-290 lock dropped at once)
+- **Gotcha**: `std::thread::spawn(move || { for s in self.listener.incoming() ... })` inside `fn serve(self, ...)` moves only `self.listener`; the other field (`_lock: File`) is dropped when `serve` returns, so the lock was released at once and a second `dashboard` call opened a second window. Fix: `let owner = self;` inside the closure so the whole value moves. Default-build tests missed it because they never called `serve`; the window-feature test caught it once the GTK packages were installed. A default-build test (`hun290_serving_requests_keeps_the_lock_held`) now pins it.
+- **Pattern**: install `pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libdbus-1-dev xvfb`, then run `cargo test --locked --features window,tray` for every window task before review; a default-build pass does not cover window code.
+- **Gotcha**: the `[admin]` attributes scan (10 s) walks every `target/` in every worktree; with seven worktrees it took 13 s and refused the merge. Delete `target/` of finished or throwaway worktrees (`rm -rf .claude/worktrees/<id>/target`), it is regenerable.
+- **Gotcha**: a command with a `git` word next to `$(...)`, `$VAR` or a heredoc is refused as a possible hidden push; put the steps in a script file and run it, or split the command.
+**Files**: src/surfaces/window/single.rs, tests/window_api.rs, .claude/hooks/pre_bash_block_unsafe_merge.py
