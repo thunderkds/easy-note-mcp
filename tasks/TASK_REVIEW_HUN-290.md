@@ -117,3 +117,26 @@ RED (default build, before the fix): `cargo test --locked --test window_api hun2
 Fix: `let owner = self;` inside the thread closure in `src/surfaces/window/single.rs`, so the whole value (and its lock) moves into the thread.
 GREEN: `cargo test --locked --test window_api hun290` — `test result: ok. 10 passed`; the window-feature run then had no failed test.
 Manual run (default `target/debug/easy-note` built with the window feature): lock held by a python `flock`, `DISPLAY=:99`, `easy-note dashboard` — exit 0, no window started.
+
+## Stage 4 review (second, 80d74a8)
+
+Reviewed `main...80d74a8` in the worktree (fresh context, code-review skill).
+
+Checks run (all exit 0, no failed test):
+- `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked`: pass.
+- `cargo clippy --all-targets --locked --features window,tray -- -D warnings && cargo test --locked --features window,tray`: pass (includes `hun290_a_second_dashboard_call_focuses_the_open_window` and `hun290_serving_requests_keeps_the_lock_held`).
+
+Questions asked:
+1. Does the fix keep the lock for the process lifetime? Yes. `single.rs:87-91` `let owner = self;` moves the whole `Owner` (lock `File` and listener) into the thread. The thread loops on `incoming()`, which never ends, so the lock lives until the process exits. Before `serve`, `open` holds `owner` as a parameter (`window/mod.rs:471`) from `acquire` on, so there is no gap between `acquire` and `serve`. The window run is covered: the event loop runs in the main thread while the serve thread holds the lock; close ends the process and the OS drops the lock. Error paths in `open` before `serve` drop `owner` (lock released, intended; `NO_DISPLAY` falls back).
+2. Same disjoint-capture problem elsewhere? No. `move ||` / `move |` sites: `single.rs:87` (fixed), `mod.rs:205` (thread; captures no multi-field struct), `mod.rs:389,497,513,525,529` (closures capture `store`, `running`, `proxy`, `focus`, `webview`, `window` as whole bindings, not fields of a lock-holding struct), `tray.rs:361,397` (no `Owner` or lock involved). `event_loop.run(move ...)` captures `window` and `webview` whole.
+3. Focus path in `shell::open`: no crash path. The `Focus` arm calls `set_minimized(false)`, `set_visible(true)`, `set_focus()`, `request_user_attention(..)` (all infallible in tao) and `let _ = webview.evaluate_script(..)`; the note id goes in as one JSON string (`show_script`). `focus.send_event` result is ignored, so a closed loop is not a panic. The serve thread ignores bad lines (`parse` returns `None`), caps a line at 4096 bytes and sets a 1 s read timeout, so a stalled client cannot block later requests for more than 1 s.
+
+### Findings
+
+* P3 `src/surfaces/window/single.rs:93-107` (serve loop): one connection is handled at a time with a 1 s read timeout, so a client that connects and sends nothing delays other focus requests by up to 1 s. Local-only, no data exposure. Accept, or use a short thread per connection.
+* P3 `tests/window_api.rs` `hun290_serving_requests_keeps_the_lock_held`: it guards the field-capture bug in the default build. It would also catch a later regression that moves the lock out of `Owner`, but not one inside `shell::open`; the window-gated `tests/dashboard.rs` test covers that. Fine as is.
+* Earlier P3 findings (shared-temp socket fallback, dead socket after `NO_DISPLAY`, unix-only imports, timing-sensitive window test) still stand and are unchanged by 80d74a8.
+
+No P0, P1 or P2 findings. The first review's open item (feature half not compiled) is closed by the green window,tray run above. Real focus behavior on a live X11/Wayland session was not exercised here (no display run by this reviewer); that stays for `/verify`.
+
+Verdict: pass with findings
