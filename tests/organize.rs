@@ -128,13 +128,19 @@ impl Sb {
             .map(|l| serde_json::from_str(l).unwrap())
             .collect()
     }
+    /// The CLI's output for an answer of `items`, wrapped in the object root `{"items": …}` that the
+    /// real CLI needs (F1).
     fn answer(&self, items: &Value) {
+        self.answer_root(&json!({ "items": items }));
+    }
+    /// The CLI's output for `root` exactly as the structured answer, with no wrapping.
+    fn answer_root(&self, root: &Value) {
         let out = json!({
             "type": "result",
             "subtype": "success",
             "is_error": false,
-            "result": items.to_string(),
-            "structured_output": items,
+            "result": root.to_string(),
+            "structured_output": root,
             "modelUsage": {"claude-haiku-5-5": {"inputTokens": 10}},
         });
         std::fs::write(self.bin("answer"), out.to_string()).unwrap();
@@ -232,9 +238,13 @@ fn a_good_array_for_three_notes_writes_three_ai_files_and_log_lines() {
         ["[-p]", "[--output-format]", "[json]", "[--json-schema]"]
     );
     let schema: Value = serde_json::from_str(&lines[4][1..lines[4].len() - 1]).unwrap();
-    assert_eq!(schema["type"], "array");
+    // F1: the real CLI refuses any root type but `object`
+    assert_eq!(schema["type"], "object");
+    assert_eq!(schema["required"], json!(["items"]));
+    assert_eq!(schema["additionalProperties"], false);
+    assert_eq!(schema["properties"]["items"]["type"], "array");
     assert_eq!(
-        schema["items"]["properties"]["kind"]["enum"],
+        schema["properties"]["items"]["items"]["properties"]["kind"]["enum"],
         json!(["bug", "idea", "question", "todo", "draft", "other"])
     );
     assert_eq!(
@@ -414,6 +424,32 @@ fn an_answer_that_fails_the_array_schema_writes_nothing() {
         let err = fails_whole(&sb, &[&a, &b]);
         assert!(err.contains("shape"), "{bad}: {err}");
     }
+    // F1: any root but the `{"items": […]}` object fails the whole batch
+    let good = json!([item(&a, "todo"), item(&b, "todo")]);
+    for root in [
+        good.clone(),
+        json!({"notes": good.clone()}),
+        json!({"items": good.clone(), "x": 1}),
+    ] {
+        sb.answer_root(&root);
+        let err = fails_whole(&sb, &[&a, &b]);
+        assert!(
+            err.contains("shape") || err.contains("JSON"),
+            "{root}: {err}"
+        );
+    }
+}
+
+#[test]
+fn the_items_object_is_read_from_result_when_structured_output_is_absent() {
+    let sb = Sb::new();
+    let a = sb.add("one");
+    let root = json!({"items": [item(&a, "idea")]});
+    let out = json!({"type": "result", "is_error": false, "result": root.to_string()});
+    std::fs::write(sb.bin("answer"), out.to_string()).unwrap();
+    let out = sb.run(&[&a]).unwrap();
+    assert_eq!(out.written.len(), 1, "{out:?}");
+    assert_eq!(sb.ai_file(&a).unwrap()["kind"], "idea");
 }
 
 #[test]

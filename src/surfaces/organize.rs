@@ -84,24 +84,32 @@ fn lists(store: &Store, all: &Overrides) -> (Names, Names) {
     (organize::top(projects), organize::top(topics))
 }
 
-/// The items and the model id in the CLI's JSON output: `structured_output` when it is an array,
-/// else `result` parsed as JSON. `Err` is a fixed reason: it never quotes the output.
+/// The answer object of the schema: `{"items": [...]}` and nothing else.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Answer {
+    items: Vec<Item>,
+}
+
+/// The items and the model id in the CLI's JSON output: `structured_output.items` when
+/// `structured_output` is an object, else `result` parsed as that object. `Err` is a fixed reason:
+/// it never quotes the output.
 fn parse(raw: &[u8], fallback: &str) -> Result<(Vec<Item>, String), String> {
     let out: Value = serde_json::from_slice(raw).map_err(|_| "the answer is not JSON")?;
     if out.get("is_error").and_then(Value::as_bool) == Some(true) {
         return Err("claude reported an error".into());
     }
     let answer = match out.get("structured_output") {
-        Some(found) if found.is_array() => found.clone(),
+        Some(found) if found.is_object() => found.clone(),
         _ => out
             .get("result")
             .and_then(Value::as_str)
             .and_then(|text| serde_json::from_str(text).ok())
             .ok_or("the answer holds no JSON")?,
     };
-    let items: Vec<Item> =
+    let answer: Answer =
         serde_json::from_value(answer).map_err(|_| "the answer has the wrong shape")?;
-    Ok((items, enrich::model_of(&out, fallback)))
+    Ok((answer.items, enrich::model_of(&out, fallback)))
 }
 
 /// Write one checked item. The whole item is checked before the first write; the body hash is
