@@ -42,6 +42,7 @@ pub fn asset(path: &str) -> Option<(&'static str, &'static [u8])> {
         "/app.css" => Some((CSS, include_bytes!("assets/app.css"))),
         "/ipc.js" => Some((JS, include_bytes!("assets/ipc.js"))),
         "/capture.js" => Some((JS, include_bytes!("assets/capture.js"))),
+        "/settings.js" => Some((JS, include_bytes!("assets/settings.js"))),
         "/quick.html" => Some((HTML, include_bytes!("assets/quick.html"))),
         "/quick.js" => Some((JS, include_bytes!("assets/quick.js"))),
         "/quick.css" => Some((CSS, include_bytes!("assets/quick.css"))),
@@ -471,9 +472,7 @@ mod shell {
         owner: single::Owner,
         on_shown: impl FnOnce(),
     ) -> Result<(), String> {
-        // One config read at start: the same `[ai] enrich` + `after_save` rule as `easy-note add`.
-        let (dir, after_save) = config::notes_dir_and_after_save().map_err(|e| e.to_string())?;
-        let store = Store::system(dir);
+        let store = Store::system(config::notes_dir().map_err(|e| e.to_string())?);
         let event_loop = event_loop::<Ui>()?;
         let proxy = event_loop.create_proxy();
         let running = Running::default();
@@ -498,7 +497,9 @@ mod shell {
                 // The answer goes back through the event loop, where the webview lives.
                 let source = request.uri().to_string();
                 let on_added = |id: &str| {
-                    if after_save {
+                    // The `[ai] enrich` + `after_save` rule of `easy-note add`, read at each
+                    // save: the Settings screen may have changed it since the window opened.
+                    if config::after_save_on() {
                         enrich::after_save(&store.root, id);
                     }
                 };
