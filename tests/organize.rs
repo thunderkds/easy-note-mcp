@@ -871,3 +871,22 @@ fn draft_of(id: &str) -> Value {
     draft["draft_suggestion"] = json!("a completion");
     draft
 }
+
+// F3: a long repo is cut to the project cap, not refused
+
+#[test]
+fn a_note_in_a_62_char_repo_is_organized_with_the_repo_cut_to_the_cap() {
+    let sb = Sb::new();
+    let repo = format!("{}-repo", "日".repeat(57));
+    assert_eq!(repo.chars().count(), 62);
+    let a = sb.add_in_repo("long repo note", &repo);
+    sb.answer(&json!([item(&a, "todo")]));
+    let out = sb.run(&[&a]).unwrap();
+    assert_eq!(out.written.len(), 1, "{out:?}");
+    let project = sb.ai_file(&a).unwrap()["project"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(project.chars().count(), ai::MAX_PROJECT);
+    assert!(repo.starts_with(&project), "{project}");
+}

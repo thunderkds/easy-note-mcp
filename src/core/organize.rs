@@ -145,7 +145,7 @@ pub struct Item {
 }
 
 /// An item that passed every check: masked, within its caps, tags normalized. `project` is the
-/// note's repo when it has one. Draft keys are kept only for kind `draft`; an empty value is none.
+/// note's repo when it has one, cut to the project cap. Draft keys are kept only for kind `draft`; an empty value is none.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Checked {
     pub title: String,
@@ -163,7 +163,7 @@ fn some_text(text: Option<&str>) -> Option<String> {
 }
 
 /// Check one item alone, before anything is written: kind, every cap on the masked text, tags.
-/// `repo` is the note's repo; it replaces the model's project. `Err` names the field, never a value.
+/// `repo` is the note's repo; it replaces the model's project and is cut to `ai::MAX_PROJECT` chars. `Err` names the field, never a value.
 pub fn check_item(item: &Item, repo: Option<&str>) -> Result<Checked, String> {
     let refused = |e: AiError| e.to_string();
     ai::check_kind(&item.kind).map_err(refused)?;
@@ -173,7 +173,11 @@ pub fn check_item(item: &Item, repo: Option<&str>) -> Result<Checked, String> {
         kind: item.kind.clone(),
         summary: mask(&item.summary),
         tags_suggested: vec![],
-        project: some_text(Some(repo.unwrap_or(&item.project))),
+        // A repo over the project cap is cut to it (by chars, after masking), never refused (F3).
+        project: match repo {
+            Some(repo) => some_text(Some(repo)).map(|r| r.chars().take(ai::MAX_PROJECT).collect()),
+            None => some_text(Some(&item.project)),
+        },
         topic: some_text(Some(&item.topic)),
         draft_reason: some_text(item.draft_reason.as_deref().filter(|_| draft)),
         draft_suggestion: some_text(item.draft_suggestion.as_deref().filter(|_| draft)),
@@ -335,6 +339,29 @@ mod tests {
             let err = check_item(&it, None).unwrap_err();
             assert!(err.contains(want), "{want}: {err}");
         }
+    }
+
+    #[test]
+    fn a_repo_over_the_project_cap_is_cut_to_the_cap_by_chars_after_masking() {
+        let ascii = "r".repeat(62);
+        let got = check_item(&item("todo"), Some(&ascii)).unwrap();
+        assert_eq!(got.project, Some("r".repeat(ai::MAX_PROJECT)));
+        let wide = "日本".repeat(31);
+        let got = check_item(&item("todo"), Some(&wide)).unwrap();
+        let project = got.project.unwrap();
+        assert_eq!(project.chars().count(), ai::MAX_PROJECT);
+        assert!(wide.starts_with(&project));
+        let secret = format!("{TOKEN} {}", "s".repeat(60));
+        let project = check_item(&item("todo"), Some(&secret))
+            .unwrap()
+            .project
+            .unwrap();
+        assert!(project.starts_with("[masked:github_token]"), "{project}");
+        assert_eq!(project.chars().count(), ai::MAX_PROJECT);
+        // The model's own project still has to fit.
+        let mut long = item("todo");
+        long.project = "x".repeat(61);
+        assert!(check_item(&long, None).is_err());
     }
 
     #[test]
