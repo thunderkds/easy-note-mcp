@@ -5,7 +5,7 @@
 //! is that of one real `claude -p --output-format json` run (2026-11-19). No test runs the real
 //! `claude` or opens the real `~/easy-notes/`, `~/.config/easy-note/` or `~/.claude*/`.
 
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::Mutex;
@@ -947,7 +947,11 @@ fn config_text(sb: &Sandbox) -> String {
 
 /// The names in the config folder: a save leaves no temp file behind.
 fn config_folder(sb: &Sandbox) -> Vec<String> {
-    let mut names: Vec<String> = std::fs::read_dir(config_file(sb).parent().unwrap())
+    names(config_file(sb).parent().unwrap())
+}
+
+fn names(folder: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(folder)
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
@@ -1213,6 +1217,156 @@ fn save_ai_settings_if_refuses_a_file_changed_since_it_was_read() {
     config::save_ai_settings_if(&settings, &base).unwrap();
     assert_eq!(config::ai_settings().unwrap().interval_min, 30);
     assert!(config::save_ai_settings_if(&settings, &base).is_err());
+}
+
+/// Make config.toml a symlink to `to`, as a dotfiles tool does.
+fn link_config(sb: &Sandbox, to: impl AsRef<Path>) {
+    let path = config_file(sb);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    symlink(to, path).unwrap();
+}
+
+/// A folder under the sandbox root, for the file a link points to.
+fn folder(sb: &Sandbox, name: &str) -> PathBuf {
+    let folder = sb.root().join(name);
+    std::fs::create_dir_all(&folder).unwrap();
+    folder
+}
+
+/// Change the interval and save, as the Settings screen does: with the stamp of what was read.
+fn save_interval(minutes: u32) -> Result<(), String> {
+    let (mut settings, base) = config::ai_settings_stamped().map_err(|e| e.to_string())?;
+    settings.interval_min = minutes;
+    config::save_ai_settings_if(&settings, &base).map_err(|e| e.to_string())
+}
+
+fn links_to(link: &Path) -> PathBuf {
+    std::fs::read_link(link).unwrap_or_else(|e| panic!("{} is not a link: {e}", link.display()))
+}
+
+#[test]
+fn save_ai_settings_writes_through_a_relative_symlink() {
+    let sb = Sandbox::new("link-relative");
+    let _env = HomeGuard::new(&sb.home());
+    let dotfiles = folder(&sb, "home/dotfiles");
+    let target = dotfiles.join("note.toml");
+    std::fs::write(&target, "# mine\n[ai]\ninterval_min = 60 # hourly\n").unwrap();
+    // Relative to the folder of the link, not to the working directory.
+    link_config(&sb, "../../dotfiles/note.toml");
+    // The link's folder takes no new file: the temp file has to be beside the target.
+    let linked = config_file(&sb).parent().unwrap().to_path_buf();
+    std::fs::set_permissions(&linked, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let result = save_interval(30);
+    std::fs::set_permissions(&linked, std::fs::Permissions::from_mode(0o700)).unwrap();
+    result.unwrap();
+    assert_eq!(
+        links_to(&config_file(&sb)),
+        Path::new("../../dotfiles/note.toml")
+    );
+    let text = std::fs::read_to_string(&target).unwrap();
+    assert!(
+        text.starts_with("# mine\n[ai]\ninterval_min = 30 # hourly\n"),
+        "{text}"
+    );
+    assert_eq!(names(&dotfiles), ["note.toml"]);
+    assert_eq!(config_folder(&sb), ["config.toml"]);
+    // A later edit of the target is what the settings say.
+    std::fs::write(&target, "[ai]\ninterval_min = 90\n").unwrap();
+    assert_eq!(config::ai_settings().unwrap().interval_min, 90);
+}
+
+#[test]
+fn save_ai_settings_writes_through_an_absolute_symlink() {
+    let sb = Sandbox::new("link-absolute");
+    let _env = HomeGuard::new(&sb.home());
+    let dotfiles = folder(&sb, "dotfiles");
+    let target = dotfiles.join("note.toml");
+    std::fs::write(&target, "[ai]\n").unwrap();
+    link_config(&sb, &target);
+    save_interval(30).unwrap();
+    assert_eq!(links_to(&config_file(&sb)), target);
+    assert!(std::fs::symlink_metadata(&target).unwrap().is_file());
+    assert_eq!(config::ai_settings().unwrap().interval_min, 30);
+    assert!(std::fs::read_to_string(&target)
+        .unwrap()
+        .contains("interval_min = 30"));
+    assert_eq!(names(&dotfiles), ["note.toml"]);
+    assert_eq!(config_folder(&sb), ["config.toml"]);
+}
+
+#[test]
+fn save_ai_settings_follows_a_chain_of_symlinks_to_its_end() {
+    let sb = Sandbox::new("link-chain");
+    let _env = HomeGuard::new(&sb.home());
+    let (hop, end) = (folder(&sb, "hop"), folder(&sb, "end"));
+    let target = end.join("note.toml");
+    std::fs::write(&target, "[ai]\n").unwrap();
+    symlink("../end/note.toml", hop.join("next.toml")).unwrap();
+    link_config(&sb, hop.join("next.toml"));
+    save_interval(30).unwrap();
+    assert_eq!(links_to(&config_file(&sb)), hop.join("next.toml"));
+    assert_eq!(
+        links_to(&hop.join("next.toml")),
+        Path::new("../end/note.toml")
+    );
+    assert!(std::fs::read_to_string(&target)
+        .unwrap()
+        .contains("interval_min = 30"));
+    assert_eq!(names(&hop), ["next.toml"]);
+    assert_eq!(names(&end), ["note.toml"]);
+}
+
+#[test]
+fn save_ai_settings_creates_the_target_of_a_dangling_symlink() {
+    let sb = Sandbox::new("link-dangling");
+    let _env = HomeGuard::new(&sb.home());
+    let dotfiles = folder(&sb, "dotfiles");
+    let target = dotfiles.join("note.toml");
+    link_config(&sb, &target);
+    save_interval(30).unwrap();
+    assert_eq!(links_to(&config_file(&sb)), target);
+    assert!(std::fs::read_to_string(&target)
+        .unwrap()
+        .contains("interval_min = 30"));
+    assert_eq!(names(&dotfiles), ["note.toml"]);
+    assert_eq!(config_folder(&sb), ["config.toml"]);
+}
+
+#[test]
+fn save_ai_settings_refuses_a_dangling_symlink_into_a_missing_folder() {
+    let sb = Sandbox::new("link-no-folder");
+    let _env = HomeGuard::new(&sb.home());
+    let target = sb.root().join("absent/note.toml");
+    link_config(&sb, &target);
+    let err = save_interval(30).unwrap_err();
+    assert!(err.starts_with("cannot write "), "{err}");
+    for part in [config_file(&sb), target.clone()] {
+        assert!(err.contains(&part.display().to_string()), "{err}");
+    }
+    assert!(!err.contains('\n'), "one line: {err:?}");
+    assert_eq!(links_to(&config_file(&sb)), target);
+    assert!(!sb.root().join("absent").exists());
+    assert_eq!(config_folder(&sb), ["config.toml"]);
+}
+
+#[test]
+fn save_ai_settings_refuses_a_symlink_loop() {
+    let sb = Sandbox::new("link-loop");
+    let _env = HomeGuard::new(&sb.home());
+    let other = folder(&sb, "other").join("back.toml");
+    symlink(config_file(&sb), &other).unwrap();
+    link_config(&sb, &other);
+    let err = config::save_ai_settings(&config::AiSettings::default())
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("symbolic links"), "{err}");
+    assert!(
+        err.contains(&config_file(&sb).display().to_string()),
+        "{err}"
+    );
+    assert_eq!(links_to(&config_file(&sb)), other);
+    assert_eq!(links_to(&other), config_file(&sb));
+    assert_eq!(config_folder(&sb), ["config.toml"]);
 }
 
 #[test]

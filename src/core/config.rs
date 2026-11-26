@@ -2,6 +2,7 @@
 //! Also the `[ai]` section (FR-038, DDR 0007): whether `ai enrich` may start the person's `claude`,
 //! and the one writer of that section for the window's Settings screen (FR-052).
 
+use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
@@ -360,6 +361,7 @@ pub fn ai_settings_stamped() -> Result<(AiSettings, String), ConfigError> {
 /// atomically. Every other key, table and comment stays as it is, and so does an owned value that
 /// does not change. `command`, `claude_config_dir`, `timeout_secs` and `digest_hour` are the
 /// person's, in the file. Nothing is written when the file or a value breaks a rule of `[ai]`.
+/// A config.toml that is a symlink stays one: the file it links to is replaced.
 pub fn save_ai_settings(settings: &AiSettings) -> Result<(), ConfigError> {
     write_ai(settings, None)
 }
@@ -394,13 +396,42 @@ fn write_ai(settings: &AiSettings, base: Option<&str>) -> Result<(), ConfigError
         return Ok(());
     }
     let io_err = |e: std::io::Error| ConfigError(format!("cannot write {}: {e}", path.display()));
-    let parent = path.parent().expect("config path has a parent");
-    std::fs::create_dir_all(parent).map_err(io_err)?;
+    let target = link_end(&path).map_err(io_err)?;
+    let parent = target.parent().expect("a file path has a parent");
+    if target == path {
+        std::fs::create_dir_all(parent).map_err(io_err)?;
+    } else if !parent.is_dir() {
+        // A folder of the person's own, such as a dotfiles repo, is not made up here.
+        return Err(ConfigError(format!(
+            "cannot write {}: it links to {}, in a folder that does not exist",
+            path.display(),
+            target.display()
+        )));
+    }
     let (mut file, tmp) = fsutil::create_temp(parent).map_err(io_err)?;
     let result = fsutil::write_all_sync(&mut file, new.as_bytes())
-        .and_then(|()| std::fs::rename(&tmp, &path));
+        .and_then(|()| std::fs::rename(&tmp, &target));
     fsutil::unlink_quiet(&tmp);
     result.map_err(io_err)
+}
+
+/// Where the chain of symlinks that starts at `path` ends; `path` itself when it is no link. The
+/// end need not exist yet.
+fn link_end(path: &Path) -> io::Result<PathBuf> {
+    let mut end = path.to_path_buf();
+    // Linux follows 40 links in one lookup; a longer chain is taken for a loop.
+    for _ in 0..=40 {
+        match std::fs::read_link(&end) {
+            // A relative link starts at its own folder; `join` keeps an absolute one as it is.
+            Ok(next) => end = end.parent().expect("a link has a parent").join(next),
+            // `InvalidInput`: not a link.
+            Err(e) if matches!(e.kind(), ErrorKind::InvalidInput | ErrorKind::NotFound) => {
+                return Ok(end)
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Err(io::Error::other("too many levels of symbolic links"))
 }
 
 /// Put the owned keys into `ai`, a table or an inline table; `None` when it is neither.
