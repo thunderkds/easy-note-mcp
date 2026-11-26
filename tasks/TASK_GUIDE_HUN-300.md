@@ -48,10 +48,12 @@ Owner, chat 2026-11-25: "easy-note is the place where I only take notes; the AI 
 
 ### Requirement Fidelity Gate (sign off BEFORE implementation)
 
-- [ ] Restated intent confirmed to match the user's request
-- [ ] Domain terms align with `PROJECT_SPEC.md` glossary
-- [ ] Every Acceptance Criterion below traces to a line in the Requirement
-- [ ] All Requirement Refs exist in `PRD.md` and are covered
+- [x] Restated intent confirmed to match the user's request
+- [x] Domain terms align with `PROJECT_SPEC.md` glossary
+- [x] Every Acceptance Criterion below traces to a line in the Requirement
+- [x] All Requirement Refs exist in `PRD.md` and are covered
+
+Signed: auto (Supervisor), 2026-11-26.
 
 ---
 
@@ -199,4 +201,4 @@ Config round-trip unit tests with a rich fixture; IPC tests; page harness for th
 
 ## Questions Log
 
-* 2026-11-25 OPEN HITL: owner approves the wording of the notice before merge
+* 2026-11-25 OPEN HITL: owner approves the wording of the notice before merge* 2026-11-26 DEBATE add toml_edit as a direct dependency so the Settings save keeps comments → yes, add toml_edit 0.25 (already locked) and edit only the owned keys (Advocate 1: add toml_edit; Advocate 2: add toml_edit) ⚠ decided for you — please review
