@@ -60,6 +60,9 @@ pub struct NoteItem {
     pub id: String,
     pub title: String,
     pub created: String,
+    /// When the person last edited the note (FR-046); no key for a note never edited.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated: Option<String>,
     pub repo: Option<String>,
     pub task: Option<String>,
     pub tags: Vec<String>,
@@ -334,12 +337,56 @@ fn item(note: &Note, words: &[String], matched_in: Option<&'static str>) -> Note
         id: note.id().to_string(),
         title: note.title(),
         created: note.get_str("created").unwrap_or("").to_string(),
+        updated: note.get_str("updated").map(str::to_string),
         repo: note.get_str("repo").map(str::to_string),
         task: note.get_str("task").map(str::to_string),
         tags: tags_of(note).to_vec(),
         snippet: snippet(&note.body, words),
         matched_in,
     }
+}
+
+/// A note's `updated` as a person reads it, in the store's local time (FR-046).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Edited {
+    /// `just now`, `5m ago`, `2h ago`, `3d ago`; the date and time (`2026-11-19 09:12`) from 30
+    /// days on, and when `updated` is later than now or earlier than `created` (a clock set back).
+    pub when: String,
+    /// The full stamp, `2026-11-19 09:12:00 +07:00`.
+    pub stamp: String,
+}
+
+/// `None` when `updated` is not a time (the parser never yields such a note).
+pub fn edited(store: &Store, created: &str, updated: &str) -> Option<Edited> {
+    let updated = DateTime::parse_from_rfc3339(updated).ok()?;
+    let secs = updated.timestamp();
+    let offset = FixedOffset::east_opt((store.utc_offset)(secs))?;
+    let local = updated.with_timezone(&offset);
+    let now = i64::try_from((store.now_ns)() / 1_000_000_000).ok()?;
+    let set_back = DateTime::parse_from_rfc3339(created).is_ok_and(|created| updated < created);
+    let when = ago(now - secs)
+        .filter(|_| !set_back)
+        .unwrap_or_else(|| local.format("%Y-%m-%d %H:%M").to_string());
+    Some(Edited {
+        when,
+        stamp: local.format("%Y-%m-%d %H:%M:%S %:z").to_string(),
+    })
+}
+
+/// An age in seconds as words; `None` for a negative age and from 30 days on.
+fn ago(secs: i64) -> Option<String> {
+    const MINUTE: i64 = 60;
+    const HOUR: i64 = 60 * MINUTE;
+    const DAY: i64 = 24 * HOUR;
+    if !(0..30 * DAY).contains(&secs) {
+        return None;
+    }
+    Some(match secs {
+        s if s < MINUTE => "just now".to_string(),
+        s if s < HOUR => format!("{}m ago", s / MINUTE),
+        s if s < DAY => format!("{}h ago", s / HOUR),
+        s => format!("{}d ago", s / DAY),
+    })
 }
 
 /// Python's `str.split()` whitespace: Unicode whitespace plus the four ASCII separators.
@@ -401,4 +448,31 @@ fn as_date(value: Option<&str>, name: &'static str) -> Result<Option<NaiveDate>,
     NaiveDate::parse_from_str(text, "%Y-%m-%d")
         .map(Some)
         .map_err(|_| QueryError::BadDate { name })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ago;
+
+    #[test]
+    fn ago_changes_unit_at_each_boundary() {
+        const DAY: i64 = 86_400;
+        let table: [(i64, Option<&str>); 12] = [
+            (-1, None),
+            (0, Some("just now")),
+            (59, Some("just now")),
+            (60, Some("1m ago")),
+            (59 * 60 + 59, Some("59m ago")),
+            (3_600, Some("1h ago")),
+            (23 * 3_600 + 3_599, Some("23h ago")),
+            (DAY, Some("1d ago")),
+            (29 * DAY, Some("29d ago")),
+            (30 * DAY - 1, Some("29d ago")),
+            (30 * DAY, None),
+            (400 * DAY, None),
+        ];
+        for (secs, want) in table {
+            assert_eq!(ago(secs).as_deref(), want, "{secs} s");
+        }
+    }
 }

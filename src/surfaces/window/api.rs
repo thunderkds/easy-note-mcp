@@ -9,6 +9,8 @@
 //!   has no full text, only `search`: the masked body's distinct words, so the page's search
 //!   matches the same words as before (HUN-282)
 //! - `{"cmd": "detail", "id": "<note id>"}` → one note with `masked`, `context` and `ai`
+//! - a note item and a detail of an edited note also have `updated` and `edited` (`2h ago`), and the
+//!   detail `edited_at`, the full local stamp (FR-046); a note never edited has none of the three
 //!
 //! Actions (FR-043), each through the same core calls as its CLI command, nothing else writes:
 //! - `{"cmd": "accept_ai", "id"}` → the updated `detail` (`easy-note tag <id> --accept-ai`)
@@ -60,6 +62,7 @@ use serde_json::{json, Map, Value};
 
 use crate::core::context::Context;
 use crate::core::format::{Note, Value as Field};
+use crate::core::query::{self, Edited};
 use crate::core::store::{Item, Store, StoreError};
 use crate::core::{ai, ai_view, config, guard, tags};
 use crate::surfaces::enrich;
@@ -372,6 +375,7 @@ fn board(store: &Store) -> Value {
         let mark = ai::of(&details, note.id())
             .map(|d| (d.kind.as_str(), Some(&d.based_on) != hash.as_ref()));
         let mut row = item(&note, stamp, today, mark);
+        add_edited(store, &note, &mut row);
         row.insert("search".into(), json!(search_words(&note.body)));
         rows.push((stamp, note.id().to_string(), row));
     }
@@ -422,6 +426,9 @@ fn detail(store: &Store, id: &str) -> Result<Value, &'static str> {
     let detail = ai::read(store, id);
     let mark = detail.as_ref().map(|(d, stale)| (d.kind.as_str(), *stale));
     let mut out = item(&note, stamp, today(store), mark);
+    if let Some(edited) = add_edited(store, &note, &mut out) {
+        out.insert("edited_at".into(), json!(edited.stamp));
+    }
     out.insert("text".into(), json!(note.body));
     out.insert("masked".into(), json!(note.body.contains("[masked:")));
     let context: Map<String, Value> = CONTEXT
@@ -498,6 +505,15 @@ fn item(
         Value::Object(map) => map,
         _ => Map::new(),
     }
+}
+
+/// `updated` and `edited` of a note that has `updated` (FR-046).
+fn add_edited(store: &Store, note: &Note, out: &mut Map<String, Value>) -> Option<Edited> {
+    let updated = note.get_str("updated")?;
+    let edited = query::edited(store, note.get_str("created")?, updated)?;
+    out.insert("updated".into(), json!(updated));
+    out.insert("edited".into(), json!(edited.when));
+    Some(edited)
 }
 
 /// The design spells the core kind `todo` as `to-do`.

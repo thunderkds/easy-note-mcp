@@ -6,6 +6,7 @@
 // With <details.json> ({ roles: { editable, inbox, other }, notes: { <id>: the `detail` answer of
 // `window::api::handle` } }) the HUN-286 edit scenarios run too; the stub answers `edit` as the backend contract in ipc.js says.
 // With { settings: <a `settings_get` answer> } in it, the HUN-300 Settings scenarios run.
+// The HUN-291 `edited` scenario needs `notes` only; without `roles` the edit scenarios do not run.
 const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
@@ -686,8 +687,22 @@ async function settingsScenarios(out) {
     await sleep(300);
     return { body, none: s.view() };
   });
-  if (details) await editScenarios(out);
-  if (details) await runAiScenarios(out);
+  // HUN-291: the second line of each row, and the context line of each note's detail panel.
+  if (details) out.edited = await scenario(async (s) => {
+    s.load();
+    await sleep(80);
+    const line = (root, cls) => findAll(root, (e) => e.className === cls).map(textOf).join('');
+    const rows = findAll(s.doc.getElementById('groups'), (e) => e.className === 'row').map((r) => line(r, 'row-where'));
+    const context = {};
+    for (const n of board.notes) {
+      s.rowButton(n.id).fire('click');
+      await sleep(40);
+      context[n.id] = line(s.doc.getElementById('detail'), 'context');
+    }
+    return { rows, context };
+  });
+  if (more && more.roles) await editScenarios(out);
+  if (more && more.roles) await runAiScenarios(out);
   if (more && more.settings) await settingsScenarios(out);
   console.log(JSON.stringify(out));
 })();

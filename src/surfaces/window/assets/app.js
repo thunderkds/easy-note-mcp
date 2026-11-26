@@ -50,6 +50,9 @@
     return isNaN(d.getTime()) ? str(v) : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
   }
 
+  // `edited <when>`, or nothing for a note never edited.
+  function editedText(when) { return when ? 'edited ' + str(when) : ''; }
+
   function kindLabel(k) { return k === 'todo' ? 'to-do' : str(k); }
 
   // The board has no full text, only `search` (the body's distinct words); the haystack is built once per load.
@@ -157,7 +160,8 @@
     var body = el('span', 'row-body');
     body.appendChild(el('span', 'row-first', str(n.first)));
     var tags = tagsOf(n).map(function (t) { return '#' + t; }).join(' ');
-    body.appendChild(el('span', 'row-where', [str(n.repo) || 'no project', str(n.task), tags].filter(Boolean).join(' · ')));
+    // `edited` (HUN-291) leads the line, beside the time, so a narrow row cuts the project and tags, not it.
+    body.appendChild(el('span', 'row-where', [editedText(n.edited), str(n.repo) || 'no project', str(n.task), tags].filter(Boolean).join(' · ')));
     b.appendChild(body);
     if (n.ai && n.kind) b.appendChild(el('span', 'chip', kindLabel(n.kind)));
     b.appendChild(el('span', 'row-mark' + (n.ai && n.stale ? ' stale' : ''), n.ai ? (n.stale ? 'stale' : 'AI') : ''));
@@ -200,7 +204,13 @@
     var ctx = d.context;
     var branch = typeof ctx === 'string' ? ctx : ctx && ctx.branch;
     var when = d.day === 'today' ? 'today ' + str(d.time) : d.day === 'yesterday' ? 'yesterday ' + str(d.time) : rowTime(d);
-    card.appendChild(el('p', 'context', [str(d.repo) || 'no project', str(branch), str(d.task), when].filter(Boolean).join(' · ')));
+    var context = el('p', 'context', [str(d.repo) || 'no project', str(branch), str(d.task), when].filter(Boolean).join(' · '));
+    // The full stamp (HUN-291) is one span, so a narrow panel wraps before it and never inside the date.
+    if (d.edited_at) {
+      context.appendChild(document.createTextNode(' · '));
+      context.appendChild(el('span', 'edited-at', editedText(d.edited_at)));
+    }
+    card.appendChild(context);
 
     var tagBox = el('div', 'tags');
     var tags = tagsOf(d);

@@ -1330,3 +1330,153 @@ fn dashboard_help_names_the_own_window_and_the_obsidian_fallback() {
     assert!(line.contains("window"), "{line}");
     assert!(line.contains("Obsidian"), "{line}");
 }
+
+// ---------------------------------------------------------------------------------------------
+// HUN-291: `edited <when>` on `ls` and `search` (FR-046, NFR-012)
+// ---------------------------------------------------------------------------------------------
+
+/// The `ls` / `search` line of note `id`.
+fn line_of<'a>(out: &'a str, id: &str) -> &'a str {
+    out.lines()
+        .find(|l| l.starts_with(id))
+        .unwrap_or_else(|| panic!("{id} in {out}"))
+}
+
+#[test]
+fn ls_and_search_show_edited_only_on_an_edited_note() {
+    let home = sandbox("edited-ls");
+    let untouched = add(&home, &["alpha", "kept"]);
+    let changed = add(&home, &["alpha", "changed", "#a"]);
+    let stub = editor(&home, "ed.sh", "echo more >> \"$1\"");
+    let out = with_editor(&home, &["edit", &changed], &stub);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    for args in [&["ls"][..], &["search", "alpha"][..]] {
+        let out = ok(&home, args);
+        assert_eq!(
+            line_of(&out, &changed),
+            format!("{changed}  alpha changed #a  #a  edited just now"),
+            "{args:?}"
+        );
+        assert_eq!(
+            line_of(&out, &untouched),
+            format!("{untouched}  alpha kept"),
+            "{args:?}"
+        );
+    }
+}
+
+/// A hand-written note file with the given `created` and `updated`.
+fn stamped_note(home: &Path, id: &str, created: &str, updated: &str) {
+    let folder = home.join("notes").join(&id[..4]).join(&id[4..6]);
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(
+        folder.join(format!("{id}.md")),
+        format!(
+            "---\neasy-note: 1\nid: \"{id}\"\ncreated: \"{created}\"\nupdated: \"{updated}\"\ntags: []\nsource: \"cli\"\n---\nclock note\n"
+        ),
+    )
+    .unwrap();
+}
+
+/// AC 5 and the other-offset edge case: the stamp, in the reader's local time, never `-… ago`.
+#[test]
+fn an_updated_before_created_or_in_the_future_shows_the_local_stamp() {
+    let home = sandbox("edited-clock");
+    let back = "20200102-100000-aaaa";
+    let ahead = "20200102-100000-bbbb";
+    stamped_note(
+        &home,
+        back,
+        "2020-01-02T10:00:00+07:00",
+        "2020-01-01T06:00:00+07:00",
+    );
+    stamped_note(
+        &home,
+        ahead,
+        "2020-01-02T10:00:00+07:00",
+        "2999-01-02T12:30:00+07:00",
+    );
+    let out = exec(&home, &bin(), &["ls"], None, |c| {
+        c.env("TZ", "UTC");
+    });
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let out = text(&out.stdout);
+    assert_eq!(
+        line_of(&out, back),
+        format!("{back}  clock note  edited 2019-12-31 23:00")
+    );
+    assert_eq!(
+        line_of(&out, ahead),
+        format!("{ahead}  clock note  edited 2999-01-02 05:30")
+    );
+}
+
+/// AC 4: no AI run touches the note file; accepting the AI's tags is an edit and sets `updated`.
+#[test]
+fn ai_runs_never_set_updated_and_accept_ai_does() {
+    use easy_note_mcp::core::ai;
+    use easy_note_mcp::core::store::Store;
+
+    let home = sandbox("edited-ai");
+    let fresh = add(&home, &["buy", "a", "hub"]);
+    let edited = add(&home, &["call", "the", "bank"]);
+    ok(&home, &["tag", &edited, "money"]);
+
+    let answer = serde_json::json!({
+        "type": "result", "is_error": false,
+        "structured_output": {"title": "T", "kind": "todo", "summary": "S.", "tags_suggested": ["hardware"]},
+    });
+    std::fs::write(home.join("answer.json"), answer.to_string()).unwrap();
+    let claude_dir = home.join("fakebin");
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    editor(
+        &home,
+        "fakebin/claude",
+        &format!(
+            "cat > /dev/null\necho run >> '{0}/calls'\ncat '{0}/answer.json'",
+            home.display()
+        ),
+    );
+    let config = home.join(".config/easy-note");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(config.join("config.toml"), "[ai]\nenrich = \"claude\"\n").unwrap();
+    let path_var = format!("{}:/usr/bin:/bin", claude_dir.display());
+    let sandboxed = |args: &[&str]| {
+        let out = exec(&home, &bin(), args, None, |c| {
+            c.env("PATH", &path_var)
+                .env("XDG_CONFIG_HOME", home.join(".config"));
+        });
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{args:?}: {}",
+            text(&out.stderr)
+        );
+    };
+
+    let bytes = || [&fresh, &edited].map(|id| std::fs::read(note_file(&home, id)).unwrap());
+    let before = bytes();
+    sandboxed(&["ai", "enrich", &fresh, &edited]);
+    let calls = std::fs::read_to_string(home.join("calls")).expect("the fake claude ran");
+    assert_eq!(calls.lines().count(), 2, "{calls}");
+    // The organizer's writer, and a person's fix of an AI guess and its undo.
+    let store = Store::system(home.join("notes"));
+    for id in [&fresh, &edited] {
+        let organized = ai::Organized {
+            project: Some("home"),
+            topic: Some("errands"),
+            kind: Some("draft"),
+            ..ai::Organized::default()
+        };
+        ai::organize(&store, id, &organized).unwrap();
+        sandboxed(&["ai", "set", id, "topic", "money"]);
+        sandboxed(&["ai", "undo", id]);
+    }
+    assert_eq!(bytes(), before, "byte for byte");
+    assert!(!parsed(&home, &fresh).fields.contains_key("updated"));
+
+    sandboxed(&["tag", &fresh, "--accept-ai"]);
+    assert_eq!(tag_list(&parsed(&home, &fresh)), ["hardware"]);
+    assert!(parsed(&home, &fresh).fields.contains_key("updated"));
+    assert!(line_of(&ok(&home, &["ls"]), &fresh).contains("  edited just now"));
+}
