@@ -258,3 +258,84 @@ Implementer (backend-developer), 2026-11-26, after the owner's option A. Each fi
 | F4 (option A) | `ai::enrich` on a note with a valid AI file logs each changed `title`, `summary`, `tags_suggested` (`who: ai`, old value whole, new cut, tags as JSON text) in one write before the file is replaced; no replace when the write fails; the fields stay out of `overrides::FIELDS` (undo: HUN-302); no `kind` line from `enrich` | `d0d84eb` | `enrich_logs_the_old_title_summary_and_tags_in_full_and_undo_still_takes_back_project_topic_kind` (600-char multibyte summary), `enrich_does_not_replace_the_ai_file_when_its_log_line_cannot_be_written` |
 | F2 | `ai::Organized::clear_draft`, set by the batch when the effective kind (override, else model) is not `draft`, removes both draft keys; `organize` logs the removal; `enrich` still carries the draft keys | `dc017c5` | `a_finished_draft_loses_its_draft_keys_and_the_removal_is_logged` (also: a person's kind `draft` keeps the keys) |
 | F3 | A repo over the project cap is cut to `ai::MAX_PROJECT` chars after masking and used as the project | `768764a` | `a_repo_over_the_project_cap_is_cut_to_the_cap_by_chars_after_masking` (62-char, multibyte, masked), `a_note_in_a_62_char_repo_is_organized_with_the_repo_cut_to_the_cap` |
+
+---
+
+## Stage 4 review (fix round)
+
+Reviewer: qa-expert, fresh context, from the repo only, 2026-11-26. Commit `5069261602bef531e0df3307deafef8f4e6af6b8`; fix round in depth: `git diff d01b469..5069261 -- src tests docs PRD.md`. Rules: `skills/code-review/SKILL.md` and `references/security-reviewer.md`, followed by hand (no Skill tool call). Review done alone: no second agent re-checked a P0 or security result. No source or test file changed, no fix applied. The real `claude` CLI was never started (its directory was removed from `PATH`; probes used a fake script).
+
+**Verdict: fail (changes required).** No P0. 1 P1 (R1, in the F2 fix), 5 P2, P3 list below. Both test commands are green.
+
+### F1 to F4
+
+| ID | Status | Evidence |
+|---|---|---|
+| F1 | fixed in code | `schema()` has an object root with `items`; `parse` reads `structured_output.items`, else `result`; bare array and wrong objects write nothing (tests, probe). The real CLI was not run here: that it accepts an object root rests on the call recorded in `## Auto decisions`, which does not paste the full production schema. Run `organize::schema()` once against the real CLI before HUN-295 ships. |
+| F2 | fixed for the batch, with a new loss (R1) | Draft keys go when the shown kind is not `draft`; a person's kind `draft` keeps them. Mutations "never clear" and "clear by model kind" each fail the F2 test. |
+| F3 | fixed | A 62-char repo is cut and organized. Mutation "no cut" fails the test. One contrived case remains (P3, partial marker). |
+| F4 | partly fixed | Old `title`, `summary`, `tags_suggested` of a valid AI file are logged whole before the replace, and a failed log write stops the replace (mutations "no log", "error ignored", "old value cut" each fail a test). The second half of F4 is unchanged (R2). |
+
+### Commands and results
+
+| Command (in the worktree unless said) | Result |
+|---|---|
+| `cargo fmt --check` | exit 0 |
+| `cargo clippy --all-targets --locked -- -D warnings` | exit 0 (cached build) |
+| `cargo test --locked` | exit 0; 28 `test result` lines, 671 passed, 0 failed, 7 ignored |
+| `cargo test --locked --features window,tray --no-fail-fast` | exit 0; 28 `test result` lines, 680 passed, 0 failed, 7 ignored (the `tests/context.rs` failure in the implementer's first run did not occur) |
+| `python3 scripts/lane_check.py tasks/TASK_GUIDE_HUN-294.md main...5069261` | `lane: C2, 11 files, 1656 lines, EXCEEDS (lines 1656 > 500); unpredicted: PRD.md, src/core/ai.rs, src/core/overrides.rs, tasks/TASK_GUIDE_HUN-294.md` (warn only; the two source files follow the owner's option A) |
+| Scratch copy: 14 probe tests, p01 to p12, p14, p15 (`tests/zz_probe.rs`, fake `claude`), `cargo test --locked --offline --test zz_probe p -- --nocapture --test-threads=1` | 13 passed, 1 failed (probe p10 fed an answer over 1 MiB: my error), p10 rerun with a smaller tag passed; probes print behaviour, quoted below |
+| Scratch copy: 7 mutations, `cargo test --locked --offline --test organize` | M1 to M6 killed; M7 (`old` not masked in `log_enrich_diff`) survives, equivalent because `load` already masks |
+| A shell script to tear a log append with `ulimit -f` | blocked by the `pre_bash` auto-mode hook ("cannot tell" if it pushes or merges); not retried in another form. R4 was reproduced with a hand-written partial line instead |
+
+Reachability: `run_batch` is still called only by tests (`ai run` is HUN-295). Startup-reads check: not checkable from the repo. Callers of `ai::enrich` (CLI `ai enrich`, MCP `note_enrich`, `note_add(detail)`, window `Run AI`, `after_save`, the batch): the one behaviour change is that a replace of a valid AI file is now refused when the log cannot be written and title, summary or tags change; the error holds fixed words and the IO error kind only. A new note (capture) has no old file and is not affected. Old-format log lines plus the new lines: `ai undo` undid topic, kind, topic, project, then `nothing to undo` (probe p08). 8 threads, 1,592 multibyte appends: every line parsed (p11). Hostile answers (`items` object, null, `[null]`, `is_error`, 100,000-deep array, 900,000-char summary) write nothing.
+
+### P0
+
+None.
+
+### P1
+
+| ID | File:line | Finding and failure scenario | Conf. | Action |
+|---|---|---|---|---|
+| R1 | `src/core/ai.rs:332-334, 346`, `src/core/overrides.rs:245, 268-281` | The F2 fix removes `draft_suggestion` (cap 600) and the removal line keeps only 200 chars plus `…`. Probe p02: a 577-char suggestion, note finished, next batch says `todo`: the file has no suggestion, the log `old` has 201 chars, the end of the text is nowhere. HUN-302 cannot restore it; NFR-015 says every AI change can be undone from `ai-log.jsonl`, and its 2026-11-26 exception does not cover this. Before this round the key was kept. The F2 test uses short values, so it passes. | 100 | Log the old draft values whole when removed or replaced (as for title and summary), before the AI file is written; test with a 600-char suggestion; add the draft keys to the HUN-302 undo scope. Or the owner rules the loss acceptable and PRD says so. |
+
+### P2
+
+| ID | File:line | Finding and failure scenario | Conf. | Action |
+|---|---|---|---|---|
+| R2 | `src/surfaces/organize.rs:139-169`, `src/core/ai.rs:298-305`; contract `PRD.md:114` | F4 residual: "Each applied item is one `ai-log.jsonl` line" is still false. New note with project and topic overridden (p01): item `written`, `new log lines=[]`, and `ai undo` then returned `Undone { field: "topic", now: None }`: it removed the person's own fix. The same zero lines when the model returns empty project and topic (p01b). Trigger is narrow. | 100 | Log at least one line for each applied item, or record a ruling that narrows FR-047. |
+| R3 | `src/core/ai.rs:344-346`, `src/core/overrides.rs:228` | Draft removal is written first and logged after, and a log failure is silent. Log unwritable and the model returns the same title, summary and tags (p03): item `written`, both draft keys gone, no record. | 100 | Fix with R1: one checked log write before the AI file write. |
+| R4 | `src/core/overrides.rs:197-210, 357-361` (`append` and `latest` pre-date this round; option A now relies on them) | A partial append (disk full, crash, file size limit) leaves a line with no newline. The next append is glued to it: `enrich` reports success and replaces the AI file, but the `old title` line, the only full copy, does not parse (p07). If the tear is inside a multibyte char, `read_to_string` fails and `ai undo` says `nothing to undo` for **every** note until the file is edited by hand (p07). The comment "a line lands whole" is not guaranteed by `write_all`. | 100 for the effect of a torn line (simulated); 75 that a real failure leaves one | Start a new line when the file does not end in `\n`; read the log as bytes and skip only the bad line. Test both. |
+| R5 | `src/core/ai.rs:302-303`, `src/core/overrides.rs:296-300` | Outside the batch, option A and F2 do not hold fully. `ai enrich` / `note_enrich` / `Run AI` on a draft sets kind `todo`, keeps both draft keys with a fresh `based_on` (p04: `kind=todo stale=false reason=Some(..) suggestion=Some(..)`), and writes no `kind` line, so the replaced kind is lost and `ai undo` jumps to an earlier kind (`now: Some("other")`). FR-029 pending will not pick the note again until it changes. `docs/NOTE_FORMAT.md:139` says draft keys are for kind `draft` only. The missing kind line pre-dates this task. | 100 | Supervisor ruling: clear (and log) in `enrich` when the new kind is not `draft`, or document it; log `kind` from `enrich`, or exclude it in NFR-015. |
+| R6 | `tasks/TASK_GUIDE_HUN-295.md:60`, `PRD.md:143` | "HUN-302 must merge before `ai run` (HUN-295) ships" is only prose. The HUN-295 guide depends on HUN-294 only; there is no HUN-302 guide here and no HUN-302 row in the committed `PROJECT_KANBAN.md` (worktree or `main`). Uncommitted or remote board state was not read. | 75 | Add HUN-302 as a dependency of HUN-295 and put it on the board. |
+
+Earlier F5 (override set while the call runs) now does more harm: a person sets kind `draft` during the call, the model says `todo`, and the batch deletes both draft keys (p05: `kind: Some("draft"), draft_reason: None, draft_suggestion: None`), with the R1 cut in the log. Raise its priority and fix it before HUN-295. F6 to F9 are unchanged.
+
+### P3
+
+- `src/core/organize.rs:178` with `src/core/ai.rs:326-331`: the cut can end inside a mask marker; `organize` masks again, the project grows and is refused. A repo `<44 to 47 chars>password=hunter2x` gives `organizing failed: project is 77 chars` on every run (p06). Contrived name.
+- `src/core/ai.rs:298-309`: two `enrich` runs on one note at once both log the same old value; the first writer's text is replaced with only a 200-char `new` copy (p11, tight race: 454 of 500 rounds). Real window is milliseconds.
+- `src/core/ai.rs:298`: an AI file that is not valid (corrupt, hand edit over a cap, version 2 from a newer build) is replaced with no log line (p09). The overwrite pre-dates this task and the doc says "valid".
+- `src/core/ai.rs:299, 309`: if the AI file write fails after the log write, the log holds changes that did not happen. HUN-302 must expect this.
+- `src/surfaces/organize.rs:110`: `result: "[[item]]"` is accepted as the object root (serde reads a struct from an array, p14), against "any other root fails the whole batch".
+- `src/core/overrides.rs:9-11`: "a few KiB" is wrong. Tags have no length cap (`src/core/ai.rs:220-224`, pre-existing), and each replace now logs old tags whole: a 300,000-char tag grew the log by 901,744 bytes in 5 re-runs (p10). Title, summary at their caps with control characters: 828 and 3,725 bytes, parsed back whole.
+- F8 reaches further: a lower-cased AWS key sent as a tag is now also kept whole in `ai-log.jsonl` (p15).
+- The guide's AC 2 and AC 3 still say "array"; only the Questions Log amends them.
+
+### Security: sensitive-data inventory (change to the earlier table)
+
+| Data | Reaches | Kept | Control |
+|---|---|---|---|
+| Old `title` (120), `summary` (600) whole, old `tags_suggested` whole (no per-tag cap); new values cut to 200. Source text is derived from notes, from the session (`note_add(detail)`) or from a transcript (`enrich_notes`) | `<notes dir>/.easy-note/ai-log.jsonl`, so also any sync or git copy of the notes dir | for ever: still there after `ai rm` and `rm` (p13); no command removes it | masked on load and on write; a secret the patterns miss stays |
+| `draft_reason`, `draft_suggestion`, project, topic, kind | same file | same | masked, cut to 200 (R1) |
+
+No read path shows the old title, summary or tags: the one reader, `overrides::latest`, keeps only `project`, `topic`, `kind` lines, and no MCP tool, query, CLI output or window call reads the file. Child stdin, argv, env and note files are unchanged by this round.
+
+| Lead | Outcome |
+|---|---|
+| `ai-log.jsonl` is created with the process umask (`src/core/overrides.rs:205-208`): probe p12 shows `664` for the log, `600` for the note and the AI file. Actor: another local account; boundary: file mode; resource: the owner's note-derived text, now whole summaries; result: read (group write if the group is shared). The mode pre-dates this round; the content is larger now. | `confirmed` for the mode, severity Low (needs another account that can reach the notes dir); not re-checked by a second agent. Fix: create the file with mode 0600 and test it. |
+| Hardening, not a finding: removed notes keep their AI text in the log. | Say so in `docs/NOTE_FORMAT.md`, or remove a note's lines when its trash is emptied. |
+| Rejected: a model value forges a log line or an undoable field | field names are fixed in code and values are JSON-escaped (p10, p11 parse) |
+| Rejected: the new error text leaks note text | fixed words and the IO error kind only (`src/core/overrides.rs:317-322`) |
