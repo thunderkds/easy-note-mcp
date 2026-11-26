@@ -75,8 +75,43 @@ Paused: auto-mode check failed — no `Memory:` line in the report — run the m
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE**: captured by backend-developer at commit `47899ac`, before any code change, with
+`date -u; git rev-parse --short HEAD; ls src/core src/surfaces; ls src/core/organize.rs src/surfaces/organize.rs tests/organize.rs; grep -rn "organize::run_batch\|mod organize" src`:
+
+```
+2026-11-26T04:11:07Z
+47899ac
+src/core:
+ai.rs
+ai_view.rs
+config.rs
+context.rs
+format.rs
+fsutil.rs
+guard.rs
+mod.rs
+overrides.rs
+query.rs
+store.rs
+tags.rs
+
+src/surfaces:
+cli
+window
+cli.rs
+dashboard.rs
+enrich.rs
+hook.rs
+install.rs
+mcp.rs
+mod.rs
+quick.rs
+tray.rs
+"src/core/organize.rs": No such file or directory (os error 2)
+"src/surfaces/organize.rs": No such file or directory (os error 2)
+"tests/organize.rs": No such file or directory (os error 2)
+no organize module or run_batch in src
+```
 
 **AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
 
