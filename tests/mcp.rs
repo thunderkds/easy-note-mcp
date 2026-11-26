@@ -826,3 +826,47 @@ async fn smoke_real_binary_over_stdio_calls_every_tool() {
     );
     client.cancel().await.unwrap();
 }
+
+// ---------------------------------------------------------------------------------------------
+// HUN-291: the optional `updated` key (FR-016, FR-046)
+// ---------------------------------------------------------------------------------------------
+
+#[tokio::test]
+async fn list_search_and_read_carry_updated_only_when_the_note_has_it() {
+    let sb = Sandbox::new("updated");
+    let ids = seed(&sb, &["needle untouched", "needle changed"]);
+    let (untouched, changed) = (&ids[0], &ids[1]);
+    sb.store()
+        .update(changed, Some("needle changed again"), None)
+        .unwrap();
+    let stamp = sb
+        .store()
+        .read(changed)
+        .unwrap()
+        .get_str("updated")
+        .expect("the edit sets it")
+        .to_string();
+    chrono::DateTime::parse_from_rfc3339(&stamp).expect("ISO 8601 with offset");
+
+    let client = connect(&sb, TestClient::plain("t")).await;
+    for (tool, args) in [
+        ("note_list", json!({})),
+        ("note_search", json!({"query": "needle"})),
+    ] {
+        let page = ok(&client, tool, args).await;
+        let items = page["items"].as_array().unwrap();
+        assert_eq!(items.len(), 2, "{tool}: {page}");
+        let item = |id: &str| items.iter().find(|i| i["id"] == id).unwrap().clone();
+        assert_eq!(item(changed)["updated"], stamp.as_str(), "{tool}");
+        assert!(item(untouched).get("updated").is_none(), "{tool}: {page}");
+        // Additive: every key of an item before this change is still there.
+        for key in ["id", "title", "created", "repo", "task", "tags", "snippet"] {
+            assert!(item(untouched).get(key).is_some(), "{tool}: no {key}");
+            assert!(item(changed).get(key).is_some(), "{tool}: no {key}");
+        }
+    }
+    let read = ok(&client, "note_read", json!({"id": changed})).await;
+    assert_eq!(read["updated"], stamp.as_str());
+    let read = ok(&client, "note_read", json!({"id": untouched})).await;
+    assert!(read.get("updated").is_none(), "{read}");
+}

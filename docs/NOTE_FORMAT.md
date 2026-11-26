@@ -46,7 +46,7 @@ ui_wait_for times out after the second navigation. Check after T120 lands.
 | `easy-note` | yes | int | Format version. Readers skip files with an unknown version. |
 | `id` | yes | string | As above; equals the file name stem. |
 | `created` | yes | string, ISO 8601 with offset | Local time of capture, to the second. |
-| `updated` | no | string, ISO 8601 with offset | Set by `easy-note edit` / `tag`. |
+| `updated` | no | string, ISO 8601 with offset | Set by `easy-note edit` / `tag` and by the window's `Edit` and `Add as tags`. Read-only for AI: no AI run sets or changes it. Shown as `edited <when>` in `ls`, `search` and the window. |
 | `repo` | no | string | Folder name of the main worktree. Absent outside git. |
 | `remote` | no | string | `owner/name` of origin, userinfo stripped. |
 | `branch` | no | string | Branch at capture. |

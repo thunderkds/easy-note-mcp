@@ -3221,3 +3221,111 @@ fn hun290_ac3_the_page_shows_a_note_when_the_shell_asks() {
     assert_eq!(r["shown"]["id"], ACTED, "{r}");
     assert_eq!(r["current"], "true", "{r}");
 }
+
+// ---------------------------------------------------------------------------------------------
+// HUN-291: `updated` beside `created` (FR-046)
+// ---------------------------------------------------------------------------------------------
+
+const CHANGED: &str = "20261119-070000-ed01";
+const UNTOUCHED: &str = "20261119-060000-ed02";
+
+/// One note edited two hours before the frozen clock (its stamp written in UTC), one never edited.
+fn edited_pair(sb: &Sandbox) {
+    sb.note(
+        CHANGED,
+        "2026-11-19T07:00:00+07:00",
+        "updated: \"2026-11-19T01:00:00+00:00\"\ntags: []\n",
+        "changed note",
+    );
+    sb.note(
+        UNTOUCHED,
+        "2026-11-19T06:00:00+07:00",
+        "tags: []\n",
+        "kept note",
+    );
+}
+
+#[test]
+fn hun291_board_and_detail_carry_updated_only_on_the_edited_note() {
+    let sb = Sandbox::new("edited-keys");
+    edited_pair(&sb);
+    let store = sb.store();
+    let board = call(&store, &json!({"cmd": "board"}));
+    assert_eq!(ids(&board), [CHANGED, UNTOUCHED], "newest `created` first");
+    let detail = |id: &str| call(&store, &json!({"cmd": "detail", "id": id}));
+    for note in [&board["notes"][0], &detail(CHANGED)] {
+        assert_eq!(note["updated"], "2026-11-19T01:00:00+00:00", "{note}");
+        assert_eq!(note["edited"], "2h ago", "{note}");
+        assert_eq!(note["created"], "2026-11-19T07:00:00+07:00", "{note}");
+    }
+    // The full stamp, in the store's zone.
+    assert_eq!(detail(CHANGED)["edited_at"], "2026-11-19 08:00:00 +07:00");
+    for note in [&board["notes"][1], &detail(UNTOUCHED)] {
+        for key in ["updated", "edited", "edited_at"] {
+            assert!(note.get(key).is_none(), "{key} in {note}");
+        }
+    }
+}
+
+#[test]
+fn hun291_an_updated_before_created_shows_the_stamp_in_the_window() {
+    let sb = Sandbox::new("edited-clock");
+    sb.note(
+        CHANGED,
+        "2026-11-19T07:00:00+07:00",
+        "updated: \"2026-11-19T06:00:00+07:00\"\ntags: []\n",
+        "clock set back",
+    );
+    let store = sb.store();
+    let board = call(&store, &json!({"cmd": "board"}));
+    assert_eq!(board["notes"][0]["edited"], "2026-11-19 06:00", "{board}");
+    let detail = call(&store, &json!({"cmd": "detail", "id": CHANGED}));
+    assert_eq!(detail["edited_at"], "2026-11-19 06:00:00 +07:00");
+}
+
+#[test]
+fn hun291_the_windows_edit_and_add_as_tags_show_edited_just_now() {
+    let sb = Sandbox::new("edited-actions");
+    acted(&sb);
+    let store = sb.store();
+    let before = call(&store, &json!({"cmd": "detail", "id": ACTED}));
+    assert!(before.get("edited").is_none(), "{before}");
+    let out = call(&store, &json!({"cmd": "accept_ai", "id": ACTED}));
+    assert_eq!(out["edited"], "just now", "{out}");
+
+    let sb = Sandbox::new("edited-edit");
+    acted(&sb);
+    let store = sb.store();
+    let request = edit_request(&store, ACTED, "new words", json!(["y"]));
+    let out = call(&store, &request);
+    assert_eq!(out["edited"], "just now", "{out}");
+}
+
+#[test]
+fn hun291_the_page_shows_edited_on_the_row_and_the_full_stamp_in_the_detail() {
+    let sb = Sandbox::new("edited-page");
+    edited_pair(&sb);
+    let store = sb.store();
+    let board = call(&store, &json!({"cmd": "board"}));
+    let mut notes = serde_json::Map::new();
+    for id in ids(&board) {
+        notes.insert(
+            id.to_string(),
+            call(&store, &json!({"cmd": "detail", "id": id})),
+        );
+    }
+    let Some(run) = run_page_with(&board, Some(&json!({ "notes": notes }))) else {
+        return;
+    };
+    let r = &run["edited"];
+    assert_eq!(
+        r["rows"],
+        json!(["edited 2h ago · no project", "no project"]),
+        "{r}"
+    );
+    assert_eq!(
+        r["context"][CHANGED], "no project · today 07:00 · edited 2026-11-19 08:00:00 +07:00",
+        "{r}"
+    );
+    assert_eq!(r["context"][UNTOUCHED], "no project · today 06:00", "{r}");
+}

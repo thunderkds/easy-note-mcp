@@ -13,11 +13,15 @@ use crate::core::{ai, config, format, guard};
 #[cfg(feature = "tray")]
 use crate::surfaces::tray;
 
-fn print_page(page: &Page) -> Outcome {
+fn print_page(store: &Store, page: &Page) -> Outcome {
     for item in &page.items {
         let mut line = format!("{}  {}", item.id, item.title);
         for tag in &item.tags {
             line.push_str(&format!("  #{tag}"));
+        }
+        let updated = item.updated.as_deref();
+        if let Some(edited) = updated.and_then(|u| query::edited(store, &item.created, u)) {
+            line.push_str(&format!("  edited {}", edited.when));
         }
         if item.matched_in == Some("ai") {
             line.push_str("  [ai]");
@@ -36,11 +40,13 @@ fn print_page(page: &Page) -> Outcome {
 }
 
 pub fn ls(filters: Filters, limit: usize) -> Outcome {
-    print_page(&query::list_notes(&filters, limit)?)
+    let store = Store::open()?;
+    print_page(&store, &query::list_notes_in(&store, &filters, limit)?)
 }
 
 pub fn search(words: &str, filters: Filters, limit: usize) -> Outcome {
-    print_page(&query::search(words, &filters, limit)?)
+    let store = Store::open()?;
+    print_page(&store, &query::search_in(&store, words, &filters, limit)?)
 }
 
 /// The note as its file reads, front matter and text, with secrets masked; then its AI detail,

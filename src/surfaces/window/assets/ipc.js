@@ -34,6 +34,8 @@
  *               notes: [{ id, created, time, day, first, search, repo, task, tags, source, kind, ai, stale }] }
  *               `search` is the masked body's distinct words (the board has no full text, HUN-282)
  *   detail -> the note item plus { text, masked, context, ai: { title, kind, summary, tags_suggested, model, at, stale } | null }
+ *   An edited note also has { updated, edited } in both (`edited` is `2h ago`, or the date and time), and
+ *   { edited_at } (the full local stamp) in `detail` (HUN-291); a note never edited has none of them.
  *   accept_ai      -> the updated `detail` (the AI tags_suggested added to the note's tags, `easy-note tag <id> --accept-ai`)
  *                     errors: "no AI detail", "no such note", "bad id", "missing id", "inbox notes are read-only",
  *                     "cannot use the note"

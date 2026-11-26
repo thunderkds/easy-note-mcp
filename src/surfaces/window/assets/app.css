@@ -73,6 +73,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .chip { flex-shrink: 0; font: 400 11.5px 'IBM Plex Mono', monospace; color: #ABB3AE; padding: 2px 7px; border: 1px solid #2C3230; border-radius: 4px; }
 .row-mark { width: 40px; flex-shrink: 0; text-align: right; font: 400 11.5px 'IBM Plex Mono', monospace; color: #8C9590; }
 .row-mark.stale { color: #E3B66B; }
+/* HUN-291: in a narrow window the second line runs under the chip and the AI mark, so `edited …` is not cut. */
+@media (max-width: 480px) {
+  .row { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto auto; gap: 2px 0; }
+  .row-body { display: contents; }
+  .row-time { grid-column: 1; grid-row: 1 / span 2; }
+  .row-first { grid-column: 2; grid-row: 1; }
+  .row-where { grid-column: 2 / -1; grid-row: 2; }
+  .row .chip { grid-column: 3; grid-row: 1; margin: -2px 0 -2px 12px; }
+  .row-mark { grid-column: 4; grid-row: 1; margin-left: 12px; }
+}
 
 /* Detail panel */
 .pick { margin: 0; padding: 24px; border: 1px dashed #2C3230; border-radius: 8px; color: #8C9590; }
@@ -84,6 +94,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .words { margin: -10px 0 0; font-size: 16px; line-height: 1.6; color: #EAEDEA; white-space: pre-wrap; overflow-wrap: anywhere; }
 .masked { margin: -6px 0 0; font: 400 12px 'IBM Plex Mono', monospace; color: #E3B66B; }
 .context { margin: 0; font: 400 12.5px 'IBM Plex Mono', monospace; color: #ABB3AE; overflow-wrap: anywhere; }
+.edited-at { white-space: nowrap; }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag { padding: 3px 9px; border: 1px solid #2C3230; border-radius: 4px; font: 400 12px 'IBM Plex Mono', monospace; color: #B5BCB7; }
 .no-tags { font-size: 12.5px; color: #6E7772; }

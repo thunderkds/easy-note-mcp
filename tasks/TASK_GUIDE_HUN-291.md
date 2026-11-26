@@ -166,7 +166,7 @@ cargo fmt --check \
 | `src/surfaces/window/api.rs`, `assets/app.js`, `assets/app.css` | payload key, row text, detail stamp |
 | `tests/cli.rs`, `tests/mcp.rs`, `tests/window_api.rs`, `tests/fixtures/window/page_harness.js` | AC 1–5 |
 | `docs/NOTE_FORMAT.md` | state that `updated` is read-only for AI |
-| Pre-existing pin tests | list each test that pins current behavior (help text, asset list, README, MCP tool count) and how it is handled |
+| Pre-existing pin tests | All kept unchanged and green: `tests/query.rs` `item_has_the_frozen_fields` and `tests/mcp.rs` `list_and_search_hold_at_most_50_items_with_short_snippets` (a never-edited note gets no new key); `tests/mcp.rs` `exactly_the_seven_tools_and_one_prompt_are_registered` (no tool change); the CLI help and `ls` tests in `tests/cli.rs` (no help change, no extra text without `updated`); the asset, CSP and stylesheet scans in `tests/window_api.rs` (no new asset); `tests/readme.rs` (README unchanged). The page harness now runs the HUN-286 / HUN-288 scenarios only when `roles` is given |
 
 ## Files Must NOT Touch
 
