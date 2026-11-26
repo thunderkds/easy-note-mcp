@@ -270,11 +270,15 @@ fn notify(text: &str) {
     }
 }
 
+/// Whether `$XDG_CURRENT_DESKTOP`, a `:` list, names the desktop (a lower-case name).
+pub(crate) fn is_desktop(value: &str, name: &str) -> bool {
+    value.split(':').any(|t| t.to_lowercase() == name)
+}
+
 /// The text `hotkey` prints for `$XDG_CURRENT_DESKTOP` (FR-025). It only prints; the person runs
 /// the commands.
 pub fn hotkey(desktop: &str) -> String {
-    let tokens: Vec<String> = desktop.split(':').map(str::to_lowercase).collect();
-    let is = |name: &str| tokens.iter().any(|t| t == name);
+    let is = |name: &str| is_desktop(desktop, name);
     let steps = if is("gnome") {
         GNOME
     } else if is("kde") {
@@ -287,7 +291,8 @@ pub fn hotkey(desktop: &str) -> String {
 
 const PATH_NOTE: &str = "If your desktop does not find `easy-note` (for example it sits in ~/.cargo/bin), use its full path from `command -v easy-note` in place of `easy-note`.";
 
-const GNOME: &str = "Bind Ctrl+Alt+N to `easy-note quick` on GNOME. Run these commands yourself; easy-note changes nothing.
+const GNOME: &str = "Bind Ctrl+Alt+N to `easy-note quick` on GNOME. `easy-note install hotkey` does it for you.
+Or run these commands yourself; this command changes nothing.
 
 1. See your custom shortcuts. Step 2 replaces this list, so keep what it holds:
 gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings

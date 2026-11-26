@@ -24,7 +24,7 @@ DDR gate: surprising (we edit another app's config) ✅, genuine trade-off ✅, 
 2. It writes nothing when a vault is already the notes dir or a parent of it, when the file is not valid JSON, or
    when a process named `obsidian` runs (it asks the person to close Obsidian; owner's pick).
 3. `uninstall obsidian` never edits the vault list and never removes `.obsidian/`: once added, the vault is the person's.
-4. `easy-note setup` runs `install launcher`, `install obsidian` and `install tray`, not `install claude`.
+4. `easy-note setup` runs `install launcher`, `install obsidian` and `install tray`, not `install claude`. *(2026-11-26, HUN-303: it also runs `install hotkey`, DDR 0003 item 8.)*
 
 ## Alternatives Considered
 

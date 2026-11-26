@@ -36,6 +36,7 @@ DDR gate: hard to reverse (the hook runs on every prompt in every session) ✅, 
 ---
 
 7. *(round 3)* The same rules cover `easy-note install launcher` / `uninstall launcher`: exactly one file, `~/.local/share/applications/easy-note.desktop`, diff shown, removable. OS shortcut settings are never written; `easy-note hotkey` only prints commands. *(Round 3c)* Same rules for `install tray` / `uninstall tray`: exactly `~/.config/autostart/easy-note-tray.desktop`.
+8. *(Amended 2026-11-26, owner-approved in chat, HUN-303)* Item 7's "OS shortcut settings are never written" no longer holds for GNOME: `easy-note install hotkey`, also a step of `setup`, adds exactly one custom shortcut that runs `easy-note quick` with Ctrl+Alt+N, and `uninstall hotkey` removes it. Reason: after an install the owner pressed Ctrl+Alt+N and nothing opened. It never changes another entry, never takes a used key, and keeps an entry that is not ours. `easy-note hotkey` still only prints. Other desktops' settings are never written.
 
 ## Alternatives Considered
 

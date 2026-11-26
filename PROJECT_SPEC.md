@@ -120,7 +120,7 @@ flowchart LR
 
 ## Critical Constraints
 
-- Writes only inside the notes dir and `~/.config/easy-note/config.toml` (DDR 0001), plus exactly one hook entry in user-level `settings.json` and `commands/note.md` in the Claude Code config dir (`$CLAUDE_CONFIG_DIR` when set, else `~/.claude`), only via person-run `install claude` with diff + backup (DDR 0003); `~/.local/share/applications/easy-note.desktop` only via `install launcher`; `~/.config/autostart/easy-note-tray.desktop` only via `install tray`. Never in any code repo, never project-scope config, never Codex/Cursor config, never in another plug-in's folder.
+- Writes only inside the notes dir and `~/.config/easy-note/config.toml` (DDR 0001), plus exactly one hook entry in user-level `settings.json` and `commands/note.md` in the Claude Code config dir (`$CLAUDE_CONFIG_DIR` when set, else `~/.claude`), only via person-run `install claude` with diff + backup (DDR 0003); `~/.local/share/applications/easy-note.desktop` only via `install launcher`; `~/.config/autostart/easy-note-tray.desktop` only via `install tray`; one GNOME custom shortcut for `easy-note quick` only via `install hotkey` or `setup` (FR-054, DDR 0003 item 8). Never in any code repo, never project-scope config, never Codex/Cursor config, never in another plug-in's folder.
 - No capture path may drop typed text: no setup refusal, no secret refusal (mask instead).
 - Inbox files are never written, renamed or normalized.
 - The hook pass path imports only the stdlib and never fails a prompt.
