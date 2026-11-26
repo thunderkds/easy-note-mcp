@@ -1,7 +1,11 @@
 //! Where the notes dir is (FR-001): `EASY_NOTE_DIR`, else `dir` in config.toml, else `~/easy-notes`.
-//! Also the `[ai]` section (FR-038, DDR 0007): whether `ai enrich` may start the person's `claude`.
+//! Also the `[ai]` section (FR-038, DDR 0007): whether `ai enrich` may start the person's `claude`,
+//! and the one writer of that section for the window's Settings screen (FR-052).
 
 use std::path::{Path, PathBuf};
+
+use sha2::{Digest, Sha256};
+use toml_edit::{DocumentMut, Item, Table, TableLike, Value as Edit};
 
 use crate::core::fsutil;
 
@@ -32,12 +36,19 @@ fn expand_user(value: &str) -> Result<PathBuf, ConfigError> {
     }
 }
 
+/// The text of config.toml; `None` when the file does not exist.
+fn read_text(path: &Path) -> Result<Option<String>, ConfigError> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => Ok(Some(text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(ConfigError(format!("cannot read {}: {e}", path.display()))),
+    }
+}
+
 /// config.toml as a table; `None` when the file does not exist.
 fn read_table(path: &Path) -> Result<Option<toml::Table>, ConfigError> {
-    let text = match std::fs::read_to_string(path) {
-        Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(ConfigError(format!("cannot read {}: {e}", path.display()))),
+    let Some(text) = read_text(path)? else {
+        return Ok(None);
     };
     text.parse()
         .map(Some)
@@ -110,6 +121,8 @@ pub struct AiSettings {
     pub batch_size: u32,
     pub jobs: Vec<Job>,
     pub digest_hour: u8,
+    /// `notice_version` of the "what is sent" notice the person confirmed in the window.
+    pub notice_seen: Option<String>,
 }
 
 impl AiSettings {
@@ -134,6 +147,7 @@ impl Default for AiSettings {
             batch_size: 10,
             jobs: vec![Job::Organize, Job::Drafts, Job::Digest],
             digest_hour: 3,
+            notice_seen: None,
         }
     }
 }
@@ -227,6 +241,7 @@ fn ai_of(data: Option<&toml::Table>, path: &Path) -> Result<AiSettings, ConfigEr
         }
         Some(_) => return Err(bad("jobs", "must be a list")),
     };
+    settings.notice_seen = text("notice_seen")?.map(str::to_string);
     Ok(settings)
 }
 
@@ -234,6 +249,237 @@ fn ai_of(data: Option<&toml::Table>, path: &Path) -> Result<AiSettings, ConfigEr
 pub fn ai_settings() -> Result<AiSettings, ConfigError> {
     let path = config_path()?;
     ai_of(read_table(&path)?.as_ref(), &path)
+}
+
+/// The keys of `[ai]` that the Settings screen shows and may change (FR-052).
+pub const SCREEN_KEYS: [&str; 8] = [
+    "enrich",
+    "schedule",
+    "interval_min",
+    "max_per_run",
+    "batch_size",
+    "jobs",
+    "model",
+    "after_save",
+];
+
+/// `current` with every key of `SCREEN_KEYS` taken from `shown`, judged by the rules of `[ai]`.
+/// Any other key of `shown` is ignored; a missing one is an error, never a silent default.
+pub fn ai_settings_shown(
+    current: &AiSettings,
+    shown: &toml::Table,
+) -> Result<AiSettings, ConfigError> {
+    let path = config_path()?;
+    let mut ai = toml::Table::new();
+    for key in SCREEN_KEYS {
+        let value = shown
+            .get(key)
+            .ok_or_else(|| ConfigError(format!("{}: [ai] {key} is missing", path.display())))?;
+        ai.insert(key.to_string(), value.clone());
+    }
+    let data = toml::Table::from_iter([("ai".to_string(), toml::Value::Table(ai))]);
+    Ok(AiSettings {
+        command: current.command.clone(),
+        claude_config_dir: current.claude_config_dir.clone(),
+        timeout_secs: current.timeout_secs,
+        digest_hour: current.digest_hour,
+        notice_seen: current.notice_seen.clone(),
+        ..ai_of(Some(&data), &path)?
+    })
+}
+
+/// A save refused because config.toml is no longer the file that was read.
+pub const CHANGED_OUTSIDE: &str = "the settings changed outside the window";
+
+/// What the window shows before it turns scheduled runs on (FR-048, NFR-014). The page fills in
+/// the same two places.
+pub const SCHEDULE_NOTICE: &str = "Masked note text is sent to your own claude CLI (account folder: {dir}, model: {model}). Nothing runs until you confirm.";
+
+pub fn schedule_notice(dir: &str, model: &str) -> String {
+    SCHEDULE_NOTICE
+        .replace("{dir}", dir)
+        .replace("{model}", model)
+}
+
+/// The version of one notice text, kept as `[ai] notice_seen`: another wording, account folder or
+/// model gives another version.
+pub fn notice_version(text: &str) -> String {
+    sha256_hex(text)[..16].to_string()
+}
+
+/// The account folder `claude` will use: `claude_config_dir`, else `CLAUDE_CONFIG_DIR` (the child
+/// inherits it), else `~/.claude`.
+pub fn account_folder(settings: &AiSettings) -> String {
+    if let Some(dir) = &settings.claude_config_dir {
+        return dir.display().to_string();
+    }
+    std::env::var_os("CLAUDE_CONFIG_DIR")
+        .filter(|v| !v.is_empty())
+        .map_or_else(
+            || "~/.claude".to_string(),
+            |v| v.to_string_lossy().into_owned(),
+        )
+}
+
+fn sha256_hex(text: &str) -> String {
+    Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+fn stamp(text: Option<&str>) -> String {
+    text.map_or_else(|| "none".to_string(), sha256_hex)
+}
+
+/// A parse error as one line: the file and where, without the quoted file text.
+fn unreadable(path: &Path, error: impl std::fmt::Display) -> ConfigError {
+    let error = error.to_string();
+    let first = error.lines().next().unwrap_or_default();
+    ConfigError(format!("cannot read {}: {first}", path.display()))
+}
+
+/// The `[ai]` settings of one config.toml text (`None`: no file).
+fn ai_of_text(text: Option<&str>, path: &Path) -> Result<AiSettings, ConfigError> {
+    let data = text
+        .map(str::parse::<toml::Table>)
+        .transpose()
+        .map_err(|e| unreadable(path, e))?;
+    ai_of(data.as_ref(), path)
+}
+
+/// `ai_settings`, with the stamp of the file they were read from, for `save_ai_settings_if`.
+pub fn ai_settings_stamped() -> Result<(AiSettings, String), ConfigError> {
+    let path = config_path()?;
+    let text = read_text(&path)?;
+    Ok((ai_of_text(text.as_deref(), &path)?, stamp(text.as_deref())))
+}
+
+/// Write the keys of `[ai]` that the Settings screen owns (`enrich`, `schedule`, `interval_min`,
+/// `max_per_run`, `batch_size`, `jobs`, `model`, `after_save`, `notice_seen`) into config.toml,
+/// atomically. Every other key, table and comment stays as it is, and so does an owned value that
+/// does not change. `command`, `claude_config_dir`, `timeout_secs` and `digest_hour` are the
+/// person's, in the file. Nothing is written when the file or a value breaks a rule of `[ai]`.
+pub fn save_ai_settings(settings: &AiSettings) -> Result<(), ConfigError> {
+    write_ai(settings, None)
+}
+
+/// `save_ai_settings`, only while config.toml is still the file `base` stamps.
+pub fn save_ai_settings_if(settings: &AiSettings, base: &str) -> Result<(), ConfigError> {
+    write_ai(settings, Some(base))
+}
+
+fn write_ai(settings: &AiSettings, base: Option<&str>) -> Result<(), ConfigError> {
+    let path = config_path()?;
+    let old = read_text(&path)?;
+    if base.is_some_and(|base| base != stamp(old.as_deref())) {
+        return Err(ConfigError(CHANGED_OUTSIDE.to_string()));
+    }
+    // A file that breaks a rule is the person's to fix: it is never edited.
+    ai_of_text(old.as_deref(), &path)?;
+    let mut doc: DocumentMut = old
+        .as_deref()
+        .unwrap_or_default()
+        .parse()
+        .map_err(|e| unreadable(&path, e))?;
+    let bad = |rest: &str| ConfigError(format!("{}: [ai] {rest}", path.display()));
+    set_ai(&mut doc, settings).ok_or_else(|| bad("section must be a table"))?;
+    let new = doc.to_string();
+    // The same rules judge exactly what would be written.
+    let written = ai_of_text(Some(&new), &path)?;
+    if written.schedule == Schedule::Tray && !written.enrich {
+        return Err(bad("schedule \"tray\" needs enrich = \"claude\""));
+    }
+    if old.as_deref() == Some(new.as_str()) {
+        return Ok(());
+    }
+    let io_err = |e: std::io::Error| ConfigError(format!("cannot write {}: {e}", path.display()));
+    let parent = path.parent().expect("config path has a parent");
+    std::fs::create_dir_all(parent).map_err(io_err)?;
+    let (mut file, tmp) = fsutil::create_temp(parent).map_err(io_err)?;
+    let result = fsutil::write_all_sync(&mut file, new.as_bytes())
+        .and_then(|()| std::fs::rename(&tmp, &path));
+    fsutil::unlink_quiet(&tmp);
+    result.map_err(io_err)
+}
+
+/// Put the owned keys into `ai`, a table or an inline table; `None` when it is neither.
+fn set_ai(doc: &mut DocumentMut, settings: &AiSettings) -> Option<()> {
+    if !doc.contains_key("ai") {
+        doc.insert("ai", Item::Table(Table::new()));
+    }
+    let section = doc.get_mut("ai")?;
+    // In `{ a = 1 }` the blank before `}` belongs to the last value: it moves to the new last one.
+    let end = section.as_inline_table_mut().and_then(|table| {
+        let (_, last) = table.iter_mut().last()?;
+        let end = last.decor().suffix().cloned()?;
+        last.decor_mut().set_suffix("");
+        Some(end)
+    });
+    let table = section.as_table_like_mut()?;
+    let enrich = if settings.enrich { "claude" } else { "off" };
+    let schedule = match settings.schedule {
+        Schedule::Off => "off",
+        Schedule::Tray => "tray",
+    };
+    set(table, "enrich", enrich.into());
+    set(table, "schedule", schedule.into());
+    set(
+        table,
+        "interval_min",
+        i64::from(settings.interval_min).into(),
+    );
+    set(table, "max_per_run", i64::from(settings.max_per_run).into());
+    set(table, "batch_size", i64::from(settings.batch_size).into());
+    let jobs: toml_edit::Array = settings.jobs.iter().map(|job| job.name()).collect();
+    set(table, "jobs", jobs.into());
+    set(table, "model", settings.model.as_str().into());
+    set(table, "after_save", settings.after_save.into());
+    if let Some(seen) = &settings.notice_seen {
+        set(table, "notice_seen", seen.as_str().into());
+    }
+    if let (Some(end), Some(table)) = (end, section.as_inline_table_mut()) {
+        if let Some((_, last)) = table.iter_mut().last() {
+            last.decor_mut().set_suffix(end);
+        }
+    }
+    Some(())
+}
+
+/// Set one value. One that means the same already is left as the person spelled it; a changed one
+/// keeps its decor, so a comment on its line stays.
+fn set(table: &mut dyn TableLike, key: &str, new: Edit) {
+    match table.get_mut(key).and_then(Item::as_value_mut) {
+        Some(old) if same(old, &new) => {}
+        Some(old) => {
+            let decor = old.decor().clone();
+            *old = new;
+            *old.decor_mut() = decor;
+        }
+        None => {
+            table.insert(key, Item::Value(new));
+        }
+    }
+}
+
+/// Whether two values of an owned key mean the same; a list of jobs in any order.
+fn same(a: &Edit, b: &Edit) -> bool {
+    let within = |a: &toml_edit::Array, b: &toml_edit::Array| {
+        a.iter().all(|x| b.iter().any(|y| x.as_str() == y.as_str()))
+    };
+    match (a, b) {
+        (Edit::String(a), Edit::String(b)) => a.value() == b.value(),
+        (Edit::Integer(a), Edit::Integer(b)) => a.value() == b.value(),
+        (Edit::Boolean(a), Edit::Boolean(b)) => a.value() == b.value(),
+        (Edit::Array(a), Edit::Array(b)) => within(a, b) && within(b, a),
+        _ => false,
+    }
+}
+
+/// Whether a save in a long-running process starts `ai enrich` now (`enrich = "claude"` and
+/// `after_save = true`): read at each save, so a Settings change counts at once.
+pub fn after_save_on() -> bool {
+    ai_settings().is_ok_and(|ai| ai.enrich && ai.after_save)
 }
 
 /// For a save path: the notes dir, and whether the save starts `ai enrich` (`enrich = "claude"`
