@@ -202,3 +202,5 @@ Config round-trip unit tests with a rich fixture; IPC tests; page harness for th
 ## Questions Log
 
 * 2026-11-25 OPEN HITL: owner approves the wording of the notice before merge* 2026-11-26 DEBATE add toml_edit as a direct dependency so the Settings save keeps comments → yes, add toml_edit 0.25 (already locked) and edit only the owned keys (Advocate 1: add toml_edit; Advocate 2: add toml_edit) ⚠ decided for you — please review
+* 2026-11-26 DECIDED by the owner: the notice wording and the switch caption are approved as written; this closes the open HITL item of 2026-11-25.
+* 2026-11-26 DECIDED by the owner: a save keeps a symlinked config.toml (write through the link) before the merge.
