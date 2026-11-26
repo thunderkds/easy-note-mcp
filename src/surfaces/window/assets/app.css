@@ -179,11 +179,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 /* While Settings is open the toast sits at the top, clear of the dialog's buttons. */
 .set-back:not([hidden]) ~ .toast-live .toast { top: 16px; bottom: auto; }
 @media (max-width: 480px) {
-.gear { width: 44px; height: 44px; }
-.new-note { height: 44px; }
+.header { gap: 8px; }
+.brand { flex-basis: 100%; }
+.gear { width: 44px; height: 44px; margin-left: auto; }
+.new-note { height: 44px; margin-left: 0; }
 .set, .ask-text { font-size: 16px; }
 .set-hint, .set-reason, .set-field, .set-jobs legend { font-size: 14px; }
 .set-path, .set-fixed { font-size: 13px; }
+.set-error { max-height: 168px; font-size: 14px; }
 .set-input { height: 44px; font-size: 16px; }
 .set-check { min-height: 44px; }
 .set-actions .act { height: 44px; font-size: 16px; }

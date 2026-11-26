@@ -3763,11 +3763,15 @@ fn save_sends_the_typed_values_and_a_failed_save_keeps_the_dialog() {
     let r = &run["set_confirm_error"];
     assert_eq!(r["saves"], 1, "{r}");
     assert_eq!(r["shown"]["schedule"], "false", "{r}");
-    assert!(
-        r["shown"]["toast"]
-            .as_str()
-            .unwrap()
-            .contains("cannot write /x/config.toml"),
+    // The toast names the file shortly; the dialog keeps the whole path.
+    assert_eq!(
+        r["shown"]["toast"], "Not saved: cannot write config.toml: Permission denied (os error 13)",
+        "{r}"
+    );
+    let path = r["shown"]["readOnly"][0].as_str().unwrap();
+    assert_eq!(
+        r["shown"]["error"],
+        format!("Not saved: cannot write {path}: Permission denied (os error 13)"),
         "{r}"
     );
 }
@@ -3790,6 +3794,8 @@ fn a_changed_or_unreadable_file_is_read_again() {
     assert_eq!(r["saves"][1]["base"], "newer", "{r}");
     let r = &run["set_unreadable"];
     assert_eq!(r["failed"]["form"], false, "{r}");
+    assert_eq!(r["failed"]["body"], false, "no empty band: {r}");
+    assert_eq!(r["retried"]["body"], true, "{r}");
     assert_eq!(r["failed"]["save"], false, "{r}");
     assert_eq!(r["failed"]["retry"], true, "{r}");
     let error = r["failed"]["error"].as_str().unwrap();

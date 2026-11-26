@@ -22,6 +22,7 @@
 
   // One of 'loading', 'form' or 'failed'.
   function show(part) {
+    $('set-body').hidden = part === 'failed';
     $('set-loading').hidden = part !== 'loading';
     $('set-form').hidden = part !== 'form';
     $('set-save').hidden = part !== 'form';
@@ -157,7 +158,8 @@
     }, function (err) {
       done();
       var message = 'Not saved: ' + err.message;
-      hooks.toast(message, ERROR_MS);
+      // The toast is short: the file by its name. The dialog shows the whole message.
+      hooks.toast(message.split(loaded.path).join('config.toml'), ERROR_MS);
       if (no !== openNo) return;
       // As Edit does: nothing is overwritten; the screen reads the file again.
       if (err.message.indexOf('changed outside') >= 0) {

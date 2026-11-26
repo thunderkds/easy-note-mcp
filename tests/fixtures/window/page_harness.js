@@ -468,6 +468,7 @@ async function settingsScenarios(out) {
       form: !at('set-form').hidden,
       save: !at('set-save').hidden,
       retry: !at('set-retry').hidden,
+      body: !at('set-body').hidden,
       enrich: at('set-enrich').getAttribute('aria-checked'),
       schedule: at('set-schedule').getAttribute('aria-checked'),
       scheduleDisabled: !!at('set-schedule').disabled,
@@ -593,7 +594,7 @@ async function settingsScenarios(out) {
     await u.open();
     u.click('set-enrich');
     u.click('set-schedule');
-    s.settingsErrors.save.push('cannot write /x/config.toml: Permission denied (os error 13)');
+    s.settingsErrors.save.push('cannot write ' + s.settings.path + ': Permission denied (os error 13)');
     u.click('ask-confirm');
     await sleep(60);
     return { shown: u.state(), saves: u.saves().length };
