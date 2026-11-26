@@ -549,10 +549,19 @@ fn a_stale_file_kind_change_is_logged_and_undone() {
         "fresh after the batch"
     );
     let new_lines = &sb.log()[log_before..];
-    assert_eq!(new_lines.len(), 1, "{new_lines:?}");
-    assert_eq!(new_lines[0]["field"], "kind");
-    assert_eq!(new_lines[0]["old"], "bug");
-    assert_eq!(new_lines[0]["new"], "todo");
+    let fields: Vec<&str> = new_lines
+        .iter()
+        .map(|l| l["field"].as_str().unwrap())
+        .collect();
+    // Option A: enrich logs title, summary and tags first; organize logs the kind.
+    assert_eq!(
+        fields,
+        ["title", "summary", "tags_suggested", "kind"],
+        "{new_lines:?}"
+    );
+    let kind = &new_lines[3];
+    assert_eq!(kind["old"], "bug");
+    assert_eq!(kind["new"], "todo");
     let undone = overrides::undo(&sb.store(), &a).unwrap();
     assert_eq!(undone.now.as_deref(), Some("bug"));
     assert_eq!(sb.ai_file(&a).unwrap()["kind"], "bug");
@@ -698,4 +707,103 @@ fn raw_notes_stay_byte_identical_and_a_secret_never_reaches_stdin_ai_files_or_th
     }
     let log = std::fs::read_to_string(sb.path("notes/.easy-note/ai-log.jsonl")).unwrap();
     assert!(!log.contains(GITHUB), "{log}");
+}
+
+// Option A (owner, 2026-11-26): `ai::enrich` logs title, summary and tags it changes
+
+#[test]
+fn enrich_logs_the_old_title_summary_and_tags_in_full_and_undo_still_takes_back_project_topic_kind()
+{
+    let sb = Sb::new();
+    let store = sb.store();
+    let a = sb.add("fix the tray icon");
+    let long: String = "日本語の".repeat(150);
+    assert_eq!(long.chars().count(), 600);
+    let tags = vec!["tray".to_string()];
+    let first = Input {
+        title: "old title",
+        kind: "other",
+        summary: &long,
+        tags_suggested: &tags,
+        model: "m",
+    };
+    ai::enrich(&store, &a, &first).unwrap();
+    assert!(sb.log().is_empty(), "a first AI file logs nothing");
+    let o = Organized {
+        project: Some("home"),
+        topic: Some("tray"),
+        kind: Some("bug"),
+        ..Organized::default()
+    };
+    ai::organize(&store, &a, &o).unwrap();
+    let before = sb.log().len();
+    assert_eq!(before, 3, "{:?}", sb.log());
+
+    let new_summary = "ü".repeat(600);
+    let again = Input {
+        title: "old title",
+        kind: "bug",
+        summary: &new_summary,
+        tags_suggested: &["usb".to_string()],
+        model: "m",
+    };
+    ai::enrich(&store, &a, &again).unwrap();
+    // `sb.log()` parses every line: each one stays valid JSON.
+    let lines = sb.log()[before..].to_vec();
+    let fields: Vec<&str> = lines.iter().map(|l| l["field"].as_str().unwrap()).collect();
+    assert_eq!(
+        fields,
+        ["summary", "tags_suggested"],
+        "title unchanged, no kind line"
+    );
+    assert!(lines.iter().all(|l| l["who"] == "ai"));
+    assert_eq!(lines[0]["old"], long.as_str(), "the old value is complete");
+    assert_eq!(lines[1]["old"], r#"["tray"]"#);
+    assert_eq!(lines[1]["new"], r#"["usb"]"#);
+    assert_eq!(sb.ai_file(&a).unwrap()["summary"], new_summary.as_str());
+
+    // `ai undo` skips the new fields and undoes kind, topic, project as before.
+    let back: Vec<(String, Option<String>)> = (0..3)
+        .map(|_| {
+            let u = overrides::undo(&store, &a).unwrap();
+            (u.field, u.now)
+        })
+        .collect();
+    assert_eq!(
+        back,
+        [
+            ("kind".to_string(), Some("other".to_string())),
+            ("topic".to_string(), None),
+            ("project".to_string(), None),
+        ]
+    );
+    assert!(overrides::undo(&store, &a).is_err(), "nothing left to undo");
+    assert_eq!(sb.ai_file(&a).unwrap()["summary"], new_summary.as_str());
+}
+
+#[test]
+fn enrich_does_not_replace_the_ai_file_when_its_log_line_cannot_be_written() {
+    let sb = Sb::new();
+    let store = sb.store();
+    let a = sb.add("fix the tray icon");
+    sb.seed(&a, "bug", "home", "tray");
+    let file = sb.ai_path(&a);
+    let bytes = std::fs::read(&file).unwrap();
+    let log = sb.path("notes/.easy-note/ai-log.jsonl");
+    std::fs::remove_file(&log).unwrap();
+    std::fs::create_dir_all(&log).unwrap();
+    let input = Input {
+        title: "a new title",
+        kind: "bug",
+        summary: "old summary",
+        tags_suggested: &[],
+        model: "m",
+    };
+    let err = ai::enrich(&store, &a, &input).unwrap_err().to_string();
+    assert!(err.contains("ai-log.jsonl"), "{err}");
+    assert_eq!(
+        std::fs::read(&file).unwrap(),
+        bytes,
+        "the AI file is not changed"
+    );
 }

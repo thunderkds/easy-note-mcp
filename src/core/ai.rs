@@ -291,8 +291,10 @@ pub fn enrich(store: &Store, note_id: &str, input: &Input) -> Result<Detail, AiE
     };
     check(&detail)?;
     let (id, body) = store.raw_body(note_id)?;
-    // A re-run of `enrich` keeps what the organizer wrote.
+    // A re-run of `enrich` keeps what the organizer wrote. It logs each of title, summary and tags
+    // it changes first (option A, HUN-294); no AI file is replaced when that log cannot be written.
     if let Some(old) = load(&path(&store.root, &id)) {
+        crate::core::overrides::log_enrich_diff(store, &id, &old, &detail)?;
         detail.project = old.project;
         detail.topic = old.topic;
         detail.draft_reason = old.draft_reason;

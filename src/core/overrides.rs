@@ -6,7 +6,10 @@
 //!   masked and capped. An override wins over the AI file; the AI file is never changed by it.
 //! - `ai-log.jsonl`: one JSON line per change, append only: `id`, `field`, `old`, `new` (`null` is
 //!   "no value"), `who` (`ai` or `person`), `at`, and `undo: true` on the line an undo writes.
-//!   Values in a line are cut to 200 chars, so a line stays under 4 KiB and is written whole.
+//!   Values in a line are cut to 200 chars, except the `old` value of `title`, `summary` and
+//!   `tags_suggested` (logged by `ai::enrich`, kept whole for undo, HUN-302): such a line can hold
+//!   a 600-char summary, a few KiB. Each append is one write call on an append-mode file, so a
+//!   line lands whole. `undo` skips those three fields (they are not in `FIELDS`).
 //!
 //! Public API (other tasks build on these names): `read`, `set`, `undo`, `log_change`,
 //! `log_ai_diff`, `problems`, `Overrides`, `Undone`, `FIELDS`; the merged view is
@@ -188,8 +191,15 @@ fn cut(text: &str) -> String {
 }
 
 fn append(store: &Store, line: &Line) -> io::Result<()> {
-    let mut text = serde_json::to_string(line).expect("a log line serializes");
-    text.push('\n');
+    append_all(store, std::slice::from_ref(line))
+}
+
+fn append_all(store: &Store, lines: &[Line]) -> io::Result<()> {
+    let mut text = String::new();
+    for line in lines {
+        text.push_str(&serde_json::to_string(line).expect("a log line serializes"));
+        text.push('\n');
+    }
     fs::create_dir_all(dir(store))?;
     // One write call on an append-mode file: the line lands whole or not at all.
     OpenOptions::new()
@@ -271,6 +281,45 @@ pub(crate) fn log_ai_diff(store: &Store, id: &str, before: &ai::Detail, after: &
             log_change(store, id, field, old, new, "ai");
         }
     }
+}
+
+/// Log each of `title`, `summary` and `tags_suggested` (as JSON text) that differs between two AI
+/// files, `who: ai`, with the old value whole and the new one cut. All lines go in one write; `Err`
+/// when it fails, so the caller writes no AI file.
+pub(crate) fn log_enrich_diff(
+    store: &Store,
+    id: &str,
+    before: &ai::Detail,
+    after: &ai::Detail,
+) -> Result<(), AiError> {
+    let tags = |d: &ai::Detail| serde_json::to_string(&d.tags_suggested).expect("tags serialize");
+    let pairs = [
+        ("title", before.title.clone(), after.title.clone()),
+        ("summary", before.summary.clone(), after.summary.clone()),
+        ("tags_suggested", tags(before), tags(after)),
+    ];
+    let lines: Vec<Line> = pairs
+        .into_iter()
+        .filter(|(_, old, new)| old != new)
+        .map(|(field, old, new)| Line {
+            id: mask(id),
+            field: field.to_string(),
+            old: Some(mask(&old)),
+            new: Some(cut(&mask(&new))),
+            who: "ai".to_string(),
+            at: store.now_stamp(),
+            undo: false,
+        })
+        .collect();
+    if lines.is_empty() {
+        return Ok(());
+    }
+    append_all(store, &lines).map_err(|e| {
+        AiError::Refused(format!(
+            "ai-log.jsonl could not be written: {}; the AI file was not changed",
+            e.kind()
+        ))
+    })
 }
 
 /// A person fixes `project`, `topic` or `kind` of a live note. The value is masked, then capped;
