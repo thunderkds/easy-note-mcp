@@ -3,7 +3,7 @@
 //! search and stats, and the CLI `ai rm` / `tag --accept-ai` (FR-028–FR-032, NFR-012, DDR 0004).
 //!
 //! The locked oracle is `note_files_stay_byte_identical_around_every_ai_operation` (AC 4): the
-//! sha256 of every file under the notes dir, except `.easy-note/ai/`, is the same before and after
+//! sha256 of every file under the notes dir, except `.easy-note/ai/` and `ai-log.jsonl`, is the same before and after
 //! every AI read and write.
 //!
 //! MCP calls run in process (an rmcp client and `EasyNote::with_store` over a duplex pipe); CLI
@@ -138,7 +138,8 @@ fn ok_cli(sb: &Sandbox, args: &[&str]) -> String {
     text(&out.stdout)
 }
 
-/// sha256 of every file under the notes dir, except `.easy-note/ai/`, by relative path.
+/// sha256 of every file under the notes dir, except `.easy-note/ai/` and the change log every AI
+/// write appends to (HUN-302), by relative path.
 fn note_tree(notes: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
     fn walk(dir: &Path, root: &Path, out: &mut BTreeMap<PathBuf, Vec<u8>>) {
         let Ok(entries) = std::fs::read_dir(dir) else {
@@ -147,7 +148,7 @@ fn note_tree(notes: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
         for entry in entries {
             let path = entry.unwrap().path();
             let rel = path.strip_prefix(root).unwrap().to_path_buf();
-            if rel.starts_with(".easy-note/ai") {
+            if rel.starts_with(".easy-note/ai") || rel.ends_with("ai-log.jsonl") {
                 continue;
             }
             if path.is_dir() {

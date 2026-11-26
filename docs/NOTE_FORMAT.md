@@ -153,16 +153,33 @@ Two files in `<notes dir>/.easy-note/`, neither a note, neither read by easy-per
  "topics": {"ff": "firefox"}}
 ```
 
-`ai-log.jsonl`, append only, one line per change: `id`, `field`, `old`, `new` (`null` = no value), `who` (`ai` or
-`person`), `at`; an undo line adds `"undo": true`. Values are masked and cut to 200 chars, except two cases. When a
-note already has a valid AI file, each new AI detail for it (`ai enrich`, `note_enrich`, the batch) first logs each
-`title`, `summary` and `tags_suggested` it changes (`who: ai`; tags as JSON text such as `["usb"]`). Organizing (the
-batch) first logs each `draft_reason` and `draft_suggestion` it sets, replaces or removes. The `old` value of these
-lines is whole, not cut. If these lines cannot be written, the AI file is not replaced. `ai undo` skips these five
-fields. `easy-note ai set <id>
-project|topic|kind VALUE` writes the first file and one log line; `easy-note ai undo <id>` takes back the latest change
-of a note that no later undo took back. An override of a trashed or missing note is kept and ignored; `doctor` lists
-it as an orphan. An invalid file is ignored, named by `doctor`, and never overwritten.
+`ai-log.jsonl`, append only (created with mode 0600), one line per change: `id`, `field`, `old`, `new` (`null` = no value), `who` (`ai` or
+`person`), `at`; an undo line adds `"undo": true`; an AI line adds `op`. Values are masked.
+
+A person's change is one line, its values cut to 200 chars. Each write of an AI file (`ai enrich`, `note_enrich`, the
+batch) first appends, in one write: a line with `field: "ai_file"` whose `old` is the whole earlier AI file as JSON text
+(`null`: there was none), then one line for each of `title`, `summary`, `tags_suggested` (JSON text such as `["usb"]`),
+`kind`, `project`, `topic`, `draft_reason` and `draft_suggestion` that changes. The `old` value of an AI line is whole;
+`new` is cut to 200 chars. If the lines cannot be written, the AI file is not written. The two writes of one batch item
+share one `op`.
+
+`easy-note ai set <id> project|topic|kind VALUE` writes `ai-overrides.json` and one log line. `easy-note ai undo <id>`
+takes back the latest step of a note that no later undo took back. A step is every line of one `op`, or one line without
+`op`. For a person's change it restores the override. For an AI item it puts back the AI file as it was before the item,
+with its earlier `based_on`, `at`, `model` and `organized_at`, or removes the file and its Obsidian view when the item
+created it; overrides stay. A file removed since with `ai rm` stays removed, and an AI file that is not valid is not
+replaced. The undo first logs the file it replaces, whole, on a line with `field: "ai_replaced"` (never undone
+itself); it writes the undo lines only after the AI file is back, so a failed undo can be run again. An item whose
+`ai_file` line cannot be read is put back key by key. A note whose old `based_on` comes back is stale again, so a later
+batch run can pick it.
+
+Lines written before `op` existed are one step each: an earlier `ai enrich` replacement takes one undo per key it
+logged. An AI file created then has no line, so it cannot be undone, and `ai undo` takes back the change logged before
+it, which can be a person's override. If an AI write fails after its lines are logged, that step changes nothing.
+The log keeps old AI text after `ai rm` and after the note is trashed.
+
+An override of a trashed or missing note is kept and ignored; `doctor` lists it as an orphan. An invalid file is
+ignored, named by `doctor`, and never overwritten.
 
 Readers that must not hold note text (easy-personal) must not read AI files either.
 

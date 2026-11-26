@@ -538,6 +538,7 @@ fn a_stale_file_kind_change_is_logged_and_undone() {
     let mut todo = item(&a, "todo");
     todo["project"] = json!("home");
     todo["topic"] = json!("tray");
+    let before_file = sb.ai_file(&a).unwrap();
     sb.answer(&json!([todo]));
     let out = sb.run(&[&a]).unwrap();
     assert_eq!(out.written.len(), 1, "{out:?}");
@@ -553,18 +554,28 @@ fn a_stale_file_kind_change_is_logged_and_undone() {
         .iter()
         .map(|l| l["field"].as_str().unwrap())
         .collect();
-    // Option A: enrich logs title, summary and tags first; organize logs the kind.
+    // Each write logs the earlier file, then the keys it changes; both writes share one `op`.
     assert_eq!(
         fields,
-        ["title", "summary", "tags_suggested", "kind"],
+        [
+            "ai_file",
+            "title",
+            "summary",
+            "tags_suggested",
+            "ai_file",
+            "kind"
+        ],
         "{new_lines:?}"
     );
-    let kind = &new_lines[3];
+    let op = new_lines[0]["op"].as_str().unwrap();
+    assert!(new_lines.iter().all(|l| l["op"] == op), "{new_lines:?}");
+    let kind = &new_lines[5];
     assert_eq!(kind["old"], "bug");
     assert_eq!(kind["new"], "todo");
+    // One undo takes the whole item back (HUN-302).
     let undone = overrides::undo(&sb.store(), &a).unwrap();
-    assert_eq!(undone.now.as_deref(), Some("bug"));
-    assert_eq!(sb.ai_file(&a).unwrap()["kind"], "bug");
+    assert_eq!(undone.back, overrides::Back::Restored);
+    assert_eq!(sb.ai_file(&a).unwrap(), before_file);
 }
 
 #[test]
@@ -728,7 +739,14 @@ fn enrich_logs_the_old_title_summary_and_tags_in_full_and_undo_still_takes_back_
         model: "m",
     };
     ai::enrich(&store, &a, &first).unwrap();
-    assert!(sb.log().is_empty(), "a first AI file logs nothing");
+    let first_lines = sb.log();
+    assert_eq!(
+        first_lines.len(),
+        1,
+        "a first AI file logs that there was none"
+    );
+    assert_eq!(first_lines[0]["field"], "ai_file");
+    assert!(first_lines[0]["old"].is_null());
     let o = Organized {
         project: Some("home"),
         topic: Some("tray"),
@@ -737,7 +755,8 @@ fn enrich_logs_the_old_title_summary_and_tags_in_full_and_undo_still_takes_back_
     };
     ai::organize(&store, &a, &o).unwrap();
     let before = sb.log().len();
-    assert_eq!(before, 3, "{:?}", sb.log());
+    assert_eq!(before, 5, "{:?}", sb.log());
+    let organized = sb.ai_file(&a).unwrap();
 
     let new_summary = "ü".repeat(600);
     let again = Input {
@@ -753,32 +772,26 @@ fn enrich_logs_the_old_title_summary_and_tags_in_full_and_undo_still_takes_back_
     let fields: Vec<&str> = lines.iter().map(|l| l["field"].as_str().unwrap()).collect();
     assert_eq!(
         fields,
-        ["summary", "tags_suggested"],
+        ["ai_file", "summary", "tags_suggested"],
         "title unchanged, no kind line"
     );
     assert!(lines.iter().all(|l| l["who"] == "ai"));
-    assert_eq!(lines[0]["old"], long.as_str(), "the old value is complete");
-    assert_eq!(lines[1]["old"], r#"["tray"]"#);
-    assert_eq!(lines[1]["new"], r#"["usb"]"#);
+    assert_eq!(lines[1]["old"], long.as_str(), "the old value is complete");
+    assert_eq!(lines[2]["old"], r#"["tray"]"#);
+    assert_eq!(lines[2]["new"], r#"["usb"]"#);
     assert_eq!(sb.ai_file(&a).unwrap()["summary"], new_summary.as_str());
 
-    // `ai undo` skips the new fields and undoes kind, topic, project as before.
-    let back: Vec<(String, Option<String>)> = (0..3)
-        .map(|_| {
-            let u = overrides::undo(&store, &a).unwrap();
-            (u.field, u.now)
-        })
-        .collect();
-    assert_eq!(
-        back,
-        [
-            ("kind".to_string(), Some("other".to_string())),
-            ("topic".to_string(), None),
-            ("project".to_string(), None),
-        ]
-    );
+    // `ai undo` walks back item by item (HUN-302): the second enrich, the organize, the creation.
+    overrides::undo(&store, &a).unwrap();
+    assert_eq!(sb.ai_file(&a).unwrap(), organized);
+    overrides::undo(&store, &a).unwrap();
+    assert_eq!(sb.ai_file(&a).unwrap()["kind"], "other");
+    assert!(sb.ai_file(&a).unwrap().get("project").is_none());
+    assert_eq!(sb.ai_file(&a).unwrap()["summary"], long.as_str());
+    let last = overrides::undo(&store, &a).unwrap();
+    assert_eq!(last.back, overrides::Back::Removed);
+    assert!(sb.ai_file(&a).is_none());
     assert!(overrides::undo(&store, &a).is_err(), "nothing left to undo");
-    assert_eq!(sb.ai_file(&a).unwrap()["summary"], new_summary.as_str());
 }
 
 #[test]
@@ -929,12 +942,11 @@ fn a_cleared_600_char_draft_suggestion_is_logged_whole_once() {
     let reason = lines_for(&lines, "draft_reason");
     assert_eq!(reason.len(), 1, "{lines:?}");
     assert_eq!(reason[0]["old"], "理由".repeat(100).as_str());
-    // `ai undo` behaves as before: the kind comes back first.
-    let undone = overrides::undo(&sb.store(), &a).unwrap();
-    assert_eq!(
-        (undone.field.as_str(), undone.now.as_deref()),
-        ("kind", Some("draft"))
-    );
+    // One undo brings the draft back, with its whole suggestion (HUN-302).
+    overrides::undo(&sb.store(), &a).unwrap();
+    let f = sb.ai_file(&a).unwrap();
+    assert_eq!(f["kind"], "draft");
+    assert_eq!(f["draft_suggestion"], long.as_str());
 }
 
 #[test]

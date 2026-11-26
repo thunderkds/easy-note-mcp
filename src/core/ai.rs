@@ -23,6 +23,7 @@ use sha2::{Digest, Sha256};
 use crate::core::format::{Note, MAX_TITLE};
 use crate::core::fsutil::{create_temp, unlink_quiet, write_all_sync};
 use crate::core::guard;
+use crate::core::overrides::{self, Back};
 use crate::core::store::{Item, Store, StoreError};
 use crate::core::tags;
 
@@ -259,9 +260,34 @@ fn mask_detail(detail: &mut Detail) {
     }
 }
 
+/// Why `apply_item` failed: `Enrich` wrote nothing; `Organize` left the AI file with the new
+/// enrich keys but no organizer keys.
+#[derive(Debug)]
+pub enum ItemError {
+    Enrich(AiError),
+    Organize(AiError),
+}
+
+/// One applied item of the batch organizer: `enrich`, then `organize`, logged under one id, so one
+/// undo takes both back (HUN-302).
+pub fn apply_item(
+    store: &Store,
+    note_id: &str,
+    input: &Input,
+    organized: &Organized,
+) -> Result<Detail, ItemError> {
+    let op = overrides::new_op(store);
+    enrich_in(store, note_id, input, &op).map_err(ItemError::Enrich)?;
+    organize_in(store, note_id, organized, &op).map_err(ItemError::Organize)
+}
+
 /// Write the AI file of one note (`note_enrich`), replacing an old one. Caps are checked on the
 /// masked text, as stored; nothing is written on a refusal or an unknown id.
 pub fn enrich(store: &Store, note_id: &str, input: &Input) -> Result<Detail, AiError> {
+    enrich_in(store, note_id, input, &overrides::new_op(store))
+}
+
+fn enrich_in(store: &Store, note_id: &str, input: &Input, op: &str) -> Result<Detail, AiError> {
     let count = input.tags_suggested.len();
     if count > MAX_SUGGESTED {
         return Err(AiError::Refused(format!(
@@ -293,29 +319,39 @@ pub fn enrich(store: &Store, note_id: &str, input: &Input) -> Result<Detail, AiE
     };
     check(&detail)?;
     let (id, body) = store.raw_body(note_id)?;
-    // A re-run of `enrich` keeps what the organizer wrote. It logs each of title, summary and tags
-    // it changes first (option A, HUN-294); no AI file is replaced when that log cannot be written.
-    if let Some(old) = load(&path(&store.root, &id)) {
-        crate::core::overrides::log_enrich_diff(store, &id, &old, &detail)?;
-        detail.project = old.project;
-        detail.topic = old.topic;
-        detail.draft_reason = old.draft_reason;
-        detail.draft_suggestion = old.draft_suggestion;
-        detail.organized_at = old.organized_at;
+    // A re-run of `enrich` keeps what the organizer wrote.
+    let old = load(&path(&store.root, &id));
+    if let Some(old) = &old {
+        detail.project = old.project.clone();
+        detail.topic = old.topic.clone();
+        detail.draft_reason = old.draft_reason.clone();
+        detail.draft_suggestion = old.draft_suggestion.clone();
+        detail.organized_at = old.organized_at.clone();
     }
     detail.based_on = based_on(&body);
     detail.at = store.now_stamp();
     detail.id = id;
+    // Logged first: no AI file is written when the log cannot be (HUN-294, HUN-302).
+    overrides::log_ai_write(store, &detail.id, op, old.as_ref(), &detail)?;
     write(store, &detail)?;
     crate::core::ai_view::sync(store, &detail.id);
     Ok(detail)
 }
 
 /// Write the organizer keys into the AI file of a note that already has a valid one (HUN-292).
-/// Masks, checks caps and kind, sets `organized_at`, logs each changed key with `who: ai` (draft
-/// keys whole and before the write, refused when that log fails; the others after), and never
-/// touches the note. Refused when the note has no AI file.
+/// Masks, checks caps and kind, sets `organized_at`, logs the earlier file and each changed key
+/// with `who: ai` before the write (refused when that log fails), and never touches the note.
+/// Refused when the note has no AI file.
 pub fn organize(store: &Store, note_id: &str, input: &Organized) -> Result<Detail, AiError> {
+    organize_in(store, note_id, input, &overrides::new_op(store))
+}
+
+fn organize_in(
+    store: &Store,
+    note_id: &str,
+    input: &Organized,
+    op: &str,
+) -> Result<Detail, AiError> {
     let (id, _) = store.raw_body(note_id)?;
     let Some(mut detail) = load(&path(&store.root, &id)) else {
         return Err(AiError::Refused(format!(
@@ -341,37 +377,127 @@ pub fn organize(store: &Store, note_id: &str, input: &Organized) -> Result<Detai
         detail.kind = mask(kind);
     }
     check(&detail)?;
-    // The old draft values are logged whole first; no write when that log fails (R1, R3).
-    crate::core::overrides::log_draft_diff(store, &id, &before, &detail)?;
     detail.organized_at = Some(store.now_stamp());
+    // Logged first: no AI file is written when the log cannot be.
+    overrides::log_ai_write(store, &id, op, Some(&before), &detail)?;
     write(store, &detail)?;
     crate::core::ai_view::sync(store, &detail.id);
-    crate::core::overrides::log_ai_diff(store, &id, &before, &detail);
     Ok(detail)
 }
 
-/// Put one of `project`, `topic`, `kind` back to `old` in the AI file (undo of an AI change).
-/// `None` removes `project` / `topic`; a `kind` has no empty state, so `None` leaves it. A note
-/// with no AI file is left as it is.
-pub(crate) fn restore_field(
+/// What an undo is about to do to one AI file.
+pub(crate) enum Restore {
+    /// Write `now` over the current file `was`.
+    Write { was: String, now: Box<Detail> },
+    /// Remove the current file `was`: the change had created it.
+    Remove { was: String },
+    /// The note has no AI file: nothing to do.
+    Gone,
+}
+
+impl Restore {
+    /// The file this step replaces, whole, for the undo log line.
+    pub(crate) fn replaced(&self) -> Option<String> {
+        match self {
+            Restore::Write { was, .. } | Restore::Remove { was } => Some(was.clone()),
+            Restore::Gone => None,
+        }
+    }
+}
+
+/// The current AI file of a note, as the log holds it; `None` when it has none. Refused when the
+/// file is there and not valid: an undo must not replace what it cannot keep.
+fn current(store: &Store, id: &str) -> Result<Option<(Detail, String)>, AiError> {
+    let file = path(&store.root, id);
+    match load(&file) {
+        Some(detail) => {
+            let whole = serde_json::to_string(&detail).expect("a detail serializes");
+            Ok(Some((detail, whole)))
+        }
+        None if file.symlink_metadata().is_err() => Ok(None),
+        None => Err(AiError::Refused(format!(
+            "the AI file of {} is not valid; fix it or remove it with `ai rm`",
+            mask(id)
+        ))),
+    }
+}
+
+/// Plan the return to `earlier`, the whole AI file as logged (`None`: there was none). A file
+/// removed since (`ai rm`) stays removed.
+pub(crate) fn plan_restore(
     store: &Store,
     id: &str,
-    field: &str,
-    old: Option<&str>,
-) -> Result<(), AiError> {
-    let Some(mut detail) = load(&path(&store.root, id)) else {
-        return Ok(());
+    earlier: Option<&str>,
+) -> Result<Restore, AiError> {
+    let Some((_, was)) = current(store, id)? else {
+        return Ok(Restore::Gone);
     };
-    match (field, old) {
-        ("project", old) => detail.project = old.map(mask),
-        ("topic", old) => detail.topic = old.map(mask),
-        ("kind", Some(old)) => detail.kind = mask(old),
-        _ => return Ok(()),
+    let Some(earlier) = earlier else {
+        return Ok(Restore::Remove { was });
+    };
+    let bad = || AiError::Refused("the logged earlier AI file is not valid; nothing undone".into());
+    let mut now: Detail = serde_json::from_str(earlier).map_err(|_| bad())?;
+    mask_detail(&mut now);
+    now.id = id.to_string();
+    if now.version != VERSION || check(&now).is_err() {
+        return Err(bad());
     }
-    check(&detail)?;
-    write(store, &detail)?;
-    crate::core::ai_view::sync(store, id);
-    Ok(())
+    Ok(Restore::Write {
+        was,
+        now: Box::new(now),
+    })
+}
+
+/// Plan the return of single keys to their old values: a line from before HUN-302, or the lines of
+/// an item whose `ai_file` line cannot be read. `None` removes `project`, `topic` and the draft
+/// keys; the other keys have no empty state and stay.
+pub(crate) fn plan_fields<'a>(
+    store: &Store,
+    id: &str,
+    keys: impl Iterator<Item = (&'a str, Option<&'a str>)>,
+) -> Result<Restore, AiError> {
+    let Some((mut now, was)) = current(store, id)? else {
+        return Ok(Restore::Gone);
+    };
+    for (field, old) in keys {
+        match (field, old) {
+            ("project", old) => now.project = old.map(mask),
+            ("topic", old) => now.topic = old.map(mask),
+            ("draft_reason", old) => now.draft_reason = old.map(mask),
+            ("draft_suggestion", old) => now.draft_suggestion = old.map(mask),
+            ("title", Some(old)) => now.title = mask(old),
+            ("summary", Some(old)) => now.summary = mask(old),
+            ("kind", Some(old)) => now.kind = mask(old),
+            ("tags_suggested", Some(old)) => {
+                let tags: Vec<String> = serde_json::from_str(old).map_err(|_| {
+                    AiError::Refused("the logged earlier tags are not valid; nothing undone".into())
+                })?;
+                now.tags_suggested = tags.iter().map(|t| mask(t)).collect();
+            }
+            _ => {}
+        }
+    }
+    check(&now)?;
+    Ok(Restore::Write {
+        was,
+        now: Box::new(now),
+    })
+}
+
+/// Do a planned restore.
+pub(crate) fn apply_restore(store: &Store, id: &str, plan: Restore) -> Result<Back, AiError> {
+    match plan {
+        Restore::Write { now, .. } => {
+            write(store, &now)?;
+            crate::core::ai_view::sync(store, id);
+            Ok(Back::Restored)
+        }
+        Restore::Remove { .. } => {
+            remove(store, id)?;
+            Ok(Back::Removed)
+        }
+        Restore::Gone => Ok(Back::Gone),
+    }
 }
 
 /// What a person sees for a note: the AI value of each key with the person's override applied,
