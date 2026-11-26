@@ -11,8 +11,9 @@ use std::time::Duration;
 use super::scratch::Scratch;
 use super::{confirmation, count, safe, say, Fail, Outcome};
 use crate::core::format::{parse, render, Note, Value};
+use crate::core::overrides::{self, Back};
 use crate::core::store::{trash_label, AiCarry, Store};
-use crate::core::{ai, ai_view, config, context, guard, overrides, tags};
+use crate::core::{ai, ai_view, config, context, guard, tags};
 
 /// `init [--dir PATH]`: make the dir and save it in the config file (FR-001).
 pub fn init(dir: Option<PathBuf>) -> Outcome {
@@ -325,13 +326,23 @@ pub fn ai_set(id: &str, field: &str, value: &str) -> Outcome {
 pub fn ai_undo(id: &str) -> Outcome {
     let store = Store::open()?;
     let done = overrides::undo(&store, id).map_err(refused)?;
-    let now = done.now.as_deref().map_or("no override".to_string(), safe);
-    say(&format!(
-        "✓ undone: {} of {} is now {}",
-        safe(&done.field),
-        safe(&done.id),
-        now
-    ))
+    let id = safe(&done.id);
+    let fields = safe(&done.fields.join(", "));
+    say(&match done.back {
+        Back::Value(now) => {
+            let now = now.as_deref().map_or("no override".to_string(), safe);
+            format!("✓ undone: {fields} of {id} is now {now}")
+        }
+        // An item can change only the model and the date.
+        Back::Restored if done.fields.is_empty() => {
+            format!("✓ undone: AI detail of {id} is back (model and date)")
+        }
+        Back::Restored => format!("✓ undone: AI detail of {id} is back ({fields})"),
+        Back::Removed => {
+            format!("✓ undone: AI detail of {id} removed (the AI had created it)")
+        }
+        Back::Gone => format!("✓ undone: nothing restored, {id} has no AI detail now"),
+    })
 }
 
 /// `ai render`: rewrite every Obsidian view from the AI files (FR-036).

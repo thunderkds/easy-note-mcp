@@ -1,13 +1,13 @@
 //! One batch of the AI organizer (FR-047, Path B): ONE call to the person's `claude` for up to
 //! `batch_size` notes, through the same child as `ai enrich` (FR-037). Each answer item is checked
-//! alone and written to AI files only, with the writers of HUN-292: `ai::enrich`, then
-//! `ai::organize`. A bad item leaves only its note pending; a failed call leaves the whole batch
+//! alone and written to AI files only, with `ai::apply_item` (the writers of HUN-292, under one
+//! undo step). A bad item leaves only its note pending; a failed call leaves the whole batch
 //! pending. No note file is opened for writing (NFR-012, NFR-015).
 
 use serde_json::Value;
 
 use super::enrich;
-use crate::core::ai::{self, AiError, Input, Organized};
+use crate::core::ai::{self, AiError, Input, ItemError, Organized};
 use crate::core::config::{self, AiSettings};
 use crate::core::guard;
 use crate::core::organize::{self, Item};
@@ -143,7 +143,7 @@ fn apply(
         },
         |(old, _)| old.kind,
     );
-    ai::enrich(
+    ai::apply_item(
         store,
         &sent.id,
         &Input {
@@ -153,11 +153,6 @@ fn apply(
             tags_suggested: &checked.tags_suggested,
             model,
         },
-    )
-    .map_err(reason)?;
-    ai::organize(
-        store,
-        &sent.id,
         &Organized {
             project: checked.project.as_deref().filter(|_| !has("project")),
             topic: checked.topic.as_deref().filter(|_| !has("topic")),
@@ -167,7 +162,12 @@ fn apply(
             clear_draft: shown_kind != "draft",
         },
     )
-    .map_err(|e| format!("AI detail written, but organizing failed: {}", reason(e)))?;
+    .map_err(|e| match e {
+        ItemError::Enrich(e) => reason(e),
+        ItemError::Organize(e) => {
+            format!("AI detail written, but organizing failed: {}", reason(e))
+        }
+    })?;
     Ok(Written {
         id: sent.id.clone(),
         kept,

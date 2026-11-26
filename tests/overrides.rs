@@ -253,18 +253,26 @@ fn every_change_is_one_log_line() {
     sb.topic(&id, "a");
     overrides::set(&sb.store(), &id, "topic", "b").unwrap();
     let log = sb.log();
-    assert_eq!(log.len(), 2, "{log:?}");
-    assert_eq!(log[0]["who"], "ai");
-    assert_eq!(log[0]["field"], "topic");
+    // The creation, then the organize: the earlier file and the one key it changed.
+    assert_eq!(log.len(), 4, "{log:?}");
+    assert_eq!(log[0]["field"], "ai_file");
     assert_eq!(log[0]["old"], Value::Null);
-    assert_eq!(log[0]["new"], "a");
-    assert_eq!(log[1]["who"], "person");
-    assert_eq!(log[1]["id"], id.as_str());
-    assert_eq!(log[1]["old"], Value::Null);
-    assert_eq!(log[1]["new"], "b");
-    assert!(log[1]["at"].as_str().unwrap().contains('T'));
+    assert_eq!(log[1]["field"], "ai_file");
+    assert!(log[1]["old"].is_string());
+    assert_eq!(log[2]["who"], "ai");
+    assert_eq!(log[2]["field"], "topic");
+    assert_eq!(log[2]["old"], Value::Null);
+    assert_eq!(log[2]["new"], "a");
+    assert_ne!(log[0]["op"], log[1]["op"]);
+    assert_eq!(log[1]["op"], log[2]["op"]);
+    assert_eq!(log[3]["who"], "person");
+    assert_eq!(log[3]["id"], id.as_str());
+    assert_eq!(log[3]["old"], Value::Null);
+    assert_eq!(log[3]["new"], "b");
+    assert!(log[3].get("op").is_none(), "a person's change is one step");
+    assert!(log[3]["at"].as_str().unwrap().contains('T'));
     overrides::set(&sb.store(), &id, "topic", "c").unwrap();
-    assert_eq!(sb.log()[2]["old"], "b");
+    assert_eq!(sb.log()[4]["old"], "b");
 }
 
 #[test]
@@ -335,6 +343,9 @@ fn undo_restores_walks_back_and_says_nothing_to_undo() {
     // The AI change itself is the next step back: the AI file topic goes away.
     sb.cli(&["ai", "undo", &id]);
     assert_eq!(e(&sb), None);
+    // Then the AI write that created the file.
+    sb.cli(&["ai", "undo", &id]);
+    assert!(!sb.ai_file(&id).exists());
     let out = sb.cli(&["ai", "undo", &id]);
     assert_eq!(out.status.code(), Some(1));
     assert!(text(&out.stderr).contains("nothing to undo"));
@@ -495,4 +506,262 @@ fn a_failed_log_append_after_a_saved_override_is_an_error() {
     let out = sb.cli(&["ai", "set", &id, "topic", "t"]);
     assert_eq!(out.status.code(), Some(1));
     assert!(text(&out.stderr).contains("ai-log.jsonl could not be written"));
+}
+
+// HUN-302: undo of the AI title, summary, tags and draft keys -----------------------------------
+
+impl Sb {
+    /// One applied item, as the batch writes it: `enrich`, then `organize`, under one id.
+    fn item(&self, id: &str, input: &Input, o: &Organized) {
+        ai::apply_item(&self.store(), id, input, o).unwrap();
+    }
+    fn detail(&self, id: &str) -> Value {
+        serde_json::from_str(&std::fs::read_to_string(self.ai_file(id)).unwrap()).unwrap()
+    }
+    fn note_path(&self, id: &str) -> PathBuf {
+        snapshot(&self.notes())
+            .into_keys()
+            .find(|p| p.file_name().unwrap().to_string_lossy().starts_with(id))
+            .unwrap()
+    }
+}
+
+fn input<'a>(title: &'a str, kind: &'a str, summary: &'a str, tags: &'a [String]) -> Input<'a> {
+    Input {
+        title,
+        kind,
+        summary,
+        tags_suggested: tags,
+        model: "m",
+    }
+}
+
+#[test]
+fn hun302_one_undo_returns_the_whole_earlier_ai_file_after_an_item() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    let long = "é".repeat(600);
+    let tags = vec!["tray".to_string()];
+    let first = input("old title", "other", &long, &tags);
+    let organized = Organized {
+        project: Some("home"),
+        topic: Some("tray"),
+        kind: Some("bug"),
+        ..Organized::default()
+    };
+    sb.item(&id, &first, &organized);
+    let earlier = sb.detail(&id);
+    // The person edits the note: the AI file is stale, and a run replaces it.
+    let path = sb.note_path(&id);
+    let text = std::fs::read_to_string(&path).unwrap() + "more\n";
+    std::fs::write(&path, text).unwrap();
+    let notes = snapshot(&sb.notes());
+    let new_tags = vec!["usb".to_string()];
+    let second = input("new title", "bug", "new summary", &new_tags);
+    let moved = Organized {
+        project: Some("work"),
+        topic: Some("usb"),
+        kind: Some("idea"),
+        ..Organized::default()
+    };
+    sb.item(&id, &second, &moved);
+    assert_ne!(sb.detail(&id)["based_on"], earlier["based_on"]);
+
+    let done = overrides::undo(&sb.store(), &id).unwrap();
+    assert_eq!(
+        sb.detail(&id),
+        earlier,
+        "every key is back, based_on and organized_at too"
+    );
+    assert_eq!(done.back, overrides::Back::Restored);
+    for field in [
+        "title",
+        "summary",
+        "tags_suggested",
+        "kind",
+        "project",
+        "topic",
+    ] {
+        assert!(done.fields.iter().any(|f| f == field), "{field}: {done:?}");
+    }
+    assert_eq!(snapshot(&sb.notes()), notes, "no note file changed");
+    // The replaced AI file stays readable on the undo line.
+    let undo_line = sb
+        .log()
+        .into_iter()
+        .find(|l| l["field"] == "ai_file" && l.get("undo").is_some())
+        .unwrap();
+    assert!(undo_line["old"].as_str().unwrap().contains("new summary"));
+}
+
+#[test]
+fn hun302_one_undo_returns_replaced_and_cleared_draft_keys() {
+    let sb = Sb::new();
+    let id = sb.add("maybe a thing");
+    let suggestion = "s".repeat(600);
+    let draft = Organized {
+        kind: Some("draft"),
+        draft_reason: Some("too short"),
+        draft_suggestion: Some(&suggestion),
+        ..Organized::default()
+    };
+    sb.item(&id, &input("t", "other", "s", &[]), &draft);
+    let earlier = sb.detail(&id);
+    let done_draft = Organized {
+        kind: Some("todo"),
+        clear_draft: true,
+        ..Organized::default()
+    };
+    sb.item(&id, &input("t", "other", "s", &[]), &done_draft);
+    assert!(sb.detail(&id).get("draft_reason").is_none());
+    overrides::undo(&sb.store(), &id).unwrap();
+    assert_eq!(sb.detail(&id), earlier);
+    assert_eq!(sb.detail(&id)["draft_suggestion"], suggestion.as_str());
+}
+
+#[test]
+fn hun302_undo_of_a_new_ai_file_removes_it_and_keeps_the_persons_overrides() {
+    let sb = Sb::new();
+    std::fs::create_dir_all(sb.notes().join(".obsidian")).unwrap();
+    let id = sb.add("a note");
+    overrides::set(&sb.store(), &id, "project", "mine").unwrap();
+    overrides::set(&sb.store(), &id, "topic", "my topic").unwrap();
+    let mine = std::fs::read(sb.overrides_file()).unwrap();
+    // Both fields have an override, so the item sets neither.
+    let o = Organized::default();
+    sb.item(&id, &input("t", "bug", "s", &[]), &o);
+    let view = sb.notes().join(format!("ai/{id}.md"));
+    assert!(sb.ai_file(&id).exists() && view.exists());
+
+    let done = overrides::undo(&sb.store(), &id).unwrap();
+    assert_eq!(done.back, overrides::Back::Removed);
+    assert!(!sb.ai_file(&id).exists(), "the AI file is gone");
+    assert!(!view.exists(), "its view is gone");
+    assert_eq!(std::fs::read(sb.overrides_file()).unwrap(), mine);
+    assert_eq!(
+        ai::effective(&sb.store(), &id).topic.as_deref(),
+        Some("my topic")
+    );
+    // The next step back is the person's own change.
+    let done = overrides::undo(&sb.store(), &id).unwrap();
+    assert_eq!(done.fields, ["topic"]);
+    assert_eq!(done.back, overrides::Back::Value(None));
+}
+
+#[test]
+fn hun302_a_second_enrich_that_changes_only_the_kind_is_undone() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    sb.enrich(&id, "bug");
+    let earlier = sb.detail(&id);
+    sb.enrich(&id, "todo");
+    overrides::undo(&sb.store(), &id).unwrap();
+    assert_eq!(sb.detail(&id), earlier);
+    overrides::undo(&sb.store(), &id).unwrap();
+    assert!(!sb.ai_file(&id).exists());
+    assert!(overrides::undo(&sb.store(), &id).is_err(), "nothing left");
+}
+
+#[test]
+fn hun302_lines_without_an_op_are_undone_one_at_a_time_and_an_old_undo_line_takes_its_field() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    sb.enrich(&id, "bug");
+    let line = |field: &str, old: &str, new: &str, undo: bool| {
+        let mut l = json!({"id": id, "field": field, "old": old, "new": new,
+            "who": if undo { "person" } else { "ai" }, "at": "2026-11-26T10:00:00+07:00"});
+        if undo {
+            l["undo"] = json!(true);
+        }
+        l.to_string() + "\n"
+    };
+    // As written before this change: `ai undo` then took back `kind` only and skipped the rest.
+    let log = line("kind", "idea", "bug", false)
+        + &line("title", "old title", "t", false)
+        + &line("tags_suggested", r#"["tray"]"#, "[]", false)
+        + &line("draft_reason", "why", "", false)
+        + &line("kind", "bug", "idea", true);
+    std::fs::write(sb.notes().join(".easy-note/ai-log.jsonl"), log).unwrap();
+    let back: Vec<Vec<String>> = (0..3)
+        .map(|_| overrides::undo(&sb.store(), &id).unwrap().fields)
+        .collect();
+    assert_eq!(
+        back,
+        [["draft_reason"], ["tags_suggested"], ["title"]].map(|f| f.map(String::from).to_vec())
+    );
+    let d = sb.detail(&id);
+    assert_eq!(d["title"], "old title");
+    assert_eq!(d["tags_suggested"], json!(["tray"]));
+    assert_eq!(d["draft_reason"], "why");
+    assert_eq!(
+        d["kind"], "bug",
+        "the old undo line already took `kind` back"
+    );
+    assert!(overrides::undo(&sb.store(), &id).is_err());
+}
+
+#[test]
+fn hun302_undo_does_not_bring_back_a_removed_ai_file() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    sb.enrich(&id, "bug");
+    sb.enrich(&id, "todo");
+    ai::remove(&sb.store(), &id).unwrap();
+    let done = overrides::undo(&sb.store(), &id).unwrap();
+    assert_eq!(done.back, overrides::Back::Gone);
+    assert!(!sb.ai_file(&id).exists());
+}
+
+#[test]
+fn hun302_no_ai_file_is_written_when_its_log_line_cannot_be() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    std::fs::create_dir_all(sb.notes().join(".easy-note/ai-log.jsonl")).unwrap();
+    let err = ai::enrich(&sb.store(), &id, &input("t", "bug", "s", &[]))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("ai-log.jsonl could not be written"), "{err}");
+    assert!(!sb.ai_file(&id).exists());
+}
+
+#[test]
+fn hun302_the_cli_says_what_undo_did() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    sb.enrich(&id, "bug");
+    sb.enrich(&id, "todo");
+    let out = text(&sb.cli(&["ai", "undo", &id]).stdout);
+    assert!(
+        out.contains(&format!("AI detail of {id} is back")) && out.contains("kind"),
+        "{out}"
+    );
+    let out = text(&sb.cli(&["ai", "undo", &id]).stdout);
+    assert!(out.contains(&format!("AI detail of {id} removed")), "{out}");
+}
+
+#[test]
+fn hun302_an_item_whose_ai_file_line_is_unreadable_still_takes_back_all_its_keys() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    sb.enrich(&id, "bug");
+    let tags = vec!["usb".to_string()];
+    sb.item(
+        &id,
+        &input("new", "bug", "new summary", &tags),
+        &Organized::default(),
+    );
+    // A torn append can break the first line of an item.
+    let path = sb.notes().join(".easy-note/ai-log.jsonl");
+    let log: String = std::fs::read_to_string(&path)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.contains("\"ai_file\""))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    std::fs::write(&path, log).unwrap();
+    overrides::undo(&sb.store(), &id).unwrap();
+    let d = sb.detail(&id);
+    assert_eq!(d["title"], "t");
+    assert_eq!(d["summary"], "s");
+    assert_eq!(d["tags_suggested"], json!([]));
 }
