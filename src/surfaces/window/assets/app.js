@@ -594,6 +594,16 @@
     }
   });
 
+  // ---- Settings (HUN-300): the gear and its dialogs are settings.js ----
+  window.easyNoteSettings.attach({
+    onOpen: function () { setInert(true); },
+    onClose: function () {
+      setInert(false);
+      $('settings-open').focus();
+    },
+    toast: function (message, ms) { toast(message, '', ms); }
+  });
+
   function loadBoard() {
     var p = window.easyNoteIpc.board().then(function (b) {
       loadedAt = Date.now();

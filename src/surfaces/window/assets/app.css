@@ -135,3 +135,59 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .cap-text::placeholder { color: #6E7772; }
 .cap-keys { display: flex; flex-wrap: wrap; gap: 14px; padding-top: 8px; border-top: 1px solid #232826; font: 400 11.5px 'IBM Plex Mono', monospace; color: #8C9590; }
 .cap-keys kbd { color: #DCE0DD; font: inherit; }
+
+/* Settings (HUN-300): the capture dialog's panel, the page's inputs and buttons; graphite-mint tokens only. */
+.gear { flex-shrink: 0; width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: transparent; color: #DCE0DD; border: 1px solid #2C3230; border-radius: 6px; cursor: pointer; }
+.set-back { position: fixed; inset: 0; z-index: 5; box-sizing: border-box; padding: 16px; display: flex; justify-content: center; align-items: center; background: rgba(8, 10, 9, 0.6); }
+.set { width: 560px; max-width: 100%; max-height: 100%; box-sizing: border-box; display: flex; flex-direction: column; color-scheme: dark; background: #181B1A; border: 1px solid #3CF5A859; border-radius: 10px; box-shadow: 0 0 0 1px #3CF5A840, 0 0 18px #3CF5A840; }
+.set-title { margin: 0; font-size: 17px; font-weight: 600; color: #EAEDEA; }
+.set > .set-title { padding: 16px 20px 12px; border-bottom: 1px solid #232826; }
+.set-body { min-height: 0; overflow-y: auto; padding: 12px 20px; }
+.set-body > p { margin: 0; }
+.set-form { display: flex; flex-direction: column; gap: 12px; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.set-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.set-label { font-weight: 500; color: #EAEDEA; }
+.set-hint { font-size: 13px; line-height: 1.5; color: #8C9590; }
+.set-reason { font-size: 13px; color: #ABB3AE; }
+.switch { position: relative; flex-shrink: 0; width: 44px; height: 44px; padding: 0; background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
+.switch::before { content: ''; position: absolute; left: 2px; top: 11px; width: 40px; height: 22px; box-sizing: border-box; border: 1px solid #6E7772; border-radius: 11px; background: #0E100F; }
+.switch::after { content: ''; position: absolute; left: 6px; top: 15px; width: 14px; height: 14px; border-radius: 50%; background: #ABB3AE; }
+.switch[aria-checked="true"]::before { background: #3CF5A8; border-color: #3CF5A8; }
+.switch[aria-checked="true"]::after { left: 24px; background: #0E100F; }
+.switch:disabled { cursor: default; }
+.switch:disabled::before { border: 1px dashed #6E7772; background: transparent; }
+.switch:disabled::after { background: #6E7772; }
+.set-numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.set-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #ABB3AE; }
+.set-input { width: 100%; height: 38px; box-sizing: border-box; padding: 0 12px; background: #0E100F; color: #DCE0DD; border: 1px solid #2C3230; border-radius: 6px; font: 400 14px 'IBM Plex Sans', sans-serif; }
+.set-jobs { margin: 0; padding: 0; border: 0; display: flex; flex-wrap: wrap; column-gap: 20px; }
+.set-jobs legend { padding: 0; font-size: 13px; color: #ABB3AE; }
+.set-check { display: flex; align-items: center; gap: 8px; min-height: 32px; cursor: pointer; }
+.set-check input { width: 18px; height: 18px; margin: 0; accent-color: #3CF5A8; }
+.set-file { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid #232826; }
+.set-file p { margin: 0; }
+.set-path { font: 400 12px 'IBM Plex Mono', monospace; color: #DCE0DD; overflow-wrap: anywhere; user-select: text; }
+.set-fixed { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; font: 400 12px 'IBM Plex Mono', monospace; }
+.set-fixed dt { color: #8C9590; }
+.set-fixed dd { margin: 0; color: #ABB3AE; overflow-wrap: anywhere; user-select: text; }
+.set-foot { display: flex; flex-direction: column; gap: 8px; padding: 12px 20px 16px; border-top: 1px solid #232826; }
+.set-error { max-height: 96px; overflow-y: auto; line-height: 1.5; overflow-wrap: anywhere; }
+.set-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ask { max-height: 100%; overflow-y: auto; gap: 12px; padding: 16px 20px; }
+.ask-text { margin: 0; line-height: 1.6; color: #DCE0DD; overflow-wrap: anywhere; }
+/* While Settings is open the toast sits at the top, clear of the dialog's buttons. */
+.set-back:not([hidden]) ~ .toast-live .toast { top: 16px; bottom: auto; }
+@media (max-width: 480px) {
+.header { gap: 8px; }
+.brand { flex-basis: 100%; }
+.gear { width: 44px; height: 44px; margin-left: auto; }
+.new-note { height: 44px; margin-left: 0; }
+.set, .ask-text { font-size: 16px; }
+.set-hint, .set-reason, .set-field, .set-jobs legend { font-size: 14px; }
+.set-path, .set-fixed { font-size: 13px; }
+.set-error { max-height: 168px; font-size: 14px; }
+.set-input { height: 44px; font-size: 16px; }
+.set-check { min-height: 44px; }
+.set-actions .act { height: 44px; font-size: 16px; }
+}

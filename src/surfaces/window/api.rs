@@ -1,6 +1,6 @@
 //! The window's IPC API (FR-042, DDR 0009 item 3): one JSON request in, one JSON response out,
-//! over a `Store`. No window, no display; only the actions below write, through the core (`enrich`
-//! also reads config.toml for `[ai]`, as the CLI does). A page
+//! over a `Store`. No window, no display; only the actions and `settings_save` below write,
+//! through the core (`enrich` also reads config.toml for `[ai]`, as the CLI does). A page
 //! bug can send anything, so every command and id is checked and a bad request is an
 //! `{"error": ...}` object, never a panic.
 //! Every string in every response passes `guard::mask_for_output` (NFR-002).
@@ -29,6 +29,17 @@
 //!
 //! No command opens a note in another app (HUN-286: `open_in_editor` is gone).
 //!
+//! Settings (FR-048, FR-052, HUN-300): `[ai]` of config.toml, read and written by the core.
+//! - `{"cmd": "settings_get"}` → `{path, base, settings: {the `config::SCREEN_KEYS`}, command,
+//!   account, notice: {template, confirmed_model}}`: `command` and `account` are for reading only;
+//!   `confirmed_model` is the model when the notice for the saved account and model was confirmed
+//! - `{"cmd": "settings_save", "base", "settings": {every screen key}, "confirm_notice": bool}` →
+//!   the new `settings_get`. Nothing is written when `base` is not the file now (`the settings
+//!   changed outside the window`), when a value breaks a rule of `[ai]` (the key is named), or
+//!   when the save turns scheduled runs on and the notice for that account and model is neither
+//!   confirmed now (`confirm_notice: true`) nor before (NFR-014). `command` and
+//!   `claude_config_dir` are never written
+//!
 //! Capture (FR-044), the same rule as `easy-note quick` (FR-027) and the same core call as
 //! `easy-note add`:
 //! - `{"cmd": "context"}` → `{"context": {repo, task} | null}`: the context of the newest `cli` or
@@ -50,7 +61,7 @@ use serde_json::{json, Map, Value};
 use crate::core::context::Context;
 use crate::core::format::{Note, Value as Field};
 use crate::core::store::{Item, Store, StoreError};
-use crate::core::{ai, ai_view, guard, tags};
+use crate::core::{ai, ai_view, config, guard, tags};
 use crate::surfaces::enrich;
 use crate::surfaces::quick::last_context;
 
@@ -81,8 +92,11 @@ fn answer(store: &Store, request: &str, on_added: &dyn Fn(&str)) -> Result<Value
             .ok_or("missing id")
     };
     let cmd = request.get("cmd").and_then(Value::as_str);
-    if cmd == Some("enrich") {
-        return enrich_note(store, id()?);
+    match cmd {
+        Some("enrich") => return enrich_note(store, id()?),
+        Some("settings_get") => return settings_get(),
+        Some("settings_save") => return settings_save(&request),
+        _ => {}
     }
     let local: Result<Value, &'static str> = match cmd {
         Some("board") => Ok(board(store)),
@@ -140,6 +154,88 @@ fn accept_ai(store: &Store, id: &str) -> Result<Value, &'static str> {
 fn enrich_note(store: &Store, id: &str) -> Result<Value, String> {
     let done = enrich::for_window(store, id)?;
     detail(store, &done).map_err(String::from)
+}
+
+/// The account folder as the page shows it, and as the notice names it.
+fn shown_account(settings: &config::AiSettings) -> String {
+    guard::mask_for_output(&config::account_folder(settings))
+}
+
+/// The version of the notice that `settings` would show.
+fn notice_of(settings: &config::AiSettings) -> String {
+    config::notice_version(&config::schedule_notice(
+        &shown_account(settings),
+        &settings.model,
+    ))
+}
+
+/// What the Settings screen shows, with the stamp its save is checked against.
+fn settings_get() -> Result<Value, String> {
+    let (settings, base) = config::ai_settings_stamped().map_err(|e| e.to_string())?;
+    let path = config::config_path().map_err(|e| e.to_string())?;
+    let confirmed = settings.notice_seen == Some(notice_of(&settings));
+    let jobs: Vec<&str> = settings.jobs.iter().map(|job| job.name()).collect();
+    Ok(json!({
+        "path": path.to_string_lossy(),
+        "base": base,
+        "settings": {
+            "enrich": if settings.enrich { "claude" } else { "off" },
+            "schedule": match settings.schedule {
+                config::Schedule::Off => "off",
+                config::Schedule::Tray => "tray",
+            },
+            "interval_min": settings.interval_min,
+            "max_per_run": settings.max_per_run,
+            "batch_size": settings.batch_size,
+            "jobs": jobs,
+            "model": settings.model,
+            "after_save": settings.after_save,
+        },
+        "command": settings.command,
+        "account": shown_account(&settings),
+        "notice": {
+            "template": config::SCHEDULE_NOTICE,
+            "confirmed_model": confirmed.then_some(&settings.model),
+        },
+    }))
+}
+
+/// Save the screen's values through `config::save_ai_settings_if`. The save that turns scheduled
+/// runs on needs the person's confirm of the notice, now or before (NFR-014).
+fn settings_save(request: &Value) -> Result<Value, String> {
+    let base = request
+        .get("base")
+        .and_then(Value::as_str)
+        .ok_or("missing base")?;
+    let given = request
+        .get("settings")
+        .and_then(Value::as_object)
+        .ok_or("missing settings")?;
+    let (current, now) = config::ai_settings_stamped().map_err(|e| e.to_string())?;
+    if now != base {
+        return Err(config::CHANGED_OUTSIDE.to_string());
+    }
+    // A value TOML has no form for (null, a too large number) goes in as text: the rule of its
+    // key then refuses it, naming the key.
+    let shown: toml::Table = given
+        .iter()
+        .map(|(key, value)| {
+            let value =
+                toml::Value::try_from(value).unwrap_or_else(|_| toml::Value::String(String::new()));
+            (key.clone(), value)
+        })
+        .collect();
+    let mut wanted = config::ai_settings_shown(&current, &shown).map_err(|e| e.to_string())?;
+    if wanted.effective_schedule() && !current.effective_schedule() {
+        let version = notice_of(&wanted);
+        if request.get("confirm_notice").and_then(Value::as_bool) == Some(true) {
+            wanted.notice_seen = Some(version);
+        } else if wanted.notice_seen != Some(version) {
+            return Err("confirm the notice before Organize automatically turns on".to_string());
+        }
+    }
+    config::save_ai_settings_if(&wanted, base).map_err(|e| e.to_string())?;
+    settings_get()
 }
 
 /// `rm <id>` (`cli::write::rm`).

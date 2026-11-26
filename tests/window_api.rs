@@ -9,7 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use easy_note_mcp::core::ai;
-use easy_note_mcp::core::config::AiSettings;
+use easy_note_mcp::core::config::{after_save_on, AiSettings};
 use easy_note_mcp::core::context::Context;
 use easy_note_mcp::core::store::Store;
 use easy_note_mcp::surfaces::dashboard::use_window;
@@ -1077,10 +1077,13 @@ fn the_page_asks_only_for_commands_the_api_answers() {
         "add",
         "enrich",
         "close",
+        "settings_get",
+        "settings_save",
     ];
     assert_eq!(cmds, all.into_iter().collect(), "commands in ipc.js");
-    let sb = Sandbox::new("page-cmds");
-    let store = sb.store();
+    // `settings_get` reads config.toml: a temp HOME.
+    let env = AiEnv::ok("page-cmds");
+    let store = env.sb.store();
     for cmd in &cmds {
         // HUN-289: `close` is the quick window's own command (`capture_ipc`), not the dashboard's.
         if *cmd == "close" {
@@ -3220,4 +3223,618 @@ fn hun290_ac3_the_page_shows_a_note_when_the_shell_asks() {
     assert_eq!(r["detail"], json!([ACTED]), "{r}");
     assert_eq!(r["shown"]["id"], ACTED, "{r}");
     assert_eq!(r["current"], "true", "{r}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-300: the Settings screen, `settings_get` and `settings_save` (FR-048, FR-052, NFR-014).
+// A temp HOME and a stub `claude` (`AiEnv`); no test starts the real one or opens `~/.config`.
+// ---------------------------------------------------------------------------------------------
+
+const NOTICE_HAIKU: &str = "Masked note text is sent to your own claude CLI (account folder: ~/.claude, model: haiku). Nothing runs until you confirm.";
+
+/// `AiEnv` with no `CLAUDE_CONFIG_DIR`, so the default account folder is the one named.
+fn settings_env(name: &str) -> AiEnv {
+    let mut env = AiEnv::ok(name);
+    env.old
+        .push(("CLAUDE_CONFIG_DIR", std::env::var_os("CLAUDE_CONFIG_DIR")));
+    std::env::remove_var("CLAUDE_CONFIG_DIR");
+    env
+}
+
+impl AiEnv {
+    fn config_file(&self) -> PathBuf {
+        self.sb
+            .dir
+            .path()
+            .join("home/.config/easy-note/config.toml")
+    }
+    fn config_text(&self) -> String {
+        std::fs::read_to_string(self.config_file()).unwrap_or_default()
+    }
+    fn config_table(&self) -> toml::Table {
+        self.config_text().parse().unwrap()
+    }
+}
+
+fn settings_get(store: &Store) -> Value {
+    call(store, &json!({"cmd": "settings_get"}))
+}
+
+/// The page's save: the shown settings with `changes` over them, on the base it loaded.
+fn save_request(loaded: &Value, changes: Value) -> Value {
+    let mut settings = loaded["settings"].clone();
+    for (key, value) in changes.as_object().unwrap() {
+        settings[key] = value.clone();
+    }
+    json!({"cmd": "settings_save", "base": loaded["base"], "settings": settings})
+}
+
+fn confirmed(mut request: Value) -> Value {
+    request["confirm_notice"] = json!(true);
+    request
+}
+
+fn organize() -> Value {
+    json!({"enrich": "claude", "schedule": "tray"})
+}
+
+#[test]
+fn settings_get_answers_the_values_the_read_only_keys_and_the_notice() {
+    let env = settings_env("set-get");
+    let store = env.sb.store();
+    let got = settings_get(&store);
+    assert_eq!(
+        got["settings"],
+        json!({"enrich": "off", "schedule": "off", "interval_min": 60, "max_per_run": 20,
+               "batch_size": 10, "jobs": ["organize", "drafts", "digest"], "model": "haiku",
+               "after_save": false}),
+        "{got}"
+    );
+    assert_eq!(got["command"], "claude");
+    assert_eq!(got["account"], "~/.claude");
+    assert_eq!(got["path"], env.config_file().to_str().unwrap());
+    assert!(got["base"].is_string(), "{got}");
+    assert_eq!(got["notice"]["confirmed_model"], Value::Null);
+    let template = got["notice"]["template"].as_str().unwrap();
+    assert_eq!(
+        template
+            .replace("{dir}", "~/.claude")
+            .replace("{model}", "haiku"),
+        NOTICE_HAIKU
+    );
+    assert!(!env.config_file().exists(), "a read writes nothing");
+
+    env.config("[ai]\nenrich = \"claude\"\ncommand = \"/opt/claude\"\nclaude_config_dir = \"/acct\"\nmodel = \"sonnet\"\ninterval_min = 15\nmax_per_run = 40\nbatch_size = 8\njobs = [\"drafts\"]\nafter_save = true\n");
+    let got = settings_get(&store);
+    assert_eq!(
+        got["settings"],
+        json!({"enrich": "claude", "schedule": "off", "interval_min": 15, "max_per_run": 40,
+               "batch_size": 8, "jobs": ["drafts"], "model": "sonnet", "after_save": true})
+    );
+    assert_eq!(got["command"], "/opt/claude");
+    assert_eq!(got["account"], "/acct");
+}
+
+#[test]
+fn settings_get_of_a_file_it_cannot_use_names_the_file() {
+    let env = settings_env("set-broken");
+    let store = env.sb.store();
+    for (text, part) in [
+        ("[ai\n", "cannot read"),
+        ("[ai]\ninterval_min = 1\n", "[ai] interval_min"),
+    ] {
+        env.config(text);
+        let got = settings_get(&store);
+        let error = got["error"].as_str().unwrap();
+        assert!(error.contains(part), "{error}");
+        assert!(error.contains("config.toml"), "{error}");
+        // A save over it is refused too, and the file is as it was.
+        let save = call(
+            &store,
+            &json!({"cmd": "settings_save", "base": "x", "settings": {}}),
+        );
+        assert!(save["error"].is_string(), "{save}");
+        assert_eq!(env.config_text(), text);
+    }
+}
+
+#[test]
+fn organize_turns_on_only_with_the_confirmed_notice_and_records_it() {
+    let env = settings_env("set-confirm");
+    let store = env.sb.store();
+    env.config("# mine\n[ai]\ncommand = \"claude\"\n");
+    let loaded = settings_get(&store);
+    let refused = call(&store, &save_request(&loaded, organize()));
+    assert!(
+        refused["error"].as_str().unwrap().contains("notice"),
+        "{refused}"
+    );
+    assert_eq!(env.config_text(), "# mine\n[ai]\ncommand = \"claude\"\n");
+    // Only a true `confirm_notice` counts.
+    let mut odd = save_request(&loaded, organize());
+    odd["confirm_notice"] = json!("yes");
+    assert!(call(&store, &odd)["error"].is_string());
+
+    let saved = call(&store, &confirmed(save_request(&loaded, organize())));
+    assert_eq!(saved["error"], Value::Null, "{saved}");
+    assert_eq!(saved["settings"]["schedule"], "tray");
+    assert_eq!(saved["notice"]["confirmed_model"], "haiku");
+    assert_ne!(saved["base"], loaded["base"]);
+    let file = env.config_table();
+    assert_eq!(file["ai"]["schedule"].as_str(), Some("tray"));
+    assert_eq!(file["ai"]["enrich"].as_str(), Some("claude"));
+    let version = easy_note_mcp::core::config::notice_version(NOTICE_HAIKU);
+    assert_eq!(file["ai"]["notice_seen"].as_str(), Some(version.as_str()));
+    assert!(env.config_text().starts_with("# mine\n"));
+    assert_eq!(env.calls(), 0, "saving starts no claude");
+}
+
+#[test]
+fn a_seen_notice_is_not_asked_again_until_its_text_changes() {
+    let env = settings_env("set-seen");
+    let store = env.sb.store();
+    let loaded = settings_get(&store);
+    let on = call(&store, &confirmed(save_request(&loaded, organize())));
+    // A change while it is on needs no new confirm.
+    let faster = call(&store, &save_request(&on, json!({"interval_min": 30})));
+    assert_eq!(faster["settings"]["interval_min"], 30, "{faster}");
+    let off = call(&store, &save_request(&faster, json!({"schedule": "off"})));
+    assert_eq!(off["settings"]["schedule"], "off", "{off}");
+    assert_eq!(off["notice"]["confirmed_model"], "haiku");
+    // The same text: on again at once.
+    let again = call(&store, &save_request(&off, organize()));
+    assert_eq!(again["settings"]["schedule"], "tray", "{again}");
+    // Another model is another text.
+    let off = call(&store, &save_request(&again, json!({"schedule": "off"})));
+    let mut sonnet = organize();
+    sonnet["model"] = json!("sonnet");
+    let refused = call(&store, &save_request(&off, sonnet.clone()));
+    assert!(
+        refused["error"].as_str().unwrap().contains("notice"),
+        "{refused}"
+    );
+    let on = call(&store, &confirmed(save_request(&off, sonnet.clone())));
+    assert_eq!(on["notice"]["confirmed_model"], "sonnet", "{on}");
+    // So is another account folder, set in the file.
+    let off = call(&store, &save_request(&on, json!({"schedule": "off"})));
+    assert!(off["error"].is_null(), "{off}");
+    let text = env.config_text();
+    env.config(&format!("{text}claude_config_dir = \"/work\"\n"));
+    let loaded = settings_get(&store);
+    assert_eq!(loaded["notice"]["confirmed_model"], Value::Null, "{loaded}");
+    assert!(call(&store, &save_request(&loaded, sonnet))["error"].is_string());
+}
+
+#[test]
+fn organize_cannot_be_on_while_the_ai_is_off() {
+    let env = settings_env("set-ai-off");
+    let store = env.sb.store();
+    let loaded = settings_get(&store);
+    let request = save_request(&loaded, json!({"schedule": "tray"}));
+    for request in [request.clone(), confirmed(request)] {
+        let out = call(&store, &request);
+        let error = out["error"].as_str().unwrap();
+        assert!(error.contains("[ai] schedule"), "{error}");
+        assert!(!env.config_file().exists());
+    }
+}
+
+#[test]
+fn settings_save_refuses_a_bad_value_naming_the_key_and_writes_nothing() {
+    let env = settings_env("set-bad");
+    let store = env.sb.store();
+    env.config("[ai]\nmodel = \"haiku\"\n");
+    let loaded = settings_get(&store);
+    for (key, value) in [
+        ("interval_min", json!(0)),
+        ("interval_min", json!("abc")),
+        ("interval_min", json!("30")),
+        ("interval_min", json!("")),
+        ("interval_min", json!(1.5)),
+        ("interval_min", json!(-1)),
+        ("interval_min", Value::Null),
+        ("interval_min", json!(u64::MAX)),
+        ("max_per_run", json!(201)),
+        ("batch_size", json!(21)),
+        ("model", json!("")),
+        ("model", json!("--x")),
+        ("jobs", json!(["sweep"])),
+        ("jobs", json!("organize")),
+        ("enrich", json!("api")),
+        ("schedule", json!("cron")),
+        ("after_save", json!("yes")),
+    ] {
+        let mut changes = json!({});
+        changes[key] = value.clone();
+        let out = call(&store, &save_request(&loaded, changes));
+        let error = out["error"].as_str().unwrap_or_else(|| panic!("{out}"));
+        assert!(error.contains(&format!("[ai] {key}")), "{value}: {error}");
+        assert_eq!(env.config_text(), "[ai]\nmodel = \"haiku\"\n", "{key}");
+        // A key left out is not silently reset.
+        let mut short = save_request(&loaded, json!({}));
+        short["settings"].as_object_mut().unwrap().remove(key);
+        let out = call(&store, &short);
+        assert!(out["error"].as_str().unwrap().contains(key), "{out}");
+        assert_eq!(env.config_text(), "[ai]\nmodel = \"haiku\"\n", "{key}");
+    }
+    for request in [
+        json!({"cmd": "settings_save"}),
+        json!({"cmd": "settings_save", "base": loaded["base"]}),
+        json!({"cmd": "settings_save", "base": loaded["base"], "settings": []}),
+        json!({"cmd": "settings_save", "settings": loaded["settings"]}),
+    ] {
+        let out = call(&store, &request);
+        assert!(out["error"].is_string(), "{request}: {out}");
+        assert_eq!(env.config_text(), "[ai]\nmodel = \"haiku\"\n");
+    }
+}
+
+#[test]
+fn settings_save_refuses_a_file_changed_after_settings_get() {
+    let env = settings_env("set-outside");
+    let store = env.sb.store();
+    let loaded = settings_get(&store);
+    env.config("[ai]\nmodel = \"opus\"\n");
+    for request in [
+        save_request(&loaded, json!({"interval_min": 30})),
+        confirmed(save_request(&loaded, organize())),
+        save_request(&loaded, organize()),
+    ] {
+        let out = call(&store, &request);
+        assert!(
+            out["error"].as_str().unwrap().contains("changed outside"),
+            "{out}"
+        );
+        assert_eq!(env.config_text(), "[ai]\nmodel = \"opus\"\n");
+    }
+}
+
+#[test]
+fn settings_save_never_writes_the_command_or_the_account_folder() {
+    let env = settings_env("set-readonly");
+    let store = env.sb.store();
+    env.config("[ai]\ncommand = \"claude\"\nclaude_config_dir = \"~/.claude-work\"\n");
+    let loaded = settings_get(&store);
+    let mut request = save_request(
+        &loaded,
+        json!({"interval_min": 30, "command": "/tmp/evil", "claude_config_dir": "/tmp/evil",
+               "notice_seen": "forged", "timeout_secs": 1, "dir": "/tmp/evil"}),
+    );
+    request["command"] = json!("/tmp/evil");
+    let out = call(&store, &request);
+    assert!(out["error"].is_null(), "{out}");
+    let text = env.config_text();
+    assert!(
+        text.starts_with("[ai]\ncommand = \"claude\"\nclaude_config_dir = \"~/.claude-work\"\n"),
+        "{text}"
+    );
+    assert!(text.contains("interval_min = 30\n"), "{text}");
+    for gone in ["evil", "forged", "timeout_secs", "dir = \"/"] {
+        assert!(!text.contains(gone), "{gone}: {text}");
+    }
+}
+
+#[test]
+fn doctor_shows_the_values_saved_from_the_window() {
+    let env = settings_env("set-doctor");
+    let store = env.sb.store();
+    let loaded = settings_get(&store);
+    let mut changes = organize();
+    changes["interval_min"] = json!(30);
+    changes["max_per_run"] = json!(40);
+    changes["batch_size"] = json!(8);
+    changes["jobs"] = json!(["organize"]);
+    changes["model"] = json!("sonnet");
+    changes["after_save"] = json!(true);
+    let saved = call(&store, &confirmed(save_request(&loaded, changes)));
+    assert!(saved["error"].is_null(), "{saved}");
+    let out = std::process::Command::new(BIN)
+        .arg("doctor")
+        .env("EASY_NOTE_DIR", env.sb.notes())
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("model sonnet, after_save true"),
+        "ai line: {text}"
+    );
+    assert!(
+        text.contains("ai schedule: tray, every 30 min, up to 40 notes per run, batch 8, jobs organize, digest at 3h\n"),
+        "schedule line: {text}"
+    );
+}
+
+#[test]
+fn a_save_after_a_settings_change_follows_the_new_run_after_each_save() {
+    // The open window asks this at each new note, so it needs no restart.
+    let env = settings_env("set-after-save");
+    let store = env.sb.store();
+    assert!(!after_save_on());
+    let loaded = settings_get(&store);
+    let on = call(
+        &store,
+        &save_request(&loaded, json!({"enrich": "claude", "after_save": true})),
+    );
+    assert!(after_save_on(), "{on}");
+    call(&store, &save_request(&on, json!({"after_save": false})));
+    assert!(!after_save_on());
+    let shell = include_str!("../src/surfaces/window/mod.rs");
+    assert!(
+        shell.contains("if config::after_save_on() {"),
+        "the shell reads the setting at each added note"
+    );
+}
+
+#[test]
+fn the_settings_answers_mask_secrets_and_stay_on_the_app_page() {
+    let env = settings_env("set-mask");
+    let store = env.sb.store();
+    let (text, secret) = planted()
+        .into_iter()
+        .find(|(text, _)| !text.contains('\n') && !text.contains('"') && !text.contains('\\'))
+        .unwrap();
+    env.config(&format!("[ai]\ncommand = \"{text}\"\n"));
+    let out = handle(&store, r#"{"cmd": "settings_get"}"#);
+    assert!(!out.contains(&secret), "{out}");
+    assert!(out.contains("[masked:"), "{out}");
+    let body = r#"{"req": 1, "cmd": "settings_get"}"#;
+    assert!(ipc_from(&store, "https://x/", body).is_none());
+    let save = save_request(&settings_get(&store), json!({"interval_min": 30})).to_string();
+    let before = env.config_text();
+    assert!(ipc_from(&store, "easy-note://other/", &save).is_none());
+    assert_eq!(env.config_text(), before);
+}
+
+#[test]
+fn settings_save_without_write_permission_says_which_file() {
+    use std::os::unix::fs::PermissionsExt;
+    let env = settings_env("set-denied");
+    let store = env.sb.store();
+    env.config("[ai]\n");
+    let loaded = settings_get(&store);
+    let folder = env.config_file().parent().unwrap().to_path_buf();
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let out = call(&store, &save_request(&loaded, json!({"interval_min": 30})));
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let error = out["error"].as_str().unwrap();
+    assert!(
+        error.starts_with("cannot write ") && error.contains("config.toml"),
+        "{error}"
+    );
+    assert_eq!(env.config_text(), "[ai]\n");
+}
+
+// HUN-300 page side: the gear, the Settings dialog and the notice, over the stub IPC fed one real
+// `settings_get` answer.
+
+/// The harness run with the Settings scenarios, on the answer of a fresh config.
+fn run_settings_page() -> Option<Value> {
+    let (board, settings) = {
+        let env = settings_env("set-page");
+        let store = env.sb.store();
+        (call(&store, &json!({"cmd": "board"})), settings_get(&store))
+    };
+    run_page_with(&board, Some(&json!({ "settings": settings })))
+}
+
+#[test]
+fn the_gear_opens_settings_with_the_values_of_the_file() {
+    let Some(run) = run_settings_page() else {
+        return;
+    };
+    let r = &run["set_open"];
+    assert_eq!(r["loading"]["open"], true, "{r}");
+    assert_eq!(r["loading"]["loading"], true, "{r}");
+    assert_eq!(r["loading"]["form"], false, "{r}");
+    assert_eq!(r["posts"], json!(["board", "settings_get"]), "{r}");
+    let shown = &r["shown"];
+    assert_eq!(shown["form"], true, "{r}");
+    assert_eq!(shown["loading"], false, "{r}");
+    assert_eq!(shown["asking"], false, "{r}");
+    assert_eq!(shown["values"], json!(["60", "20", "10", "haiku"]), "{r}");
+    assert_eq!(shown["jobs"], json!([true, true, true]), "{r}");
+    assert_eq!(shown["afterSave"], false, "{r}");
+    assert_eq!(shown["enrich"], "false", "{r}");
+    assert!(
+        shown["readOnly"][0]
+            .as_str()
+            .unwrap()
+            .ends_with(".config/easy-note/config.toml"),
+        "{r}"
+    );
+    assert_eq!(shown["readOnly"][1], "claude", "{r}");
+    assert_eq!(shown["readOnly"][2], "~/.claude", "{r}");
+    // AC 6: the switch is off and disabled with the reason while the AI is off.
+    let r = &run["set_disabled"];
+    assert_eq!(r["shown"]["scheduleDisabled"], true, "{r}");
+    assert_eq!(r["shown"]["reason"], true, "{r}");
+    assert_eq!(r["shown"]["schedule"], "false", "{r}");
+    assert_eq!(r["shown"]["asking"], false, "{r}");
+    assert_eq!(r["saves"], 0, "{r}");
+}
+
+#[test]
+fn cancel_on_the_notice_saves_nothing_and_leaves_the_switch_off() {
+    let Some(run) = run_settings_page() else {
+        return;
+    };
+    let r = &run["set_cancel"];
+    assert_eq!(r["asked"]["asking"], true, "{r}");
+    assert_eq!(r["asked"]["ask"], NOTICE_HAIKU, "{r}");
+    assert_eq!(r["asked"]["schedule"], "false", "off until Confirm: {r}");
+    assert_eq!(r["asked"]["inert"], true, "{r}");
+    for after in ["cancelled", "escaped"] {
+        assert_eq!(r[after]["asking"], false, "{after}: {r}");
+        assert_eq!(r[after]["schedule"], "false", "{after}: {r}");
+        assert_eq!(r[after]["open"], true, "{after}: {r}");
+        assert_eq!(r[after]["inert"], false, "{after}: {r}");
+    }
+    assert_eq!(r["saves"], 0, "no settings_save call: {r}");
+}
+
+#[test]
+fn confirm_on_the_notice_saves_once_and_shows_saved() {
+    let Some(run) = run_settings_page() else {
+        return;
+    };
+    let r = &run["set_confirm"];
+    assert_eq!(r["saves"].as_array().unwrap().len(), 1, "{r}");
+    let save = &r["saves"][0];
+    assert_eq!(save["confirm_notice"], true, "{r}");
+    assert_eq!(save["settings"]["schedule"], "tray", "{r}");
+    assert_eq!(save["settings"]["enrich"], "claude", "{r}");
+    assert!(save["base"].is_string(), "{r}");
+    assert_eq!(r["shown"]["schedule"], "true", "{r}");
+    assert_eq!(r["shown"]["open"], true, "{r}");
+    assert_eq!(r["shown"]["asking"], false, "{r}");
+    assert_eq!(r["shown"]["toast"], "Saved", "{r}");
+    assert_eq!(
+        r["posts"],
+        json!(["board", "settings_get", "settings_save"]),
+        "nothing runs: {r}"
+    );
+}
+
+#[test]
+fn a_seen_notice_is_not_shown_again_and_a_new_text_is() {
+    let Some(run) = run_settings_page() else {
+        return;
+    };
+    let r = &run["set_seen"];
+    assert_eq!(r["flipped"]["shown"]["asking"], false, "{r}");
+    assert_eq!(r["flipped"]["shown"]["schedule"], "true", "{r}");
+    assert_eq!(r["flipped"]["saves"], 0, "{r}");
+    assert_eq!(r["saves"].as_array().unwrap().len(), 1, "{r}");
+    assert_eq!(r["saves"][0]["confirm_notice"], false, "{r}");
+    assert_eq!(r["saves"][0]["settings"]["schedule"], "tray", "{r}");
+    assert_eq!(r["shown"]["open"], false, "Save closes: {r}");
+    assert_eq!(r["shown"]["toast"], "Saved", "{r}");
+    // The model changed after the switch went on: the new text is confirmed before the save.
+    let r = &run["set_model_changed"];
+    assert_eq!(r["asked"]["shown"]["asking"], true, "{r}");
+    assert_eq!(
+        r["asked"]["shown"]["ask"],
+        NOTICE_HAIKU.replace("haiku", "sonnet"),
+        "{r}"
+    );
+    assert_eq!(r["asked"]["saves"], 0, "{r}");
+    assert_eq!(r["saves"].as_array().unwrap().len(), 1, "{r}");
+    assert_eq!(r["saves"][0]["confirm_notice"], true, "{r}");
+    assert_eq!(r["saves"][0]["settings"]["model"], "sonnet", "{r}");
+    assert_eq!(r["shown"]["open"], false, "{r}");
+    // Already on: no notice for another change.
+    let r = &run["set_already_on"];
+    assert_eq!(r["first"]["schedule"], "true", "{r}");
+    assert_eq!(r["saves"].as_array().unwrap().len(), 1, "{r}");
+    assert_eq!(r["shown"]["asking"], false, "{r}");
+}
+
+#[test]
+fn save_sends_the_typed_values_and_a_failed_save_keeps_the_dialog() {
+    let Some(run) = run_settings_page() else {
+        return;
+    };
+    let r = &run["set_values"];
+    assert_eq!(
+        r["saves"][0]["settings"],
+        json!({"enrich": "off", "schedule": "off", "interval_min": 30, "max_per_run": 40,
+               "batch_size": 8, "jobs": ["organize", "digest"], "model": "haiku",
+               "after_save": true}),
+        "{r}"
+    );
+    assert_eq!(r["shown"]["open"], false, "{r}");
+    assert_eq!(r["shown"]["toast"], "Saved", "{r}");
+    // AI off turns scheduled runs off in the same save.
+    let r = &run["set_off_while_on"];
+    assert_eq!(r["off"]["schedule"], "false", "{r}");
+    assert_eq!(r["off"]["scheduleDisabled"], true, "{r}");
+    assert_eq!(r["saves"][0]["settings"]["schedule"], "off", "{r}");
+    // Text goes to the core as typed; its error names the key.
+    let r = &run["set_error"];
+    assert_eq!(r["saves"][0]["settings"]["interval_min"], "abc", "{r}");
+    assert_eq!(r["shown"]["open"], true, "{r}");
+    assert_eq!(r["shown"]["values"][0], "abc", "the typed value stays: {r}");
+    for place in ["error", "toast"] {
+        let text = r["shown"][place].as_str().unwrap();
+        assert!(text.starts_with("Not saved: "), "{r}");
+        assert!(text.contains("[ai] interval_min"), "{r}");
+    }
+    // A refused save after Confirm leaves the switch off.
+    let r = &run["set_confirm_error"];
+    assert_eq!(r["saves"], 1, "{r}");
+    assert_eq!(r["shown"]["schedule"], "false", "{r}");
+    // The toast names the file shortly; the dialog keeps the whole path.
+    assert_eq!(
+        r["shown"]["toast"], "Not saved: cannot write config.toml: Permission denied (os error 13)",
+        "{r}"
+    );
+    let path = r["shown"]["readOnly"][0].as_str().unwrap();
+    assert_eq!(
+        r["shown"]["error"],
+        format!("Not saved: cannot write {path}: Permission denied (os error 13)"),
+        "{r}"
+    );
+}
+
+#[test]
+fn a_changed_or_unreadable_file_is_read_again() {
+    let Some(run) = run_settings_page() else {
+        return;
+    };
+    let r = &run["set_outside"];
+    assert_eq!(r["gets"], 2, "{r}");
+    assert_eq!(r["refused"]["values"][0], "15", "the file's value: {r}");
+    assert!(
+        r["refused"]["error"]
+            .as_str()
+            .unwrap()
+            .contains("changed outside"),
+        "{r}"
+    );
+    assert_eq!(r["saves"][1]["base"], "newer", "{r}");
+    let r = &run["set_unreadable"];
+    assert_eq!(r["failed"]["form"], false, "{r}");
+    assert_eq!(r["failed"]["body"], false, "no empty band: {r}");
+    assert_eq!(r["retried"]["body"], true, "{r}");
+    assert_eq!(r["failed"]["save"], false, "{r}");
+    assert_eq!(r["failed"]["retry"], true, "{r}");
+    let error = r["failed"]["error"].as_str().unwrap();
+    assert!(error.contains("cannot read /x/config.toml"), "{r}");
+    assert!(error.contains("Try again"), "{r}");
+    assert_eq!(r["retried"]["form"], true, "{r}");
+    assert_eq!(r["retried"]["retry"], false, "{r}");
+    assert_eq!(r["retried"]["error"], "", "{r}");
+    assert_eq!(r["gets"], 2, "{r}");
+    let r = &run["set_close"];
+    assert_eq!(r["escaped"]["open"], false, "{r}");
+    assert_eq!(
+        r["reopened"]["values"][0], "60",
+        "the draft is dropped: {r}"
+    );
+    assert_eq!(r["closed"]["open"], false, "{r}");
+    assert_eq!(r["saves"], 0, "{r}");
+}
+
+#[test]
+fn the_page_has_the_settings_gear_dialog_and_notice() {
+    let html = std::str::from_utf8(asset("/").unwrap().1).unwrap();
+    for part in [
+        r#"id="settings-open" aria-label="Settings""#,
+        r#"id="set-dialog" role="dialog" aria-modal="true""#,
+        r#"id="ask-dialog" role="alertdialog" aria-modal="true""#,
+        ">Organize automatically<",
+        "Turn on AI first.",
+        // The tray timer is a later task: the caption claims no run.
+        "Saves your choice for timed AI runs. The timer is not built yet.",
+        "Run after each save",
+        ">Confirm</button>",
+        ">Cancel</button>",
+        r#"<script src="settings.js"></script>"#,
+    ] {
+        assert!(html.contains(part), "index.html lacks {part}");
+    }
+    // `command` and the account folder are text, never inputs.
+    for id in ["set-command", "set-account"] {
+        assert!(html.contains(&format!(r#"<dd id="{id}">"#)), "{id}");
+    }
 }

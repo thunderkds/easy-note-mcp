@@ -5,7 +5,7 @@
 //! is that of one real `claude -p --output-format json` run (2026-11-19). No test runs the real
 //! `claude` or opens the real `~/easy-notes/`, `~/.config/easy-note/` or `~/.claude*/`.
 
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::Mutex;
@@ -907,4 +907,492 @@ fn the_schedule_line_shows_every_key() {
         easy_note_mcp::surfaces::enrich::schedule_line(),
         "ai schedule: off, every 60 min, up to 20 notes per run, batch 10, jobs organize+drafts+digest, digest at 3h"
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-300: `config::save_ai_settings`, the one writer of the Settings screen (FR-048, FR-052)
+// ---------------------------------------------------------------------------------------------
+
+/// A config.toml a person wrote by hand: header, same-line and trailing comments, other tables,
+/// a key easy-note does not know, a `~` account folder and a literal-quoted string.
+const RICH: &str = r#"# easy-note settings (written by hand)
+dir = "~/notes"   # where the notes live
+capture_prefix = "/n "
+
+[ai] # the AI section
+enrich = "claude"   # on since July
+command = "/opt/claude/bin/claude" # my build
+claude_config_dir = "~/.claude-work"  # the work account
+model = 'haiku'      # cheap
+timeout_secs = 90
+after_save = false
+# how often
+interval_min = 60 # hourly
+max_per_run = 20
+future_key = "kept"
+
+[other.tool]
+name = "x"   # not ours
+
+# the last line
+"#;
+
+fn config_file(sb: &Sandbox) -> PathBuf {
+    sb.home().join(".config/easy-note/config.toml")
+}
+
+fn config_text(sb: &Sandbox) -> String {
+    std::fs::read_to_string(config_file(sb)).unwrap()
+}
+
+/// The names in the config folder: a save leaves no temp file behind.
+fn config_folder(sb: &Sandbox) -> Vec<String> {
+    names(config_file(sb).parent().unwrap())
+}
+
+fn names(folder: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(folder)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+fn changed(settings: config::AiSettings) -> config::AiSettings {
+    config::AiSettings {
+        schedule: config::Schedule::Tray,
+        interval_min: 30,
+        batch_size: 5,
+        jobs: vec![config::Job::Organize, config::Job::Drafts],
+        model: "sonnet".into(),
+        after_save: true,
+        notice_seen: Some("abc123".into()),
+        ..settings
+    }
+}
+
+#[test]
+fn save_ai_settings_changes_only_its_keys_and_keeps_every_other_byte() {
+    let sb = Sandbox::new("save-rich");
+    let _env = HomeGuard::new(&sb.home());
+    sb.config(RICH);
+    let settings = changed(config::ai_settings().unwrap());
+    config::save_ai_settings(&settings).unwrap();
+    let want = RICH
+        .replace("model = 'haiku'      # cheap", "model = \"sonnet\"      # cheap")
+        .replace("after_save = false", "after_save = true")
+        .replace("interval_min = 60 # hourly", "interval_min = 30 # hourly")
+        .replace(
+            "future_key = \"kept\"\n",
+            "future_key = \"kept\"\nschedule = \"tray\"\nbatch_size = 5\njobs = [\"organize\", \"drafts\"]\nnotice_seen = \"abc123\"\n",
+        );
+    assert_eq!(config_text(&sb), want);
+    // `command` and the unexpanded `~` account folder are the file's own bytes.
+    assert!(want.contains("claude_config_dir = \"~/.claude-work\""));
+    assert_eq!(config::ai_settings().unwrap(), settings);
+    assert_eq!(config_folder(&sb), ["config.toml"]);
+}
+
+#[test]
+fn save_ai_settings_never_writes_the_command_or_the_account_folder() {
+    let sb = Sandbox::new("save-owned");
+    let _env = HomeGuard::new(&sb.home());
+    sb.config(RICH);
+    let mut settings = config::ai_settings().unwrap();
+    settings.command = "/tmp/evil".into();
+    settings.claude_config_dir = Some("/tmp/other".into());
+    settings.timeout_secs = 5;
+    settings.digest_hour = 9;
+    config::save_ai_settings(&settings).unwrap();
+    // Only the keys the Settings screen shows are written; the absent ones are added.
+    assert_eq!(
+        config_text(&sb),
+        RICH.replace(
+            "future_key = \"kept\"\n",
+            "future_key = \"kept\"\nschedule = \"off\"\nbatch_size = 10\njobs = [\"organize\", \"drafts\", \"digest\"]\n",
+        )
+    );
+    // A file without them gets neither.
+    sb.config("[ai]\n");
+    config::save_ai_settings(&settings).unwrap();
+    let text = config_text(&sb);
+    for key in [
+        "command",
+        "claude_config_dir",
+        "timeout_secs",
+        "digest_hour",
+    ] {
+        assert!(!text.contains(key), "{key}: {text}");
+    }
+}
+
+#[test]
+fn save_ai_settings_leaves_an_unchanged_file_byte_for_byte() {
+    let sb = Sandbox::new("save-same");
+    let _env = HomeGuard::new(&sb.home());
+    // Every owned key present, each in a spelling the writer would not choose itself; the jobs
+    // in another order over several lines, with a comment inside.
+    let text = "[ai]\nenrich = 'off'\nschedule = 'off'\ninterval_min = 1_440\nmax_per_run = 0x14\nbatch_size = 10\njobs = [\n  \"digest\", # nightly\n  \"organize\",\n]\nmodel = '''haiku'''\nafter_save=false\n";
+    sb.config(text);
+    config::save_ai_settings(&config::ai_settings().unwrap()).unwrap();
+    assert_eq!(config_text(&sb), text);
+}
+
+#[test]
+fn save_ai_settings_replaces_a_changed_jobs_list_and_keeps_its_line_comment() {
+    let sb = Sandbox::new("save-jobs");
+    let _env = HomeGuard::new(&sb.home());
+    let text = "[ai]\nenrich = \"off\"\nschedule = \"off\"\ninterval_min = 60\nmax_per_run = 20\nbatch_size = 10\njobs = [\"organize\"] # just this\nmodel = \"haiku\"\nafter_save = false\n";
+    sb.config(text);
+    let mut settings = config::ai_settings().unwrap();
+    settings.jobs = vec![];
+    config::save_ai_settings(&settings).unwrap();
+    assert_eq!(
+        config_text(&sb),
+        text.replace("jobs = [\"organize\"] # just this", "jobs = [] # just this")
+    );
+}
+
+const ALL_OWNED: &str = "enrich = \"off\"\nschedule = \"off\"\ninterval_min = 60\nmax_per_run = 20\nbatch_size = 10\njobs = [\"organize\", \"drafts\", \"digest\"]\nmodel = \"haiku\"\nafter_save = false\n";
+
+#[test]
+fn save_ai_settings_creates_a_missing_file_with_only_the_ai_table() {
+    let sb = Sandbox::new("save-new");
+    let _env = HomeGuard::new(&sb.home());
+    assert!(!config_file(&sb).exists());
+    config::save_ai_settings(&config::AiSettings::default()).unwrap();
+    assert_eq!(config_text(&sb), format!("[ai]\n{ALL_OWNED}"));
+    assert_eq!(
+        config::ai_settings().unwrap(),
+        config::AiSettings::default()
+    );
+    assert_eq!(config_folder(&sb), ["config.toml"]);
+}
+
+#[test]
+fn save_ai_settings_adds_a_real_table_when_the_file_has_none() {
+    let sb = Sandbox::new("save-no-table");
+    let _env = HomeGuard::new(&sb.home());
+    let before = "# header\ndir = \"~/notes\" # mine\n\n[other]\nn = 1\n";
+    sb.config(before);
+    config::save_ai_settings(&config::AiSettings::default()).unwrap();
+    assert_eq!(config_text(&sb), format!("{before}\n[ai]\n{ALL_OWNED}"));
+}
+
+#[test]
+fn save_ai_settings_edits_an_inline_ai_table_in_place() {
+    let sb = Sandbox::new("save-inline");
+    let _env = HomeGuard::new(&sb.home());
+    sb.config("# header\nai = { enrich = \"off\", command = \"c\" } # inline\ndir = \"~/n\"\n");
+    let settings = config::AiSettings {
+        enrich: true,
+        ..config::ai_settings().unwrap()
+    };
+    config::save_ai_settings(&settings).unwrap();
+    assert_eq!(
+        config_text(&sb),
+        "# header\nai = { enrich = \"claude\", command = \"c\", schedule = \"off\", interval_min = 60, max_per_run = 20, batch_size = 10, jobs = [\"organize\", \"drafts\", \"digest\"], model = \"haiku\", after_save = false } # inline\ndir = \"~/n\"\n"
+    );
+    assert_eq!(config::ai_settings().unwrap(), settings);
+}
+
+#[test]
+fn save_ai_settings_edits_dotted_ai_keys() {
+    let sb = Sandbox::new("save-dotted");
+    let _env = HomeGuard::new(&sb.home());
+    sb.config("ai.enrich = \"off\" # dotted\nai.command = \"c\"\n");
+    let settings = config::AiSettings {
+        enrich: true,
+        ..config::ai_settings().unwrap()
+    };
+    config::save_ai_settings(&settings).unwrap();
+    let text = config_text(&sb);
+    assert!(
+        text.starts_with("ai.enrich = \"claude\" # dotted\nai.command = \"c\"\nai."),
+        "{text}"
+    );
+    assert_eq!(config::ai_settings().unwrap(), settings);
+}
+
+#[test]
+fn save_ai_settings_refuses_invalid_input_naming_the_key_and_changes_nothing() {
+    let sb = Sandbox::new("save-invalid");
+    let _env = HomeGuard::new(&sb.home());
+    sb.config(RICH);
+    let base = config::ai_settings().unwrap();
+    type Change = fn(&mut config::AiSettings);
+    let cases: [(Change, &str); 9] = [
+        (|s| s.interval_min = 0, "interval_min"),
+        (|s| s.interval_min = 4, "interval_min"),
+        (|s| s.max_per_run = 0, "max_per_run"),
+        (|s| s.max_per_run = 201, "max_per_run"),
+        (|s| s.batch_size = 51, "batch_size"),
+        (|s| (s.batch_size, s.max_per_run) = (11, 10), "batch_size"),
+        (|s| s.model = String::new(), "model"),
+        (|s| s.model = "--flag".into(), "model"),
+        (
+            |s| (s.enrich, s.schedule) = (false, config::Schedule::Tray),
+            "schedule",
+        ),
+    ];
+    for (change, key) in cases {
+        let mut settings = base.clone();
+        change(&mut settings);
+        let err = config::save_ai_settings(&settings).unwrap_err().to_string();
+        assert!(err.contains(&format!("[ai] {key}")), "{key}: {err}");
+        assert!(err.contains("config.toml"), "{key}: {err}");
+        assert_eq!(config_text(&sb), RICH, "{key} wrote");
+    }
+    assert_eq!(config_folder(&sb), ["config.toml"]);
+}
+
+#[test]
+fn save_ai_settings_refuses_a_file_it_cannot_use_and_changes_nothing() {
+    let sb = Sandbox::new("save-broken");
+    let _env = HomeGuard::new(&sb.home());
+    for (before, part) in [
+        ("[ai\nenrich = \"claude\"\n", "cannot read"),
+        ("ai = 1\n", "[ai] section"),
+        ("[[ai]]\nx = 1\n", "[ai] section"),
+        // A bad value in a key the screen does not own is the person's to fix in the file.
+        ("[ai]\ntimeout_secs = 0\n", "[ai] timeout_secs"),
+    ] {
+        sb.config(before);
+        let err = config::save_ai_settings(&config::AiSettings::default())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains(part), "{before}: {err}");
+        assert!(err.contains("config.toml"), "{before}: {err}");
+        assert!(!err.contains('\n'), "one line: {err:?}");
+        assert_eq!(config_text(&sb), before);
+    }
+}
+
+#[test]
+fn save_ai_settings_without_write_permission_is_an_error_that_names_the_file() {
+    let sb = Sandbox::new("save-denied");
+    let _env = HomeGuard::new(&sb.home());
+    sb.config("[ai]\n");
+    let folder = config_file(&sb).parent().unwrap().to_path_buf();
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let result = config::save_ai_settings(&config::AiSettings::default());
+    std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.starts_with("cannot write ") && err.contains("config.toml"),
+        "{err}"
+    );
+    assert_eq!(config_text(&sb), "[ai]\n");
+    assert_eq!(config_folder(&sb), ["config.toml"]);
+}
+
+#[test]
+fn save_ai_settings_if_refuses_a_file_changed_since_it_was_read() {
+    let sb = Sandbox::new("save-outside");
+    let _env = HomeGuard::new(&sb.home());
+    // No file, a changed file and a removed file each differ from what was read.
+    let (settings, absent) = config::ai_settings_stamped().unwrap();
+    sb.config("[ai]\nmodel = \"sonnet\"\n");
+    let err = config::save_ai_settings_if(&settings, &absent)
+        .unwrap_err()
+        .to_string();
+    assert_eq!(err, config::CHANGED_OUTSIDE);
+    assert!(err.contains("changed outside"), "{err}");
+    assert_eq!(config_text(&sb), "[ai]\nmodel = \"sonnet\"\n");
+
+    let (settings, base) = config::ai_settings_stamped().unwrap();
+    assert_ne!(base, absent);
+    sb.config("[ai]\nmodel = \"sonnet\" \n");
+    assert!(config::save_ai_settings_if(&settings, &base).is_err());
+    assert_eq!(config_text(&sb), "[ai]\nmodel = \"sonnet\" \n");
+    std::fs::remove_file(config_file(&sb)).unwrap();
+    assert!(config::save_ai_settings_if(&settings, &base).is_err());
+    assert!(!config_file(&sb).exists());
+
+    // The stamp of what is there now is accepted, once.
+    sb.config("[ai]\nmodel = \"sonnet\"\n");
+    let (mut settings, base) = config::ai_settings_stamped().unwrap();
+    settings.interval_min = 30;
+    config::save_ai_settings_if(&settings, &base).unwrap();
+    assert_eq!(config::ai_settings().unwrap().interval_min, 30);
+    assert!(config::save_ai_settings_if(&settings, &base).is_err());
+}
+
+/// Make config.toml a symlink to `to`, as a dotfiles tool does.
+fn link_config(sb: &Sandbox, to: impl AsRef<Path>) {
+    let path = config_file(sb);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    symlink(to, path).unwrap();
+}
+
+/// A folder under the sandbox root, for the file a link points to.
+fn folder(sb: &Sandbox, name: &str) -> PathBuf {
+    let folder = sb.root().join(name);
+    std::fs::create_dir_all(&folder).unwrap();
+    folder
+}
+
+/// Change the interval and save, as the Settings screen does: with the stamp of what was read.
+fn save_interval(minutes: u32) -> Result<(), String> {
+    let (mut settings, base) = config::ai_settings_stamped().map_err(|e| e.to_string())?;
+    settings.interval_min = minutes;
+    config::save_ai_settings_if(&settings, &base).map_err(|e| e.to_string())
+}
+
+fn links_to(link: &Path) -> PathBuf {
+    std::fs::read_link(link).unwrap_or_else(|e| panic!("{} is not a link: {e}", link.display()))
+}
+
+#[test]
+fn save_ai_settings_writes_through_a_relative_symlink() {
+    let sb = Sandbox::new("link-relative");
+    let _env = HomeGuard::new(&sb.home());
+    let dotfiles = folder(&sb, "home/dotfiles");
+    let target = dotfiles.join("note.toml");
+    std::fs::write(&target, "# mine\n[ai]\ninterval_min = 60 # hourly\n").unwrap();
+    // Relative to the folder of the link, not to the working directory.
+    link_config(&sb, "../../dotfiles/note.toml");
+    // The link's folder takes no new file: the temp file has to be beside the target.
+    let linked = config_file(&sb).parent().unwrap().to_path_buf();
+    std::fs::set_permissions(&linked, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let result = save_interval(30);
+    std::fs::set_permissions(&linked, std::fs::Permissions::from_mode(0o700)).unwrap();
+    result.unwrap();
+    assert_eq!(
+        links_to(&config_file(&sb)),
+        Path::new("../../dotfiles/note.toml")
+    );
+    let text = std::fs::read_to_string(&target).unwrap();
+    assert!(
+        text.starts_with("# mine\n[ai]\ninterval_min = 30 # hourly\n"),
+        "{text}"
+    );
+    assert_eq!(names(&dotfiles), ["note.toml"]);
+    assert_eq!(config_folder(&sb), ["config.toml"]);
+    // A later edit of the target is what the settings say.
+    std::fs::write(&target, "[ai]\ninterval_min = 90\n").unwrap();
+    assert_eq!(config::ai_settings().unwrap().interval_min, 90);
+}
+
+#[test]
+fn save_ai_settings_writes_through_an_absolute_symlink() {
+    let sb = Sandbox::new("link-absolute");
+    let _env = HomeGuard::new(&sb.home());
+    let dotfiles = folder(&sb, "dotfiles");
+    let target = dotfiles.join("note.toml");
+    std::fs::write(&target, "[ai]\n").unwrap();
+    link_config(&sb, &target);
+    save_interval(30).unwrap();
+    assert_eq!(links_to(&config_file(&sb)), target);
+    assert!(std::fs::symlink_metadata(&target).unwrap().is_file());
+    assert_eq!(config::ai_settings().unwrap().interval_min, 30);
+    assert!(std::fs::read_to_string(&target)
+        .unwrap()
+        .contains("interval_min = 30"));
+    assert_eq!(names(&dotfiles), ["note.toml"]);
+    assert_eq!(config_folder(&sb), ["config.toml"]);
+}
+
+#[test]
+fn save_ai_settings_follows_a_chain_of_symlinks_to_its_end() {
+    let sb = Sandbox::new("link-chain");
+    let _env = HomeGuard::new(&sb.home());
+    let (hop, end) = (folder(&sb, "hop"), folder(&sb, "end"));
+    let target = end.join("note.toml");
+    std::fs::write(&target, "[ai]\n").unwrap();
+    symlink("../end/note.toml", hop.join("next.toml")).unwrap();
+    link_config(&sb, hop.join("next.toml"));
+    save_interval(30).unwrap();
+    assert_eq!(links_to(&config_file(&sb)), hop.join("next.toml"));
+    assert_eq!(
+        links_to(&hop.join("next.toml")),
+        Path::new("../end/note.toml")
+    );
+    assert!(std::fs::read_to_string(&target)
+        .unwrap()
+        .contains("interval_min = 30"));
+    assert_eq!(names(&hop), ["next.toml"]);
+    assert_eq!(names(&end), ["note.toml"]);
+}
+
+#[test]
+fn save_ai_settings_creates_the_target_of_a_dangling_symlink() {
+    let sb = Sandbox::new("link-dangling");
+    let _env = HomeGuard::new(&sb.home());
+    let dotfiles = folder(&sb, "dotfiles");
+    let target = dotfiles.join("note.toml");
+    link_config(&sb, &target);
+    save_interval(30).unwrap();
+    assert_eq!(links_to(&config_file(&sb)), target);
+    assert!(std::fs::read_to_string(&target)
+        .unwrap()
+        .contains("interval_min = 30"));
+    assert_eq!(names(&dotfiles), ["note.toml"]);
+    assert_eq!(config_folder(&sb), ["config.toml"]);
+}
+
+#[test]
+fn save_ai_settings_refuses_a_dangling_symlink_into_a_missing_folder() {
+    let sb = Sandbox::new("link-no-folder");
+    let _env = HomeGuard::new(&sb.home());
+    let target = sb.root().join("absent/note.toml");
+    link_config(&sb, &target);
+    let err = save_interval(30).unwrap_err();
+    assert!(err.starts_with("cannot write "), "{err}");
+    for part in [config_file(&sb), target.clone()] {
+        assert!(err.contains(&part.display().to_string()), "{err}");
+    }
+    assert!(!err.contains('\n'), "one line: {err:?}");
+    assert_eq!(links_to(&config_file(&sb)), target);
+    assert!(!sb.root().join("absent").exists());
+    assert_eq!(config_folder(&sb), ["config.toml"]);
+}
+
+#[test]
+fn save_ai_settings_refuses_a_symlink_loop() {
+    let sb = Sandbox::new("link-loop");
+    let _env = HomeGuard::new(&sb.home());
+    let other = folder(&sb, "other").join("back.toml");
+    symlink(config_file(&sb), &other).unwrap();
+    link_config(&sb, &other);
+    let err = config::save_ai_settings(&config::AiSettings::default())
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("symbolic links"), "{err}");
+    assert!(
+        err.contains(&config_file(&sb).display().to_string()),
+        "{err}"
+    );
+    assert_eq!(links_to(&config_file(&sb)), other);
+    assert_eq!(links_to(&other), config_file(&sb));
+    assert_eq!(config_folder(&sb), ["config.toml"]);
+}
+
+#[test]
+fn the_notice_is_the_agreed_text_and_its_version_follows_the_text() {
+    assert_eq!(
+        config::schedule_notice("~/.claude", "haiku"),
+        "Masked note text is sent to your own claude CLI (account folder: ~/.claude, model: haiku). Nothing runs until you confirm."
+    );
+    let version =
+        |dir: &str, model: &str| config::notice_version(&config::schedule_notice(dir, model));
+    assert_eq!(version("/a", "haiku"), version("/a", "haiku"));
+    assert_ne!(version("/a", "haiku"), version("/a", "sonnet"));
+    assert_ne!(version("/a", "haiku"), version("/b", "haiku"));
+}
+
+#[test]
+fn notice_seen_is_read_as_a_string() {
+    let sb = Sandbox::new("notice-read");
+    let _env = HomeGuard::new(&sb.home());
+    assert_eq!(config::ai_settings().unwrap().notice_seen, None);
+    sb.config("[ai]\nnotice_seen = \"v\"\n");
+    assert_eq!(
+        config::ai_settings().unwrap().notice_seen.as_deref(),
+        Some("v")
+    );
+    sb.config("[ai]\nnotice_seen = 7\n");
+    let err = config::ai_settings().unwrap_err().to_string();
+    assert!(err.contains("[ai] notice_seen"), "{err}");
 }

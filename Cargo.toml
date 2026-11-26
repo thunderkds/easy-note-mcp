@@ -31,6 +31,7 @@ sha2 = "0.11.1"
 thiserror = "2.0.21"
 tokio = { version = "1", features = ["rt", "net", "time"] }
 toml = "1.2.1"
+toml_edit = { version = "0.25", default-features = false, features = ["parse", "display"] }
 regex = "1"
 url = "2"
 percent-encoding = "2"

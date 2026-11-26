@@ -16,6 +16,7 @@
 <span class="brand-name">easy-note</span>
 <span class="dir-chip" id="notes-dir" title="Notes dir"></span>
 </div>
+<button type="button" class="gear" id="settings-open" aria-label="Settings" title="Settings"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.9 1.5h2.2l.3 1.7 1.2.5 1.4-1 1.5 1.5-1 1.4.5 1.2 1.7.3v2.2l-1.7.3-.5 1.2 1 1.4-1.5 1.5-1.4-1-1.2.5-.3 1.7H6.9l-.3-1.7-1.2-.5-1.4 1-1.5-1.5 1-1.4-.5-1.2-1.7-.3V6.9l1.7-.3.5-1.2-1-1.4 1.5-1.5 1.4 1 1.2-.5z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"></path><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.3"></circle></svg></button>
 <button type="button" class="new-note" id="new-note">+ New note</button>
 </header>
 
@@ -66,12 +67,67 @@
 </div>
 </div>
 </div>
+<div class="set-back" id="set" hidden>
+<div class="set" id="set-dialog" role="dialog" aria-modal="true" aria-labelledby="set-title">
+<h2 class="set-title" id="set-title">Settings</h2>
+<div class="set-body" id="set-body">
+<p class="set-hint" id="set-loading" role="status" hidden>Reading config.toml…</p>
+<div class="set-form" id="set-form" hidden>
+<div class="set-row">
+<span class="set-text"><span class="set-label" id="set-enrich-label">AI</span><span class="set-hint" id="set-enrich-hint">Your own claude CLI adds AI detail beside your notes.</span></span>
+<button type="button" class="switch" role="switch" id="set-enrich" aria-checked="false" aria-labelledby="set-enrich-label" aria-describedby="set-enrich-hint"></button>
+</div>
+<div class="set-row">
+<span class="set-text"><span class="set-label" id="set-schedule-label">Organize automatically</span><span class="set-hint">Saves your choice for timed AI runs. The timer is not built yet.</span><span class="set-reason" id="set-schedule-reason">Turn on AI first.</span></span>
+<button type="button" class="switch" role="switch" id="set-schedule" aria-checked="false" aria-labelledby="set-schedule-label" aria-describedby="set-schedule-reason"></button>
+</div>
+<div class="set-numbers">
+<label class="set-field" for="set-interval">Minutes between runs<input class="set-input" id="set-interval" type="text" inputmode="numeric" autocomplete="off"></label>
+<label class="set-field" for="set-max">Notes per run<input class="set-input" id="set-max" type="text" inputmode="numeric" autocomplete="off"></label>
+<label class="set-field" for="set-batch">Batch size<input class="set-input" id="set-batch" type="text" inputmode="numeric" autocomplete="off"></label>
+</div>
+<fieldset class="set-jobs">
+<legend>Jobs</legend>
+<label class="set-check"><input type="checkbox" id="set-job-organize">Organize</label>
+<label class="set-check"><input type="checkbox" id="set-job-drafts">Drafts</label>
+<label class="set-check"><input type="checkbox" id="set-job-digest">Digest</label>
+</fieldset>
+<label class="set-field" for="set-model">Model<input class="set-input" id="set-model" type="text" autocomplete="off" spellcheck="false"></label>
+<label class="set-check"><input type="checkbox" id="set-after-save">Run after each save</label>
+<div class="set-file">
+<p class="set-hint">Read-only here. To change command or account folder, edit this file:</p>
+<p class="set-path" id="set-path"></p>
+<dl class="set-fixed"><dt>command</dt><dd id="set-command"></dd><dt>account folder</dt><dd id="set-account"></dd></dl>
+</div>
+</div>
+</div>
+<div class="set-foot">
+<p class="error set-error" id="set-error" role="alert" hidden></p>
+<div class="set-actions">
+<button type="button" class="act primary" id="set-save" hidden>Save</button>
+<button type="button" class="act primary" id="set-retry" hidden>Try again</button>
+<button type="button" class="act" id="set-close">Close</button>
+</div>
+</div>
+</div>
+</div>
+<div class="set-back" id="ask" hidden>
+<div class="cap ask" id="ask-dialog" role="alertdialog" aria-modal="true" aria-labelledby="ask-title" aria-describedby="ask-text">
+<h2 class="set-title" id="ask-title">Organize automatically</h2>
+<p class="ask-text" id="ask-text"></p>
+<div class="set-actions">
+<button type="button" class="act primary" id="ask-confirm">Confirm</button>
+<button type="button" class="act" id="ask-cancel">Cancel</button>
+</div>
+</div>
+</div>
 <div class="toast-live" role="status" aria-live="polite"><div class="toast" id="toast" hidden><span class="toast-text" id="toast-text"></span><button type="button" class="toast-undo" id="toast-undo" hidden>Undo</button></div></div>
 </div>
 <template id="icon-ai"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l1.6 4.9L14.5 8l-4.9 1.6L8 14.5l-1.6-4.9L1.5 8l4.9-1.6z" fill="none" stroke="#8C9590" stroke-width="1.2" stroke-linejoin="round"></path></svg></template>
 <template id="icon-stale"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5l6 11H2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path><path d="M8 7v3M8 12v.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg></template>
 <script src="ipc.js"></script>
 <script src="capture.js"></script>
+<script src="settings.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

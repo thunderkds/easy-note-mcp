@@ -1,6 +1,6 @@
 /*
  * IPC contract between this page and the Rust window (HUN-278 read, HUN-279 actions, HUN-280 capture,
- * HUN-286 edit and the initial note, HUN-288 Run AI). All of it lives in this file.
+ * HUN-286 edit and the initial note, HUN-288 Run AI, HUN-300 Settings). All of it lives in this file.
  *
  * Request (page -> Rust):
  *   window.ipc.postMessage(JSON.stringify({ req: <number>, cmd: <string>, ...args }))
@@ -18,6 +18,11 @@
  *       { "req": 8, "cmd": "add", "text": "<the typed text>", "keep_context": true }
  *       { "req": 9, "cmd": "enrich", "id": "<note id>" }
  *       { "req": 9, "cmd": "close" }   (the quick window only, HUN-289)
+ *       { "req": 10, "cmd": "settings_get" }
+ *       { "req": 11, "cmd": "settings_save", "base": "<the `base` of the settings the page loaded>",
+ *         "settings": { "enrich": "claude", "schedule": "tray", "interval_min": 60, "max_per_run": 20,
+ *                       "batch_size": 10, "jobs": ["organize"], "model": "haiku", "after_save": false },
+ *         "confirm_notice": true }
  *   The correlation key is `req`, not `id`, because `id` is already the note id in the `detail`
  *   request and in every note object of a reply.
  *
@@ -67,6 +72,18 @@
  *                     keep_context is true, else none; a secret is masked on write)
  *                     errors: "empty", "missing text", "the text is too long", "cannot use the note"
  *   close          -> no reply: the quick window closes, nothing saved. The dashboard answers "unknown command".
+ *   settings_get   -> { path, base, settings, command, account, notice: { template, confirmed_model } } (HUN-300,
+ *                     `[ai]` of config.toml). `settings` holds the eight keys of the `settings_save` example, all
+ *                     required there. `command` and `account` are shown only. `template` is the "what is sent"
+ *                     notice with `{dir}` (the `account`) and `{model}` to fill in; `confirmed_model` is the model
+ *                     whose notice was confirmed for this account, else null.
+ *                     errors: "cannot read <config.toml>: ...", "<config.toml>: [ai] <key> ..."
+ *   settings_save  -> the new `settings_get`. `confirm_notice` is true only when the person pressed Confirm on the
+ *                     notice for the sent model; the save that turns `schedule` to "tray" needs that, now or before.
+ *                     errors (nothing written): "the settings changed outside the window", "<config.toml>: [ai]
+ *                     <key> ...", "confirm the notice before Organize automatically turns on",
+ *                     "cannot read <config.toml>: ...", "cannot write <config.toml>: ...", "missing base",
+ *                     "missing settings"
  *
  * The quick window (`easy-note quick`, HUN-289) answers only `context`, `add` and `close`; any other
  * command is "unknown command". Its `context` is the chip `quick` computed (the `--cwd` folder's, or
@@ -136,6 +153,10 @@
     context: function () { return request('context'); },
     add: function (text, keepContext) { return request('add', { text: text, keep_context: !!keepContext }); },
     enrich: function (noteId) { return request('enrich', { id: noteId }); },
-    close: function () { return request('close'); }
+    close: function () { return request('close'); },
+    settingsGet: function () { return request('settings_get'); },
+    settingsSave: function (base, settings, confirmNotice) {
+      return request('settings_save', { base: base, settings: settings, confirm_notice: !!confirmNotice });
+    }
   };
 })();
