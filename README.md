@@ -203,6 +203,19 @@ Window capture: `+ New note` opens a box. Enter saves the note as `easy-note add
 context of your last note as `easy-note quick` takes it; Shift+Enter adds a line, Esc closes without saving, and
 Backspace in the empty box drops the context. The new note is selected at the top of today. Building it needs the WebKitGTK headers (Debian/Ubuntu: `sudo apt install libwebkit2gtk-4.1-dev`).
 
+Window settings: the gear button opens `Settings`, which shows and saves these `[ai]` keys of
+`~/.config/easy-note/config.toml`: `enrich` (the AI switch), `schedule` (`Organize automatically`),
+`interval_min`, `max_per_run`, `batch_size`, `jobs`, `model` and `after_save` (`Run after each save`).
+`command` and `claude_config_dir` are shown only: change them in the file. A save changes only the
+keys the screen owns, so your other keys, tables and comments stay. If the file changed after the
+window read it, nothing is saved and the screen reads the file again. Before
+`Organize automatically` turns on, the window shows what is sent (masked note text, your own
+`claude` CLI, the account folder and the model) with `Confirm` and `Cancel`. `Confirm` saves the
+screen and records `notice_seen`, so the same text is not shown again; another account folder or
+model shows it again. The switch needs the AI on. It only saves `schedule = "tray"`: the tray timer
+that would run the AI on that schedule is not built yet, so nothing runs on a timer. `easy-note
+doctor` shows the saved values (the model and `after_save` only while the AI is on).
+
 ```
 cargo install --path . --locked --features "tray window"
 easy-note dashboard
