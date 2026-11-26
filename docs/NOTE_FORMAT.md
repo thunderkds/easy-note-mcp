@@ -134,6 +134,12 @@ Round 6 adds five optional keys to the AI file: `project` ≤ 60 chars, `topic` 
 `draft_suggestion` ≤ 600, `organized_at` (ISO 8601). A file without them is valid. Every string is masked. Over a cap,
 the file is no AI file.
 
+The batch organizer (`ai run`, FR-047) writes all of these keys for each note of a batch: `title`, `summary`,
+`tags_suggested`, `model` and `based_on` as above, then `kind`, `project` (the note's `repo` when it has one), `topic`,
+`draft_reason` and `draft_suggestion` (kind `draft` only), and `organized_at`. A key with a person's override is left as
+it is. When the kind shown (the person's override, else the model's) is not `draft`, the batch removes `draft_reason`
+and `draft_suggestion` and logs the removal. A note whose AI file has `organized_at` missing or older than `at` is not yet organized.
+
 ### Overrides and the change log (round 6)
 
 Two files in `<notes dir>/.easy-note/`, neither a note, neither read by easy-personal.
@@ -148,7 +154,12 @@ Two files in `<notes dir>/.easy-note/`, neither a note, neither read by easy-per
 ```
 
 `ai-log.jsonl`, append only, one line per change: `id`, `field`, `old`, `new` (`null` = no value), `who` (`ai` or
-`person`), `at`; an undo line adds `"undo": true`. Values are masked and cut to 200 chars. `easy-note ai set <id>
+`person`), `at`; an undo line adds `"undo": true`. Values are masked and cut to 200 chars, except two cases. When a
+note already has a valid AI file, each new AI detail for it (`ai enrich`, `note_enrich`, the batch) first logs each
+`title`, `summary` and `tags_suggested` it changes (`who: ai`; tags as JSON text such as `["usb"]`). Organizing (the
+batch) first logs each `draft_reason` and `draft_suggestion` it sets, replaces or removes. The `old` value of these
+lines is whole, not cut. If these lines cannot be written, the AI file is not replaced. `ai undo` skips these five
+fields. `easy-note ai set <id>
 project|topic|kind VALUE` writes the first file and one log line; `easy-note ai undo <id>` takes back the latest change
 of a note that no later undo took back. An override of a trashed or missing note is kept and ignored; `doctor` lists
 it as an orphan. An invalid file is ignored, named by `doctor`, and never overwritten.

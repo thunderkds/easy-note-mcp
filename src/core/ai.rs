@@ -73,7 +73,8 @@ pub struct Detail {
 }
 
 /// What `organize` gives to an AI file: `None` leaves that key as it is. `organized_at` is set by
-/// the server.
+/// the server. `clear_draft` removes `draft_reason` and `draft_suggestion` (the caller sets it when
+/// the effective kind is not `draft`); it wins over the two draft values.
 #[derive(Debug, Default, Clone)]
 pub struct Organized<'a> {
     pub project: Option<&'a str>,
@@ -81,6 +82,7 @@ pub struct Organized<'a> {
     pub kind: Option<&'a str>,
     pub draft_reason: Option<&'a str>,
     pub draft_suggestion: Option<&'a str>,
+    pub clear_draft: bool,
 }
 
 /// What a caller gives `enrich`. `based_on` and `at` are set by the server, never given.
@@ -291,8 +293,10 @@ pub fn enrich(store: &Store, note_id: &str, input: &Input) -> Result<Detail, AiE
     };
     check(&detail)?;
     let (id, body) = store.raw_body(note_id)?;
-    // A re-run of `enrich` keeps what the organizer wrote.
+    // A re-run of `enrich` keeps what the organizer wrote. It logs each of title, summary and tags
+    // it changes first (option A, HUN-294); no AI file is replaced when that log cannot be written.
     if let Some(old) = load(&path(&store.root, &id)) {
+        crate::core::overrides::log_enrich_diff(store, &id, &old, &detail)?;
         detail.project = old.project;
         detail.topic = old.topic;
         detail.draft_reason = old.draft_reason;
@@ -308,8 +312,9 @@ pub fn enrich(store: &Store, note_id: &str, input: &Input) -> Result<Detail, AiE
 }
 
 /// Write the organizer keys into the AI file of a note that already has a valid one (HUN-292).
-/// Masks, checks caps and kind, sets `organized_at`, logs each changed key with `who: ai`
-/// (`overrides::log_change`), and never touches the note. Refused when the note has no AI file.
+/// Masks, checks caps and kind, sets `organized_at`, logs each changed key with `who: ai` (draft
+/// keys whole and before the write, refused when that log fails; the others after), and never
+/// touches the note. Refused when the note has no AI file.
 pub fn organize(store: &Store, note_id: &str, input: &Organized) -> Result<Detail, AiError> {
     let (id, _) = store.raw_body(note_id)?;
     let Some(mut detail) = load(&path(&store.root, &id)) else {
@@ -325,12 +330,19 @@ pub fn organize(store: &Store, note_id: &str, input: &Organized) -> Result<Detai
     };
     put(&mut detail.project, input.project);
     put(&mut detail.topic, input.topic);
-    put(&mut detail.draft_reason, input.draft_reason);
-    put(&mut detail.draft_suggestion, input.draft_suggestion);
+    if input.clear_draft {
+        detail.draft_reason = None;
+        detail.draft_suggestion = None;
+    } else {
+        put(&mut detail.draft_reason, input.draft_reason);
+        put(&mut detail.draft_suggestion, input.draft_suggestion);
+    }
     if let Some(kind) = input.kind {
         detail.kind = mask(kind);
     }
     check(&detail)?;
+    // The old draft values are logged whole first; no write when that log fails (R1, R3).
+    crate::core::overrides::log_draft_diff(store, &id, &before, &detail)?;
     detail.organized_at = Some(store.now_stamp());
     write(store, &detail)?;
     crate::core::ai_view::sync(store, &detail.id);

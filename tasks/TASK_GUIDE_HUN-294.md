@@ -49,10 +49,12 @@ Owner, chat 2026-11-25: "easy-note is the place where I only take notes; the AI 
 
 ### Requirement Fidelity Gate (sign off BEFORE implementation)
 
-- [ ] Restated intent confirmed to match the user's request
-- [ ] Domain terms align with `PROJECT_SPEC.md` glossary
-- [ ] Every Acceptance Criterion below traces to a line in the Requirement
-- [ ] All Requirement Refs exist in `PRD.md` and are covered
+- [x] Restated intent confirmed to match the user's request
+- [x] Domain terms align with `PROJECT_SPEC.md` glossary
+- [x] Every Acceptance Criterion below traces to a line in the Requirement
+- [x] All Requirement Refs exist in `PRD.md` and are covered
+
+Signed: auto (Supervisor), 2026-11-26.
 
 ---
 
@@ -77,6 +79,9 @@ Owner, chat 2026-11-25: "easy-note is the place where I only take notes; the AI 
 | 7 | Each applied field change is one `ai-log.jsonl` line (`who: ai`), so `ai undo` works per note | FR-050 |
 | 8 | A note that changed while the call ran (hash differs at write time) is skipped and stays pending | FR-047 |
 | 9 | Fixture test: raw note bytes identical after a batch; a planted secret never reaches the child's stdin, an AI file or the log | NFR-015, NFR-002 |
+| 10 | A note with no AI file is written in two steps with the functions of the overrides task: `ai::enrich` first (title, kind from the five `KINDS`, summary, tags), then `ai::organize` (project, topic, draft keys). A draft goes through `enrich` as `other`, then `organize` sets `draft`. `ai::organize` refuses a note with no AI file, so never call it first. The enriched count rule (NFR-012) is unchanged because the note gets a normal AI file | FR-047, NFR-012 |
+| 11 | The batch loads the overrides file once (`overrides::read`) and calls `ai::effective_with(store, id, &overrides)` per note, never `ai::effective` in a loop (one warning per bad file, not one per note) | FR-050 |
+| 12 | If `ai::enrich` succeeds and `ai::organize` fails for a note, the AI file stays without `organized_at`, so the note is still pending for organizing and the result says so | FR-047 |
 
 ---
 
@@ -174,4 +179,5 @@ A fake `claude` shell script that prints canned JSON, junk, or sleeps; temp note
 
 ## Questions Log
 
-* 2026-11-25 DECIDED scope and order: owner, chat 2026-11-25 ("let go")
+* 2026-11-25 DECIDED scope and order: owner, chat 2026-11-25 ("let go")* 2026-11-26 DEBATE how the batch writes a note that already has an AI file, so the change is logged → call ai::enrich with the OLD kind, then ai::organize with the new kind; check the whole item before the first write; pass None for every field with an override (Advocate 1: enrich with the old kind, then organize; Advocate 2: the same; Advocate 3: the same) ⚠ decided for you — please review
+* 2026-11-26 DECIDED by the owner: option A (log the old title, summary and tags in full, clear stale draft keys, undo in HUN-302). This replaces the settled rule "do not change `src/core/ai.rs` or `src/core/overrides.rs`" for this logging and clearing only. AC 2 and AC 3: the answer is an object `{"items": [...]}`.
