@@ -340,3 +340,65 @@ No read path shows the old title, summary or tags: the one reader, `overrides::l
 | Hardening, not a finding: removed notes keep their AI text in the log. | Say so in `docs/NOTE_FORMAT.md`, or remove a note's lines when its trash is emptied. |
 | Rejected: a model value forges a log line or an undoable field | field names are fixed in code and values are JSON-escaped (p10, p11 parse) |
 | Rejected: the new error text leaks note text | fixed words and the IO error kind only (`src/core/overrides.rs:317-322`) |
+
+---
+
+## Stage 4 review (second fix round)
+
+Reviewer: qa-expert, fresh context, from the repo only, 2026-11-26. Commit `8b44eb6d8fb220e2c80dc551e1de60689ff38b65`; reviewed in depth: `git diff 5069261..8b44eb6 -- src tests docs`, with its callers. Rules: `skills/code-review/SKILL.md`, followed by hand (no Skill tool call). Review done alone, no second agent. No source or test file changed, no fix applied. The real `claude` CLI was never started: `~/.local/bin` was removed from `PATH`, a trap `claude` script was put first, and its log stayed empty.
+
+**Verdict: pass.** No P0, no P1. R1 and R3 are fixed. 1 new P2 (N1), 1 new P3 (N2). The earlier P2 findings that this round did not target stay open.
+
+### R1 and R3
+
+| ID | Status | Evidence |
+|---|---|---|
+| R1 | fixed | `ai::organize` logs `draft_reason` and `draft_suggestion` (set, replaced, removed) with the old value whole, before the write. Tests with 600-char multibyte values pass. Mutations "cut the old value", "no draft log" and "write a second draft line" each fail tests. |
+| R3 | fixed | A failed draft log write refuses `organize`; the draft keys stay. Mutations "ignore the log error" and "log after the write" each fail a test. |
+
+### Breakage check
+
+| Area | Result |
+|---|---|
+| `ai::organize` callers | `surfaces::organize::apply` and tests only. Caps are checked before the log write, so a refused item logs nothing. With no draft change no line is written and an unwritable log does not refuse the item (as before). |
+| `ai undo` | `FIELDS` is unchanged and `latest` skips the draft lines. Probe p03 (new draft, then `todo`): undo gave kind `draft`, kind `other`, topic, project, then `nothing to undo`. |
+| Overrides | `kept` fields and `clear_draft` (effective kind) are unchanged. The override tests pass. |
+| `ai::enrich` callers | `log_enrich_diff` now goes through the shared `log_whole`; `old` is masked and whole and `new` masked and cut, as before. |
+| `log_ai_diff` | Logs project, topic and kind only; no duplicate draft line. |
+| New draft note, unwritable log | Probe p01: the item is pending, the file has kind `other`, no organizer keys and no `organized_at`; a retry with a writable log writes all keys and one line per change. |
+
+### Commands and results
+
+| Command (in the worktree unless said) | Result |
+|---|---|
+| `cargo fmt --check` | exit 0 |
+| `cargo clippy --all-targets --locked -- -D warnings` | exit 0 (cached build) |
+| `cargo test --locked` | exit 0; 28 `test result` lines, 674 passed, 0 failed, 7 ignored; `tests/organize.rs`: 21 passed |
+| Scratch copy of `8b44eb6`: probes p01 to p03 (`tests/zz_probe.rs`, fake `claude`), `cargo test --locked --offline --test zz_probe p0 -- --nocapture --test-threads=1` | 3 passed (first try did not compile: my probe called a private method) |
+| Scratch copy: 6 mutations, `cargo test --locked --offline --test organize` | M1 ignore log error: 1 failed; M2 cut old: 3 failed; M3 no draft log: 4 failed; M4 log after write: 1 failed; M5 duplicate line: 2 failed; M6 `old` not masked: survives, equivalent because both callers take `old` from `load`, which masks |
+| `python3 scripts/lane_check.py tasks/TASK_GUIDE_HUN-294.md main...8b44eb6` | `lane: C2, 11 files, 1839 lines, EXCEEDS (lines 1839 > 500); unpredicted: PRD.md, src/core/ai.rs, src/core/overrides.rs, tasks/TASK_GUIDE_HUN-294.md` (warn only) |
+| `cargo test --locked --features window,tray` | not run in this round (not in the Verification Command) |
+
+### P0 and P1
+
+None.
+
+### P2
+
+| ID | File:line | Finding and failure scenario | Conf. | Action |
+|---|---|---|---|---|
+| N1 | `PRD.md:143` (not changed in this round) | The NFR-015 exception names only the old title, summary and tags as kept in `ai-log.jsonl`. It does not name `draft_reason` and `draft_suggestion`, which `ai undo` also skips. R1 asked to add them to the HUN-302 undo scope; no committed text does so. Failure: HUN-302 is written from the PRD, restores kind `draft` and leaves the draft text lost to the user although the log holds it (probe p03: undo gives kind `draft` with no draft keys). | 75 | Name the two draft keys in the NFR-015 note and in the HUN-302 scope (with R6: HUN-302 on the board and as a HUN-295 dependency). |
+
+### P3
+
+| ID | File:line | Finding and failure scenario | Conf. | Action |
+|---|---|---|---|---|
+| N2 | `src/core/overrides.rs:359`, `src/surfaces/organize.rs:170`, `docs/NOTE_FORMAT.md:161` | In the batch `ai::enrich` writes before `ai::organize`. When only the draft log cannot be written, the reason reads `AI detail written, but organizing failed: ai-log.jsonl could not be written: is a directory; the AI file was not changed`, which contradicts itself, and the file was replaced. Probe p02: draft note edited, log unwritable, model says `todo` with the same title: `based_on` is new, `stale=false`, the old draft suggestion now looks fresh. No value is lost. The partial write itself is the open F6. | 100 | Say "the organizer keys were not changed" in the message and the doc; handle the selection with F6 in HUN-295. |
+
+### Earlier findings still open
+
+R2, R4, R5, R6 and F5 to F9 are not touched by this round. R4 (a torn log line) now also covers the whole old draft values. F5 (override set while the call runs): by reading the code, removed draft keys are now kept whole in the log, so they can be recovered by hand, not by `ai undo`.
+
+### Security: sensitive-data change
+
+Old `draft_reason` (cap 200) and `draft_suggestion` (cap 600) are now kept whole in `ai-log.jsonl` (the suggestion was cut to 200). They are masked: probe p03 put a GitHub token in a suggestion and the log holds only `[masked:github_token]`. No new reader, input path, argv or note write. The earlier lead on the log file mode is unchanged.
