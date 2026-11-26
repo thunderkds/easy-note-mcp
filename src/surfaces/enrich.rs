@@ -133,8 +133,13 @@ fn parse_output(raw: &[u8], fallback: &str) -> Result<(Answer, String), &'static
     };
     let answer: Answer =
         serde_json::from_value(answer).map_err(|_| "the answer has the wrong shape")?;
-    let model = out
-        .get("modelUsage")
+    Ok((answer, model_of(&out, fallback)))
+}
+
+/// The model id in the CLI's JSON output: the first key of `modelUsage` when it looks like an id,
+/// else `fallback`.
+pub(crate) fn model_of(out: &Value, fallback: &str) -> String {
+    out.get("modelUsage")
         .and_then(Value::as_object)
         .and_then(|usage| usage.keys().next())
         .filter(|id| {
@@ -143,12 +148,11 @@ fn parse_output(raw: &[u8], fallback: &str) -> Result<(Answer, String), &'static
                     .chars()
                     .all(|c| c.is_ascii_alphanumeric() || "-._:@/[]".contains(c))
         })
-        .map_or_else(|| fallback.to_string(), String::clone);
-    Ok((answer, model))
+        .map_or_else(|| fallback.to_string(), String::clone)
 }
 
 /// The program `command` names: a path when it holds a `/`, else the first one on `$PATH`.
-fn resolve(command: &str) -> Option<PathBuf> {
+pub(crate) fn resolve(command: &str) -> Option<PathBuf> {
     if !command.contains('/') {
         return find_in_path(command);
     }
@@ -199,10 +203,17 @@ fn login_hint(settings: &AiSettings) -> String {
     }
 }
 
-/// Run the child once with `input` on stdin; its stdout when it exits 0 in time.
-fn call(program: &Path, settings: &AiSettings, input: String) -> Result<Vec<u8>, String> {
+/// Run the child once with `input` on stdin and `schema` as its answer schema; its stdout (at most
+/// 1 MiB) when it exits 0 within `timeout`. `Err` is a fixed reason. Also the batch engine's child.
+pub(crate) fn call(
+    program: &Path,
+    settings: &AiSettings,
+    schema: &str,
+    input: String,
+    timeout: Duration,
+) -> Result<Vec<u8>, String> {
     let cwd = TempDir::new().map_err(|_| "cannot make a temp dir".to_string())?;
-    let args = argv(settings, &schema().to_string());
+    let args = argv(settings, schema);
     let mut child = Command::new(program)
         .args(&args[1..])
         .env_clear()
@@ -230,7 +241,7 @@ fn call(program: &Path, settings: &AiSettings, input: String) -> Result<Vec<u8>,
             let _ = io::copy(&mut stdout, &mut io::sink());
         });
     }
-    let status = match child.wait_timeout(Duration::from_secs(settings.timeout_secs)) {
+    let status = match child.wait_timeout(timeout) {
         Ok(Some(status)) => status,
         result => {
             let _ = child.kill();
@@ -265,7 +276,13 @@ fn enrich_one(
     // Masked on read already; masked again here, because this text leaves the machine.
     let text = guard::mask(&note.body).0;
     let input = format!("{PROMPT}\n\n<note>\n{}\n</note>\n", text.trim_end());
-    let raw = call(program, settings, input)?;
+    let raw = call(
+        program,
+        settings,
+        &schema().to_string(),
+        input,
+        Duration::from_secs(settings.timeout_secs),
+    )?;
     let (answer, model) = parse_output(&raw, &settings.model)?;
     // `ai::enrich` stamps `based_on` from the body it reads now: refuse if the person saved an
     // edit while the child ran, so no AI file is stamped fresh for text it was not written from.

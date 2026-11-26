@@ -6,6 +6,7 @@ pub mod enrich;
 pub mod hook;
 pub mod install;
 pub mod mcp;
+pub mod organize;
 pub mod quick;
 pub mod tray;
 pub mod window;

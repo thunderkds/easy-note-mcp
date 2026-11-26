@@ -134,6 +134,11 @@ Round 6 adds five optional keys to the AI file: `project` ≤ 60 chars, `topic` 
 `draft_suggestion` ≤ 600, `organized_at` (ISO 8601). A file without them is valid. Every string is masked. Over a cap,
 the file is no AI file.
 
+The batch organizer (`ai run`, FR-047) writes all of these keys for each note of a batch: `title`, `summary`,
+`tags_suggested`, `model` and `based_on` as above, then `kind`, `project` (the note's `repo` when it has one), `topic`,
+`draft_reason` and `draft_suggestion` (kind `draft` only), and `organized_at`. A key with a person's override is left as
+it is. A note whose AI file has `organized_at` missing or older than `at` is not yet organized.
+
 ### Overrides and the change log (round 6)
 
 Two files in `<notes dir>/.easy-note/`, neither a note, neither read by easy-personal.
