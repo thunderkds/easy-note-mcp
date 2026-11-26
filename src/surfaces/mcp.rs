@@ -1,8 +1,9 @@
 //! The MCP server (FR-012): seven tools and one prompt (D37) over stdio, or streamable HTTP on
 //! `127.0.0.1` only. Each tool is a thin call into the core (`store`, `query`, `context`, `guard`,
 //! `ai`). `note_add` adds one new note file (and, with `detail`, one AI file); `note_enrich` writes
-//! one AI file in `.easy-note/ai/`; no tool edits, deletes or moves a note. The prompt
-//! `enrich_notes` is fixed text: the server runs no model (DDR 0004). With `[ai] after_save`,
+//! one AI file in `.easy-note/ai/` (and its lines in `ai-log.jsonl`); no tool edits, deletes or
+//! moves a note. The prompt `enrich_notes` is fixed text: the server runs no model (DDR 0004).
+//! With `[ai] after_save`,
 //! `note_add` starts `easy-note ai enrich <id>`, which asks the person's own `claude` (DDR 0007).
 //!
 //! The tokio runtime is built here, inside `serve`, so the CLI path never starts it (NFR-010).

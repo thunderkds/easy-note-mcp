@@ -9,9 +9,11 @@
 //!   on the lines of one AI item (HUN-302): `undo` takes the lines of one `op` back together; a
 //!   line without `op` is one step. Each write of an AI file first logs an `ai_file` line whose
 //!   `old` is the whole earlier file (`null`: there was none), then one line per key that changes,
-//!   all in one write; the AI file is not replaced when that write fails. A person's values are cut
-//!   to 200 chars; the `old` value of an AI line is whole, so such a line can hold a few KiB.
-//!   Each append is one write call on an append-mode file, so a line lands whole.
+//!   all in one write; the AI file is not replaced when that write fails. An undo of an AI change
+//!   first logs the file it replaces on an `ai_replaced` line, and marks the step undone only after
+//!   the AI file is back. A person's values are cut to 200 chars; the `old` value of an AI line is
+//!   whole, so such a line can hold a few KiB. The log is created with mode 0600. Each append is
+//!   one write call, and starts a new line if an earlier one was cut short.
 //!
 //! Public API (other tasks build on these names): `read`, `set`, `undo`, `log_change`, `problems`,
 //! `Overrides`, `Undone`, `Back`, `FIELDS`; the merged view is `ai::effective`. No function here
@@ -19,7 +21,8 @@
 
 use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -37,6 +40,8 @@ const VERSION: i64 = 1;
 const LOG_VALUE: usize = 200;
 /// The field of the line that holds the whole AI file as it was before a write.
 const AI_FILE: &str = "ai_file";
+/// The field of the line that holds the AI file an undo replaces. `undo` never takes it back.
+const AI_REPLACED: &str = "ai_replaced";
 /// The keys of an AI file that a log line can name; `undo` takes each of them back.
 const AI_FIELDS: [&str; 8] = [
     "title",
@@ -233,12 +238,23 @@ fn append_all(store: &Store, lines: &[Line]) -> io::Result<()> {
         text.push('\n');
     }
     fs::create_dir_all(dir(store))?;
-    // One write call on an append-mode file: the line lands whole or not at all.
-    OpenOptions::new()
+    let mut file = OpenOptions::new()
         .create(true)
+        .read(true)
         .append(true)
-        .open(log_path(store))
-        .and_then(|mut f| f.write_all(text.as_bytes()))
+        .mode(0o600)
+        .open(log_path(store))?;
+    // A line cut short must not swallow the next one.
+    if file.metadata()?.len() > 0 {
+        let mut last = [0u8];
+        file.seek(SeekFrom::End(-1))?;
+        file.read_exact(&mut last)?;
+        if last != *b"\n" {
+            text.insert(0, '\n');
+        }
+    }
+    // One write call on an append-mode file.
+    file.write_all(text.as_bytes())
 }
 
 fn log_failed(err: &io::Error) -> AiError {
@@ -383,20 +399,27 @@ pub fn set(store: &Store, note_id: &str, field: &str, value: &str) -> Result<(),
     Ok(())
 }
 
+/// A line `undo` replays: an AI line or an undo of one, or a person's change of an override key.
 fn undoable(line: &Line) -> bool {
-    line.field == AI_FILE || AI_FIELDS.contains(&line.field.as_str())
+    let key = line.field.as_str();
+    if line.who == "ai" || line.undo {
+        key == AI_FILE || AI_FIELDS.contains(&key)
+    } else {
+        FIELDS.contains(&key)
+    }
 }
 
 /// The latest step of a note that no later undo took back, oldest line first: all lines of one
 /// `op`, else one line. The log is replayed; an undo line with an `op` takes the lines of that `op`
 /// and field, one without (a person's undo, and every undo before HUN-302) the latest of its field.
 fn latest(store: &Store, id: &str) -> Vec<Line> {
-    let Ok(text) = fs::read_to_string(log_path(store)) else {
+    let Ok(raw) = fs::read(log_path(store)) else {
         return vec![];
     };
     let mut stack: Vec<Line> = vec![];
-    for line in text.lines() {
-        let Ok(line) = serde_json::from_str::<Line>(line) else {
+    // Line by line as bytes: a line cut inside a character spoils only itself.
+    for line in raw.split(|b| *b == b'\n') {
+        let Ok(line) = serde_json::from_slice::<Line>(line) else {
             continue;
         };
         if line.id != id || !undoable(&line) {
@@ -471,47 +494,61 @@ fn undo_person(store: &Store, id: String, line: Line) -> Result<Undone, AiError>
     })
 }
 
-/// Take one AI step back. The undo lines are written first, and the `ai_file` one holds the file
-/// that is about to be replaced, so no AI text is lost when a write fails.
+/// Take one AI step back. The file about to be replaced is logged first, so no AI text is lost; the
+/// step is marked undone only after the AI file is back, so a failed undo can be run again.
 fn undo_ai(store: &Store, id: String, step: &[Line]) -> Result<Undone, AiError> {
-    // The first `ai_file` line of the item holds the state before all of it.
-    let whole = step.iter().find(|l| l.field == AI_FILE);
+    // The first line of an item holds the state before all of it.
+    let whole = step.first().filter(|l| l.field == AI_FILE);
     let plan = match whole {
         Some(line) => ai::plan_restore(store, &id, line.old.as_deref())?,
-        // A line from before HUN-302 names one key. Newest first, so the oldest value wins.
+        // A line from before HUN-302, or an item that lost its first line: key by key, newest
+        // first, so the oldest value wins.
         None => ai::plan_fields(
             store,
             &id,
             step.iter()
                 .rev()
+                .filter(|l| l.field != AI_FILE)
                 .map(|l| (l.field.as_str(), l.old.as_deref())),
         )?,
     };
-    let mut replaced = plan.replaced();
-    let lines: Vec<Line> = step
+    let line = |field: &str, old, new, undo, op| Line {
+        id: mask(&id),
+        field: field.to_string(),
+        old,
+        new,
+        who: "person".to_string(),
+        at: store.now_stamp(),
+        undo,
+        op,
+    };
+    if let Some(was) = plan.replaced() {
+        let op = step.first().and_then(|l| l.op.clone());
+        append(store, &line(AI_REPLACED, Some(was), None, false, op))
+            .map_err(|e| not_logged(&e))?;
+    }
+    let back = ai::apply_restore(store, &id, plan)
+        .map_err(|e| AiError::Refused(format!("nothing undone: {e}")))?;
+    let done: Vec<Line> = step
         .iter()
         .rev()
-        .map(|line| Line {
-            id: mask(&id),
-            field: line.field.clone(),
-            old: if line.field == AI_FILE {
-                replaced.take()
-            } else {
-                line.new.clone()
-            },
-            new: if line.field == AI_FILE {
-                None
-            } else {
-                line.old.as_deref().map(|v| cut(&mask(v)))
-            },
-            who: "person".to_string(),
-            at: store.now_stamp(),
-            undo: true,
-            op: line.op.clone(),
+        .map(|l| {
+            let new = l.old.as_deref().filter(|_| l.field != AI_FILE);
+            line(
+                &l.field,
+                l.new.clone(),
+                new.map(|v| cut(&mask(v))),
+                true,
+                l.op.clone(),
+            )
         })
         .collect();
-    append_all(store, &lines).map_err(|e| not_logged(&e))?;
-    let back = ai::apply_restore(store, &id, plan)?;
+    append_all(store, &done).map_err(|e| {
+        AiError::Refused(format!(
+            "the AI file is restored, but ai-log.jsonl could not be written: {}; run undo again",
+            e.kind()
+        ))
+    })?;
     let mut fields: Vec<String> = vec![];
     for line in step {
         if line.field != AI_FILE && !fields.contains(&line.field) {

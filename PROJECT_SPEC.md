@@ -185,7 +185,7 @@ No Frontend-Implementer in v1: the UI is the one-line OS box and a tray menu (`k
 | `note_read` | `id` (req) | full note, secrets masked; `ai` (AI detail, masked, with `stale`) when an AI file exists | No |
 | `note_stats` | filters optional | counts (FR-015), `skipped`, `enriched` | No |
 | `note_pending_enrich` | `limit≤20` | notes needing AI detail (FR-029) | No |
-| `note_enrich` | `id`, `title`, `kind`, `summary`, `tags_suggested`, `model` | `id`, `based_on` | Yes — one AI file only |
+| `note_enrich` | `id`, `title`, `kind`, `summary`, `tags_suggested`, `model` | `id`, `based_on` | Yes — one AI file, plus its lines in `ai-log.jsonl` (FR-050) |
 | `note_context` *(round 6, owner approval pending: PRD Open Question 8)* | `project`, `topic`, `limit≤10` | digest + items (FR-016 shape, plus `project`, `topic`, `kind`), `total`, `truncated`; no args = project and topic lists | No |
 | prompt `enrich_notes` | — | fixed instructions (FR-031) | — |
 

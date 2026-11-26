@@ -586,12 +586,12 @@ fn hun302_one_undo_returns_the_whole_earlier_ai_file_after_an_item() {
     }
     assert_eq!(snapshot(&sb.notes()), notes, "no note file changed");
     // The replaced AI file stays readable on the undo line.
-    let undo_line = sb
+    let kept = sb
         .log()
         .into_iter()
-        .find(|l| l["field"] == "ai_file" && l.get("undo").is_some())
+        .find(|l| l["field"] == "ai_replaced")
         .unwrap();
-    assert!(undo_line["old"].as_str().unwrap().contains("new summary"));
+    assert!(kept["old"].as_str().unwrap().contains("new summary"));
 }
 
 #[test]
@@ -764,4 +764,165 @@ fn hun302_an_item_whose_ai_file_line_is_unreadable_still_takes_back_all_its_keys
     assert_eq!(d["title"], "t");
     assert_eq!(d["summary"], "s");
     assert_eq!(d["tags_suggested"], json!([]));
+}
+
+// Fixes after the HUN-302 review ----------------------------------------------------------------
+
+use std::os::unix::fs::PermissionsExt;
+
+impl Sb {
+    fn log_path(&self) -> PathBuf {
+        self.notes().join(".easy-note/ai-log.jsonl")
+    }
+    /// Make `.easy-note/ai/` read-only (or writable again): an AI write or removal then fails.
+    fn lock_ai_dir(&self, locked: bool) {
+        let mode = if locked { 0o555 } else { 0o755 };
+        let dir = self.notes().join(".easy-note/ai");
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(mode)).unwrap();
+    }
+    /// Drop the log line at `index` (from 0).
+    fn drop_line(&self, index: usize) {
+        let log: String = std::fs::read_to_string(self.log_path())
+            .unwrap()
+            .lines()
+            .enumerate()
+            .filter(|(i, _)| *i != index)
+            .map(|(_, l)| format!("{l}\n"))
+            .collect();
+        std::fs::write(self.log_path(), log).unwrap();
+    }
+}
+
+#[test]
+fn hun302_a_failed_undo_of_a_creation_leaves_the_step_and_the_override() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    overrides::set(&sb.store(), &id, "topic", "mine").unwrap();
+    sb.item(&id, &input("t", "bug", "s", &[]), &Organized::default());
+    sb.lock_ai_dir(true);
+    let err = overrides::undo(&sb.store(), &id).unwrap_err().to_string();
+    sb.lock_ai_dir(false);
+    assert!(err.contains("nothing undone"), "{err}");
+    let done = overrides::undo(&sb.store(), &id).unwrap();
+    assert_eq!(done.back, overrides::Back::Removed, "the same step again");
+    assert_eq!(
+        ai::effective(&sb.store(), &id).topic.as_deref(),
+        Some("mine")
+    );
+}
+
+#[test]
+fn hun302_a_failed_restore_does_not_skip_an_earlier_ai_state() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    sb.item(&id, &input("one", "bug", "s1", &[]), &Organized::default());
+    let first = sb.detail(&id);
+    sb.item(&id, &input("two", "idea", "s2", &[]), &Organized::default());
+    sb.lock_ai_dir(true);
+    assert!(overrides::undo(&sb.store(), &id).is_err());
+    sb.lock_ai_dir(false);
+    overrides::undo(&sb.store(), &id).unwrap();
+    assert_eq!(sb.detail(&id), first);
+}
+
+#[test]
+fn hun302_a_torn_line_does_not_take_the_next_items_first_line_with_it() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    sb.item(&id, &input("one", "bug", "s1", &[]), &Organized::default());
+    let first = sb.detail(&id);
+    // An append cut short, inside a multi-byte character: no newline at the end.
+    let mut log = std::fs::read(sb.log_path()).unwrap();
+    log.extend_from_slice(b"{\"id\":\"x\",\"old\":\"\xc3");
+    std::fs::write(sb.log_path(), log).unwrap();
+    sb.item(&id, &input("two", "idea", "s2", &[]), &Organized::default());
+    overrides::undo(&sb.store(), &id).unwrap();
+    assert_eq!(sb.detail(&id), first);
+    overrides::undo(&sb.store(), &id).unwrap();
+    assert!(!sb.ai_file(&id).exists());
+}
+
+#[test]
+fn hun302_without_its_first_line_an_item_is_undone_key_by_key_and_the_replaced_file_is_kept() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    sb.item(&id, &input("one", "bug", "s1", &[]), &Organized::default());
+    let long = "n".repeat(600);
+    let moved = Organized {
+        project: Some("work"),
+        kind: Some("todo"),
+        ..Organized::default()
+    };
+    let before = sb.log().len();
+    sb.item(&id, &input("two", "idea", &long, &[]), &moved);
+    // Only the first line of the second item is lost; its second `ai_file` line stays.
+    assert_eq!(sb.log()[before]["field"], "ai_file");
+    sb.drop_line(before);
+    overrides::undo(&sb.store(), &id).unwrap();
+    let d = sb.detail(&id);
+    assert_eq!(d["title"], "one");
+    assert_eq!(d["summary"], "s1");
+    assert_eq!(d["kind"], "bug");
+    assert!(d.get("project").is_none());
+    assert!(
+        std::fs::read_to_string(sb.log_path())
+            .unwrap()
+            .contains(&long),
+        "the replaced summary is still whole in the log"
+    );
+}
+
+#[test]
+fn hun302_two_lines_of_one_key_in_an_item_give_back_the_oldest_value() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    sb.enrich(&id, "other");
+    let line = |old: &str, new: &str| {
+        json!({"id": id, "field": "kind", "old": old, "new": new, "who": "ai",
+            "at": "2026-11-26T10:00:00+07:00", "op": "x"})
+        .to_string()
+            + "\n"
+    };
+    std::fs::write(sb.log_path(), line("bug", "idea") + &line("idea", "other")).unwrap();
+    overrides::undo(&sb.store(), &id).unwrap();
+    assert_eq!(sb.detail(&id)["kind"], "bug");
+}
+
+#[test]
+fn hun302_a_logged_earlier_file_is_masked_when_it_comes_back() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    sb.enrich(&id, "bug");
+    sb.enrich(&id, "todo");
+    let log = std::fs::read_to_string(sb.log_path()).unwrap().replace(
+        "\\\"summary\\\":\\\"s\\\"",
+        &format!("\\\"summary\\\":\\\"{GITHUB}\\\""),
+    );
+    assert!(log.contains(GITHUB));
+    std::fs::write(sb.log_path(), log).unwrap();
+    overrides::undo(&sb.store(), &id).unwrap();
+    let file = std::fs::read_to_string(sb.ai_file(&id)).unwrap();
+    assert!(
+        !file.contains(GITHUB) && file.contains("[masked:"),
+        "{file}"
+    );
+}
+
+#[test]
+fn hun302_the_log_is_private_and_a_foreign_person_line_is_skipped() {
+    let sb = Sb::new();
+    let id = sb.add("a note");
+    sb.enrich(&id, "bug");
+    let mode = std::fs::metadata(sb.log_path())
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o600);
+    let foreign = json!({"id": id, "field": "title", "old": "x", "new": "y", "who": "person",
+        "at": "2026-11-26T10:00:00+07:00"});
+    let log = std::fs::read_to_string(sb.log_path()).unwrap() + &foreign.to_string() + "\n";
+    std::fs::write(sb.log_path(), log).unwrap();
+    let done = overrides::undo(&sb.store(), &id).unwrap();
+    assert_eq!(done.back, overrides::Back::Removed);
+    assert!(!sb.overrides_file().exists());
 }
