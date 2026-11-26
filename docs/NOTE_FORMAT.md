@@ -137,7 +137,8 @@ the file is no AI file.
 The batch organizer (`ai run`, FR-047) writes all of these keys for each note of a batch: `title`, `summary`,
 `tags_suggested`, `model` and `based_on` as above, then `kind`, `project` (the note's `repo` when it has one), `topic`,
 `draft_reason` and `draft_suggestion` (kind `draft` only), and `organized_at`. A key with a person's override is left as
-it is. A note whose AI file has `organized_at` missing or older than `at` is not yet organized.
+it is. When the kind shown (the person's override, else the model's) is not `draft`, the batch removes `draft_reason`
+and `draft_suggestion` and logs the removal. A note whose AI file has `organized_at` missing or older than `at` is not yet organized.
 
 ### Overrides and the change log (round 6)
 

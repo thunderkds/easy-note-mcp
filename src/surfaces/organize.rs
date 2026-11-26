@@ -131,6 +131,10 @@ fn apply(
     let mine = all.notes.get(&sent.id);
     let has = |field: &str| mine.is_some_and(|m| m.contains_key(field));
     let kept: Vec<&'static str> = overrides::FIELDS.into_iter().filter(|f| has(f)).collect();
+    // The kind a person sees: their override, else the model's. Not a draft: no draft keys (F2).
+    let shown_kind = mine
+        .and_then(|m| m.get("kind"))
+        .map_or(checked.kind.as_str(), String::as_str);
     // A note with no AI file: a draft goes through `enrich` as `other` (AC 10).
     let enrich_kind = ai::read(store, &sent.id).map_or_else(
         || match checked.kind.as_str() {
@@ -160,6 +164,7 @@ fn apply(
             kind: (!has("kind")).then_some(checked.kind.as_str()),
             draft_reason: checked.draft_reason.as_deref(),
             draft_suggestion: checked.draft_suggestion.as_deref(),
+            clear_draft: shown_kind != "draft",
         },
     )
     .map_err(|e| format!("AI detail written, but organizing failed: {}", reason(e)))?;

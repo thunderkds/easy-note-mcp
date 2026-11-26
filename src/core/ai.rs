@@ -73,7 +73,8 @@ pub struct Detail {
 }
 
 /// What `organize` gives to an AI file: `None` leaves that key as it is. `organized_at` is set by
-/// the server.
+/// the server. `clear_draft` removes `draft_reason` and `draft_suggestion` (the caller sets it when
+/// the effective kind is not `draft`); it wins over the two draft values.
 #[derive(Debug, Default, Clone)]
 pub struct Organized<'a> {
     pub project: Option<&'a str>,
@@ -81,6 +82,7 @@ pub struct Organized<'a> {
     pub kind: Option<&'a str>,
     pub draft_reason: Option<&'a str>,
     pub draft_suggestion: Option<&'a str>,
+    pub clear_draft: bool,
 }
 
 /// What a caller gives `enrich`. `based_on` and `at` are set by the server, never given.
@@ -327,8 +329,13 @@ pub fn organize(store: &Store, note_id: &str, input: &Organized) -> Result<Detai
     };
     put(&mut detail.project, input.project);
     put(&mut detail.topic, input.topic);
-    put(&mut detail.draft_reason, input.draft_reason);
-    put(&mut detail.draft_suggestion, input.draft_suggestion);
+    if input.clear_draft {
+        detail.draft_reason = None;
+        detail.draft_suggestion = None;
+    } else {
+        put(&mut detail.draft_reason, input.draft_reason);
+        put(&mut detail.draft_suggestion, input.draft_suggestion);
+    }
     if let Some(kind) = input.kind {
         detail.kind = mask(kind);
     }

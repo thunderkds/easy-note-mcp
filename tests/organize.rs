@@ -807,3 +807,67 @@ fn enrich_does_not_replace_the_ai_file_when_its_log_line_cannot_be_written() {
         "the AI file is not changed"
     );
 }
+
+// F2 (option A): draft keys go when the effective kind is not `draft`
+
+#[test]
+fn a_finished_draft_loses_its_draft_keys_and_the_removal_is_logged() {
+    let sb = Sb::new();
+    let a = sb.add("half a thought about");
+    let mut draft = item(&a, "draft");
+    draft["draft_reason"] = json!("it stops mid-sentence");
+    draft["draft_suggestion"] = json!("half a thought about the tray icon");
+    sb.answer(&json!([draft.clone()]));
+    sb.run(&[&a]).unwrap();
+    assert_eq!(
+        sb.ai_file(&a).unwrap()["draft_reason"],
+        "it stops mid-sentence"
+    );
+
+    // The person finishes the note; the next batch says `todo`.
+    let note = sb.note_path(&a);
+    let text = std::fs::read_to_string(&note).unwrap();
+    std::fs::write(&note, text.replace("about", "about the tray icon")).unwrap();
+    let before = sb.log().len();
+    sb.answer(&json!([item(&a, "todo")]));
+    let out = sb.run(&[&a]).unwrap();
+    assert_eq!(out.written.len(), 1, "{out:?}");
+    let f = sb.ai_file(&a).unwrap();
+    assert_eq!(f["kind"], "todo");
+    assert!(f.get("draft_reason").is_none(), "{f}");
+    assert!(f.get("draft_suggestion").is_none(), "{f}");
+    let ai_lines = sb.log()[before..].to_vec();
+    for (field, old) in [
+        ("draft_reason", "it stops mid-sentence"),
+        ("draft_suggestion", "half a thought about the tray icon"),
+    ] {
+        assert!(
+            ai_lines
+                .iter()
+                .any(|l| l["field"] == field && l["old"] == old && l["new"].is_null()),
+            "{field}: {ai_lines:?}"
+        );
+    }
+
+    // A person's kind `draft` is the effective kind: the draft keys stay.
+    let b = sb.add("another half");
+    sb.answer(&json!([draft_of(&b)]));
+    sb.run(&[&b]).unwrap();
+    overrides::set(&sb.store(), &b, "kind", "draft").unwrap();
+    let note = sb.note_path(&b);
+    let text = std::fs::read_to_string(&note).unwrap();
+    std::fs::write(&note, format!("{text}more\n")).unwrap();
+    sb.answer(&json!([item(&b, "todo")]));
+    sb.run(&[&b]).unwrap();
+    assert_eq!(
+        sb.ai_file(&b).unwrap()["draft_reason"],
+        "it stops mid-sentence"
+    );
+}
+
+fn draft_of(id: &str) -> Value {
+    let mut draft = item(id, "draft");
+    draft["draft_reason"] = json!("it stops mid-sentence");
+    draft["draft_suggestion"] = json!("a completion");
+    draft
+}
