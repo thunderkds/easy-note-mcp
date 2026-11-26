@@ -59,7 +59,7 @@ Paused: auto-mode check failed — no `Memory:` line in the report — run the m
 | Verification command run | ☑ pass | Full guide command on the source committed as `c2f6101` (run just before the commit, no source change between), 2026-11-26T11:15:45 to 11:25:53 +07:00, with `CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0`: `VERIFY EXIT 0`; fmt and both clippy runs clean; default features 655 passed, 0 failed, 7 ignored; `window,tray` 664 passed, 0 failed, 7 ignored |
 | Negative cases hold | ☑ pass | Red run before the implementation: cli 0 passed 3 failed, the new mcp test failed, the 4 new window tests failed. Mutation for AC 4 (a `store.update` call added at the top of `ai::enrich`, then of `ai::organize`): `git diff --stat` showed `src/core/ai.rs`, 1 insertion each time, and `ai_runs_never_set_updated_and_accept_ai_does` FAILED on `byte for byte` both times. After the revert the diff of `src/core/ai.rs` is empty and the test passes. Output below the table |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Stage 4 reviewer, `main...89ceb0e`. Reviewed: the 13 changed files; callers `src/surfaces/mcp.rs` (list, search, read), `src/surfaces/tray.rs` (`recent`, `relative`), `src/core/format.rs` (time check), `src/core/store.rs` (clock, `update`, inbox notes), `src/surfaces/cli.rs`; docs sweep of README, RUNBOOK, `docs/NOTE_FORMAT.md`, `PROJECT_SPEC.md`, `PRD.md` FR lines. Skipped: the rest of the repo (no caller of the changed code found there); screenshots and the event trace, which are outside this worktree |
 | Full smoke suite still green (no regression) | ☑ pass | The whole `cargo test --locked` suite in both feature sets: 0 failed (verification row) |
 | **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
 | **UI: Visual regression (diff or verdict pasted)** | ☑ pass | Headless Chrome, stub IPC fed real `window::api::handle` answers (easy-ui not used), before and after at 375 and 1280 px, in `/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-easy-note-mcp/df0fca59-a759-4a06-a24b-092db63ce7d8/scratchpad/hun291/ux/`. `edited 2h ago` shows beside the time on the edited row only; the never-edited row has no such text; the detail shows the full stamp; row height 57 px before and after. Also rendered in WebKitGTK 2.52.6 (`webkit-375.png`, `webkit-1280.png`) |
@@ -176,3 +176,59 @@ notes/2026/11/20261126-112842-f00d.md:updated: "2026-11-26T11:28:44+07:00"
 **DELTA**: A person now sees which notes were edited, and when, in `ls`, `search`, MCP list and search, and the dashboard window.
 
 **WITNESS**: Run by the HUN-291 implementer and recorded in `memory/event-trace/HUN-291.jsonl` of the main checkout (BEFORE record 2026-11-26T04:08:26Z; AFTER output stamped 2026-11-26T11:28:41+07:00). No second party has witnessed it yet.
+
+---
+
+## Stage 4 review
+
+Reviewer: HUN-291, fresh context, 2026-11-26. Commit `89ceb0e63fca213266afd07d6b64f1454f714d15`, diff `main...89ceb0e`. Risk Low, so no `security-review` run.
+
+**Verdict: pass. P0 0, P1 0, P2 1, P3 6. No source or test file changed, no fix applied.** One clause of AC 2 (`--json`) has nothing to check (P2 below); the Supervisor must amend or waive it.
+
+`lane_check`: `lane: C1, 12 files, 464 lines, EXCEEDS (files 12 > 6; lines 464 > 250); unpredicted: src/surfaces/window/assets/app.css, src/surfaces/window/assets/app.js, src/surfaces/window/assets/ipc.js, tasks/TASK_GUIDE_HUN-291.md` (warn only: the task may be under-labelled).
+
+### Acceptance Criteria
+
+| AC | Result | Code and test |
+|----|--------|---------------|
+| 1 | met | `src/surfaces/cli/read.rs` `print_page`; `ls_and_search_show_edited_only_on_an_edited_note` compares both whole lines for `ls` and `search` |
+| 2 | met for every output that exists; the `--json` clause cannot be met or checked | `NoteItem.updated` is skipped when absent; `note_read` returns all front matter; `list_search_and_read_carry_updated_only_when_the_note_has_it`. See P2 |
+| 3 | met | `add_edited` in `src/surfaces/window/api.rs`, `renderRow` / `renderDetail` in `app.js`; `hun291_board_and_detail_carry_updated_only_on_the_edited_note`, `hun291_the_page_shows_edited_on_the_row_and_the_full_stamp_in_the_detail` |
+| 4 | met | `ai_runs_never_set_updated_and_accept_ai_does` (fake `claude`): `ai enrich`, `ai::organize`, `ai set`, `ai undo` leave the bytes equal; `tag --accept-ai` sets `updated`. There is no batch run command yet, so the batch organizer is covered at its writer only |
+| 5 | met | `set_back` and the negative-age branch in `src/core/query.rs`; `hun291_an_updated_before_created_shows_the_stamp_in_the_window` (set back), `an_updated_before_created_or_in_the_future_shows_the_local_stamp` (future) |
+
+Entry points (`ls`, `search`, `show`, `note_list`, `note_search`, `note_read`, `board`, `detail`) all reach the change; `show` is unchanged and already prints `updated`.
+
+### Findings
+
+| Sev | Where | Finding and failure scenario | Conf | Action |
+|-----|-------|------------------------------|------|--------|
+| P2 | `tasks/TASK_GUIDE_HUN-291.md` AC 2; `src/surfaces/cli.rs:136`, `:144` | AC 2 names "`--json` output", but `ls` and `search` have no `--json`: both print `error: unexpected argument '--json' found`. Only `stats --json` exists and it holds no note items. Scenario: a script written from AC 2 runs `easy-note ls --json` and fails. No record in the guide or in Auto decisions says the clause was dropped. PRD FR-046 and FR-016 do not ask for the flag | 100 | Supervisor: remove or waive the clause and record it; a new flag needs its own request |
+| P3 | `tests/cli.rs:1385-1392` | The set-back case uses `updated` 2020-01-01, more than 30 days old, so it prints a date without the `set_back` rule. Scenario: delete the filter at `src/core/query.rs:368` and this test still passes; only the window test fails | 100 | Use a recent `created` and an earlier `updated` |
+| P3 | `tests/window_api.rs:1224` | Comment says that with `details` "the HUN-286 edit scenarios run too"; the harness now needs `roles` for them. Scenario: a caller passes notes only and expects edit results that are never produced | 100 | Say that `roles` is needed |
+| P3 | `src/core/query.rs:377`; `src/surfaces/tray.rs:121` | Two relative-time helpers with two wordings: the tray shows `5 min ago` (age of `created`), the new text shows `5m ago`. Scenario: a later change to the units reaches only one of them | 75 | Optional: one helper, or leave both on purpose |
+| P3 | `src/surfaces/window/assets/app.js:632` (older behavior) | A focus refresh reloads the board, not the open detail. Scenario: note open in the window, `easy-note edit` in a terminal, focus the window: the row says `edited just now`, the panel has no stamp until the row is clicked again | 100 | Optional follow-up |
+| P3 | `app.css` (older, from `ux-evaluate`) | Touch targets under 44px at 375 px (check B-d). Rules unchanged by this diff | 75 | Optional; the real window is at least 800x560 (`mod.rs:483`) |
+| P3 | `app.css` (older, from `ux-evaluate`) | Row title is 14px at 375 px, under 16px (check B-e). Unchanged by this diff | 100 | Optional |
+
+Not checked: the `Startup reads:` line of the implementer's final report (the report is not in the repo); `ux-evaluate` was not run again (this reviewer had no Skill tool), its table above was read and checked against the CSS.
+
+### UI Evidence rows against the code
+
+- Visual regression, responsiveness: re-measured with headless Chrome, a stub IPC and 5 hand-made rows, assets of `89ceb0e` at 375, 481, 800 and 1280 px, assets of `main` at 375 px. Every row is 57px (also on `main`); no `edited …` text is cut; the full stamp is on one line inside the panel; no horizontal scroll. The recorded rows hold. The narrow rule (`max-width: 480px`) also moves the second line of never-edited rows under the chip; it never applies in the real window (minimum 800px).
+- Design system: the new CSS adds no color or font. `.row-where` is `#8C9590` (token `text-muted`), `.context` is `#ABB3AE` (`text-2`), as recorded.
+- WebKitGTK screenshots and the recorded screenshot files were not opened (outside the repo). The guide named easy-ui; the row says headless Chrome was used.
+
+### Commands run at `89ceb0e`
+
+Run with a temp `HOME` and `XDG_CONFIG_HOME`, no `DISPLAY` or `WAYLAND_DISPLAY`, `CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0`, and a trap `claude` first on `PATH` (`~/.local/bin` removed). The trap was never called.
+
+```
+cargo fmt --check                                                        FMT_OK (exit 0)
+cargo clippy --all-targets --locked -- -D warnings                       CLIPPY_DEFAULT_OK (exit 0)
+cargo test --locked                                                      EXIT 0   passed 655 failed 0 ignored 7 suites 27
+cargo clippy --all-targets --locked --features window,tray -- -D warnings   CLIPPY EXIT 0
+cargo test --locked --features window,tray                               TEST EXIT 0   passed 664 failed 0 ignored 7 suites 27
+```
+
+The nine new tests passed (`ago_changes_unit_at_each_boundary`, three in `tests/cli.rs`, one in `tests/mcp.rs`, four `hun291_*`). Red run and mutation runs were not repeated.
