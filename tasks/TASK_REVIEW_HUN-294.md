@@ -55,16 +55,16 @@ Paused: auto-mode check failed — no `Memory:` line in the report — run the m
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☐ pass / ☐ fail | [test file path(s) — required before Done] |
-| Verification command run | ☐ pass / ☐ fail | [paste actual output] |
-| Negative cases hold | ☐ pass / ☐ fail | [paste the red run against the prior content, or the mutation diff (`git diff --stat`, non-empty) before each verdict] |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/organize.rs` (13 tests, AC 1–10, 12 and the settled-decision test) and `src/core/organize.rs` unit tests (6: timeout scale, top-50 lists, prompt mask/cut/cap, array schema, item check table, mask before caps). `cargo test --locked --test organize`: `test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.31s`; lib: `test result: ok. 74 passed; 0 failed` (includes the 6 `core::organize::tests`). AC 11 (overrides read once) is by code: `run_batch` calls `overrides::read` once and `ai::effective_with` per note, no test of the stderr count |
+| Verification command run | ☑ pass | `cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked` at `49eafa0` content: `exit=0`; every binary `test result: ok`, e.g. `tests/organize.rs ... 13 passed`, `tests/enrich.rs ... 28 passed`, `tests/overrides.rs ... 16 passed`, `tests/leak.rs ... 46 passed`, `tests/window_api.rs ... 93 passed; 1 ignored`, lib `74 passed`; no clippy warning |
+| Negative cases hold | ☑ pass | Red first: before the module existed `cargo test --locked --test organize` gave `error[E0432]: unresolved import easy_note_mcp::surfaces::organize`. Mutations of `src/surfaces/organize.rs`, each `1 file changed, 1 insertion(+), 1 deletion(-)`, then restored (`cmp` equal): M1 enrich gets the new kind instead of the old -> `a_stale_file_kind_change_is_logged_and_undone ... FAILED`, `with_a_kind_override_the_ai_kind_and_the_overrides_file_stay ... FAILED`; M2 body-hash recheck removed -> `a_note_edited_while_the_call_ran_is_skipped ... FAILED`; M3 kind override ignored -> `with_a_kind_override_the_ai_kind_and_the_overrides_file_stay ... FAILED` |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
-| Full smoke suite still green (no regression) | ☐ pass / ☐ fail | |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Self-review by the implementer only (no Stage 4 reviewer yet): new `src/core/organize.rs`, `src/surfaces/organize.rs`, `tests/organize.rs`; `src/surfaces/enrich.rs` change is visibility plus `call` taking the schema and timeout and `model_of` split out, covered by the unchanged `tests/enrich.rs` (28 passed). `src/core/ai.rs`, `src/core/overrides.rs`, `src/core/store.rs`, `src/core/guard.rs` not changed |
+| Full smoke suite still green (no regression) | ☑ pass | Full `cargo test --locked` green, see the Verification row (all 27 test binaries `ok`) |
 | **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
-| **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☐ N/A | [screenshot path or LLM verdict — required for UI tasks, Hard-Stop Gate 6] |
-| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☐ N/A | [method used + output] |
-| **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☐ N/A | [viewports tested, any overflow findings] |
+| **UI: Visual regression (diff or verdict pasted)** | ☐ N/A | The task has no UI: a core module and a library entry point only |
+| **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ N/A | The task has no UI |
+| **UI: Responsiveness at target viewports** | ☐ N/A | The task has no UI |
 
 ---
 
@@ -113,9 +113,33 @@ tray.rs
 no organize module or run_batch in src
 ```
 
-**AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
+**AFTER**: captured by backend-developer after the change, with `date -u; ls src/core/organize.rs src/surfaces/organize.rs tests/organize.rs; grep -rn "pub fn run_batch\|^pub mod organize" src; cargo test --locked --test organize`:
 
-**DELTA**: [one sentence — what a user can now do that they could not before]
+```
+2026-11-26T04:25:09Z
+src/core/organize.rs
+src/surfaces/organize.rs
+tests/organize.rs
+src/core/mod.rs:11:pub mod organize;
+src/surfaces/organize.rs:167:pub fn run_batch(store: &Store, settings: &AiSettings, ids: &[String]) -> Result<Outcome, String> {
+src/surfaces/mod.rs:9:pub mod organize;
+test a_failed_call_junk_or_a_timeout_writes_nothing ... ok
+test a_field_with_an_override_is_kept_and_reported ... ok
+test a_huge_answer_is_read_to_1_mib_and_fails ... ok
+test a_good_array_for_three_notes_writes_three_ai_files_and_log_lines ... ok
+test a_stale_file_kind_change_is_logged_and_undone ... ok
+test a_note_edited_while_the_call_ran_is_skipped ... ok
+test each_item_is_checked_alone_and_a_bad_one_leaves_only_its_note_pending ... ok
+test an_answer_that_fails_the_array_schema_writes_nothing ... ok
+test raw_notes_stay_byte_identical_and_a_secret_never_reaches_stdin_ai_files_or_the_log ... ok
+test the_prompt_holds_the_lists_and_the_cut_masked_notes_within_the_cap ... ok
+test when_organize_fails_after_enrich_the_note_is_still_pending_for_organizing ... ok
+test with_a_kind_override_the_ai_kind_and_the_overrides_file_stay ... ok
+test with_enrich_off_nothing_runs ... ok
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.31s
+```
+
+**DELTA**: `surfaces::organize::run_batch` now sends up to `batch_size` pending notes to the person's `claude` in one call and writes each good answer item to its AI file (title, kind, summary, project, topic, tags, draft keys), leaving only bad items pending; before, no batch engine existed.
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/Txxx.jsonl`, never the
 implementing agent alone]
