@@ -154,10 +154,11 @@ Two files in `<notes dir>/.easy-note/`, neither a note, neither read by easy-per
 ```
 
 `ai-log.jsonl`, append only, one line per change: `id`, `field`, `old`, `new` (`null` = no value), `who` (`ai` or
-`person`), `at`; an undo line adds `"undo": true`. Values are masked and cut to 200 chars, except one case. When a
+`person`), `at`; an undo line adds `"undo": true`. Values are masked and cut to 200 chars, except two cases. When a
 note already has a valid AI file, each new AI detail for it (`ai enrich`, `note_enrich`, the batch) first logs each
-`title`, `summary` and `tags_suggested` it changes (`who: ai`; tags as JSON text such as `["usb"]`). The `old` value of
-these lines is whole, not cut. If these lines cannot be written, the AI file is not replaced. `ai undo` skips these three
+`title`, `summary` and `tags_suggested` it changes (`who: ai`; tags as JSON text such as `["usb"]`). Organizing (the
+batch) first logs each `draft_reason` and `draft_suggestion` it sets, replaces or removes. The `old` value of these
+lines is whole, not cut. If these lines cannot be written, the AI file is not replaced. `ai undo` skips these five
 fields. `easy-note ai set <id>
 project|topic|kind VALUE` writes the first file and one log line; `easy-note ai undo <id>` takes back the latest change
 of a note that no later undo took back. An override of a trashed or missing note is kept and ignored; `doctor` lists

@@ -312,8 +312,9 @@ pub fn enrich(store: &Store, note_id: &str, input: &Input) -> Result<Detail, AiE
 }
 
 /// Write the organizer keys into the AI file of a note that already has a valid one (HUN-292).
-/// Masks, checks caps and kind, sets `organized_at`, logs each changed key with `who: ai`
-/// (`overrides::log_change`), and never touches the note. Refused when the note has no AI file.
+/// Masks, checks caps and kind, sets `organized_at`, logs each changed key with `who: ai` (draft
+/// keys whole and before the write, refused when that log fails; the others after), and never
+/// touches the note. Refused when the note has no AI file.
 pub fn organize(store: &Store, note_id: &str, input: &Organized) -> Result<Detail, AiError> {
     let (id, _) = store.raw_body(note_id)?;
     let Some(mut detail) = load(&path(&store.root, &id)) else {
@@ -340,6 +341,8 @@ pub fn organize(store: &Store, note_id: &str, input: &Organized) -> Result<Detai
         detail.kind = mask(kind);
     }
     check(&detail)?;
+    // The old draft values are logged whole first; no write when that log fails (R1, R3).
+    crate::core::overrides::log_draft_diff(store, &id, &before, &detail)?;
     detail.organized_at = Some(store.now_stamp());
     write(store, &detail)?;
     crate::core::ai_view::sync(store, &detail.id);

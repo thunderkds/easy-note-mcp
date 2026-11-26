@@ -890,3 +890,116 @@ fn a_note_in_a_62_char_repo_is_organized_with_the_repo_cut_to_the_cap() {
     assert_eq!(project.chars().count(), ai::MAX_PROJECT);
     assert!(repo.starts_with(&project), "{project}");
 }
+
+// R1 / R3: old draft values are logged whole, once, before the AI file is replaced
+
+fn long_draft(id: &str, title: &str, suggestion: &str) -> Value {
+    let mut draft = item(id, "draft");
+    draft["title"] = json!(title);
+    draft["draft_reason"] = json!("理由".repeat(100));
+    draft["draft_suggestion"] = json!(suggestion);
+    draft
+}
+
+fn lines_for<'a>(lines: &'a [Value], field: &str) -> Vec<&'a Value> {
+    lines.iter().filter(|l| l["field"] == field).collect()
+}
+
+#[test]
+fn a_cleared_600_char_draft_suggestion_is_logged_whole_once() {
+    let sb = Sb::new();
+    let a = sb.add("half a thought about");
+    let long = "日本語の".repeat(150);
+    assert_eq!(long.chars().count(), 600);
+    sb.answer(&json!([long_draft(&a, "t", &long)]));
+    sb.run(&[&a]).unwrap();
+    assert_eq!(sb.ai_file(&a).unwrap()["draft_suggestion"], long.as_str());
+    let before = sb.log().len();
+    let mut todo = item(&a, "todo");
+    todo["title"] = json!("t");
+    sb.answer(&json!([todo]));
+    assert_eq!(sb.run(&[&a]).unwrap().written.len(), 1);
+    let f = sb.ai_file(&a).unwrap();
+    assert!(f.get("draft_suggestion").is_none(), "{f}");
+    let lines = sb.log()[before..].to_vec();
+    let sug = lines_for(&lines, "draft_suggestion");
+    assert_eq!(sug.len(), 1, "exactly one line: {lines:?}");
+    assert_eq!(sug[0]["old"], long.as_str(), "the old value is whole");
+    assert!(sug[0]["new"].is_null());
+    let reason = lines_for(&lines, "draft_reason");
+    assert_eq!(reason.len(), 1, "{lines:?}");
+    assert_eq!(reason[0]["old"], "理由".repeat(100).as_str());
+    // `ai undo` behaves as before: the kind comes back first.
+    let undone = overrides::undo(&sb.store(), &a).unwrap();
+    assert_eq!(
+        (undone.field.as_str(), undone.now.as_deref()),
+        ("kind", Some("draft"))
+    );
+}
+
+#[test]
+fn a_replaced_600_char_draft_suggestion_is_logged_whole_once() {
+    let sb = Sb::new();
+    let a = sb.add("half a thought about");
+    let long = "ü€".repeat(300);
+    sb.answer(&json!([long_draft(&a, "t", &long)]));
+    sb.run(&[&a]).unwrap();
+    let before = sb.log().len();
+    let other = "ß".repeat(600);
+    sb.answer(&json!([long_draft(&a, "t", &other)]));
+    assert_eq!(sb.run(&[&a]).unwrap().written.len(), 1);
+    assert_eq!(sb.ai_file(&a).unwrap()["draft_suggestion"], other.as_str());
+    let lines = sb.log()[before..].to_vec();
+    let sug = lines_for(&lines, "draft_suggestion");
+    assert_eq!(sug.len(), 1, "{lines:?}");
+    assert_eq!(sug[0]["old"], long.as_str());
+    let new = sug[0]["new"].as_str().unwrap();
+    assert!(
+        other.starts_with(new.trim_end_matches('…')),
+        "new is cut: {new}"
+    );
+    assert!(
+        lines_for(&lines, "draft_reason").is_empty(),
+        "unchanged reason: no line"
+    );
+}
+
+#[test]
+fn draft_keys_stay_when_their_log_line_cannot_be_written() {
+    let sb = Sb::new();
+    let a = sb.add("half a thought about");
+    sb.answer(&json!([long_draft(&a, "t", "a completion")]));
+    sb.run(&[&a]).unwrap();
+    let log = sb.path("notes/.easy-note/ai-log.jsonl");
+    std::fs::remove_file(&log).unwrap();
+    std::fs::create_dir_all(&log).unwrap();
+
+    // Core: `organize` refuses and the AI file bytes stay as they are.
+    let file = sb.ai_path(&a);
+    let bytes = std::fs::read(&file).unwrap();
+    let clear = Organized {
+        kind: Some("todo"),
+        clear_draft: true,
+        ..Organized::default()
+    };
+    let err = ai::organize(&sb.store(), &a, &clear)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("ai-log.jsonl"), "{err}");
+    assert_eq!(
+        std::fs::read(&file).unwrap(),
+        bytes,
+        "the AI file is not changed"
+    );
+
+    // Batch: same title, summary and tags, kind todo: the item is pending, the draft keys stay.
+    let mut todo = item(&a, "todo");
+    todo["title"] = json!("t");
+    sb.answer(&json!([todo]));
+    let out = sb.run(&[&a]).unwrap();
+    assert!(out.written.is_empty(), "{out:?}");
+    assert!(pending_reason(&out, &a).contains("ai-log.jsonl"), "{out:?}");
+    let f = sb.ai_file(&a).unwrap();
+    assert_eq!(f["draft_suggestion"], "a completion");
+    assert_eq!(f["kind"], "draft");
+}

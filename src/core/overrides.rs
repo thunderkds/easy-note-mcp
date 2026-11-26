@@ -6,10 +6,12 @@
 //!   masked and capped. An override wins over the AI file; the AI file is never changed by it.
 //! - `ai-log.jsonl`: one JSON line per change, append only: `id`, `field`, `old`, `new` (`null` is
 //!   "no value"), `who` (`ai` or `person`), `at`, and `undo: true` on the line an undo writes.
-//!   Values in a line are cut to 200 chars, except the `old` value of `title`, `summary` and
-//!   `tags_suggested` (logged by `ai::enrich`, kept whole for undo, HUN-302): such a line can hold
-//!   a 600-char summary, a few KiB. Each append is one write call on an append-mode file, so a
-//!   line lands whole. `undo` skips those three fields (they are not in `FIELDS`).
+//!   Values in a line are cut to 200 chars, except the `old` value of `title`, `summary`,
+//!   `tags_suggested` (logged by `ai::enrich`) and `draft_reason`, `draft_suggestion` (logged by
+//!   `ai::organize`): kept whole for undo (HUN-302) and written before the AI file, which is not
+//!   replaced when the line cannot be written. Such a line can hold a 600-char text, a few KiB.
+//!   Each append is one write call on an append-mode file, so a line lands whole. `undo` skips
+//!   those five fields (they are not in `FIELDS`).
 //!
 //! Public API (other tasks build on these names): `read`, `set`, `undo`, `log_change`,
 //! `log_ai_diff`, `problems`, `Overrides`, `Undone`, `FIELDS`; the merged view is
@@ -251,7 +253,8 @@ fn log_line(
     )
 }
 
-/// Log each key that differs between two AI files, `who: ai`.
+/// Log each of `project`, `topic` and `kind` that differs between two AI files, `who: ai`. The
+/// draft keys are logged before the write by `log_draft_diff`.
 pub(crate) fn log_ai_diff(store: &Store, id: &str, before: &ai::Detail, after: &ai::Detail) {
     let pairs = [
         (
@@ -264,16 +267,6 @@ pub(crate) fn log_ai_diff(store: &Store, id: &str, before: &ai::Detail, after: &
             "kind",
             Some(before.kind.as_str()),
             Some(after.kind.as_str()),
-        ),
-        (
-            "draft_reason",
-            before.draft_reason.as_deref(),
-            after.draft_reason.as_deref(),
-        ),
-        (
-            "draft_suggestion",
-            before.draft_suggestion.as_deref(),
-            after.draft_suggestion.as_deref(),
         ),
     ];
     for (field, old, new) in pairs {
@@ -293,19 +286,66 @@ pub(crate) fn log_enrich_diff(
     after: &ai::Detail,
 ) -> Result<(), AiError> {
     let tags = |d: &ai::Detail| serde_json::to_string(&d.tags_suggested).expect("tags serialize");
-    let pairs = [
-        ("title", before.title.clone(), after.title.clone()),
-        ("summary", before.summary.clone(), after.summary.clone()),
-        ("tags_suggested", tags(before), tags(after)),
-    ];
+    log_whole(
+        store,
+        id,
+        [
+            (
+                "title",
+                Some(before.title.clone()),
+                Some(after.title.clone()),
+            ),
+            (
+                "summary",
+                Some(before.summary.clone()),
+                Some(after.summary.clone()),
+            ),
+            ("tags_suggested", Some(tags(before)), Some(tags(after))),
+        ],
+    )
+}
+
+/// Log each of `draft_reason` and `draft_suggestion` that differs between two AI files (set,
+/// replaced or removed), `who: ai`, the old value whole, in one write before the AI file is
+/// written; `Err` when it fails, so the caller writes no AI file.
+pub(crate) fn log_draft_diff(
+    store: &Store,
+    id: &str,
+    before: &ai::Detail,
+    after: &ai::Detail,
+) -> Result<(), AiError> {
+    log_whole(
+        store,
+        id,
+        [
+            (
+                "draft_reason",
+                before.draft_reason.clone(),
+                after.draft_reason.clone(),
+            ),
+            (
+                "draft_suggestion",
+                before.draft_suggestion.clone(),
+                after.draft_suggestion.clone(),
+            ),
+        ],
+    )
+}
+
+/// One line per pair that differs: `old` masked and whole, `new` masked and cut, all in one write.
+fn log_whole<const N: usize>(
+    store: &Store,
+    id: &str,
+    pairs: [(&str, Option<String>, Option<String>); N],
+) -> Result<(), AiError> {
     let lines: Vec<Line> = pairs
         .into_iter()
         .filter(|(_, old, new)| old != new)
         .map(|(field, old, new)| Line {
             id: mask(id),
             field: field.to_string(),
-            old: Some(mask(&old)),
-            new: Some(cut(&mask(&new))),
+            old: old.map(|v| mask(&v)),
+            new: new.map(|v| cut(&mask(&v))),
             who: "ai".to_string(),
             at: store.now_stamp(),
             undo: false,
