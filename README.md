@@ -34,13 +34,15 @@ sudo apt install ./dist/easy-note_0.1.0_amd64.deb     # apt pulls the libraries 
 
 The package holds the binary and the docs. It builds the `window` and `tray` features, so the
 dashboard window and the tray icon both work. It gives you `easy-note`, not `n`. It writes nothing
-below your home folder, so run `easy-note setup` yourself after the install. `sudo apt remove
-easy-note` removes it.
+below your home folder, so run `easy-note setup` yourself after the install (on GNOME it also
+binds Ctrl+Alt+N to the new-note box). `sudo apt remove easy-note` removes the package; it does
+not remove what `setup` added (`easy-note uninstall <target>` does).
 
 ## Set up
 
 One command puts the desktop parts in place: the launcher and its icons, the Obsidian dashboard
-and vault, and (in a build with the tray) the tray login item.
+and vault, (in a build with the tray) the tray login item, and on GNOME the Ctrl+Alt+N shortcut
+for a new note.
 
 ```
 easy-note setup
@@ -51,6 +53,18 @@ Obsidian is open, `setup` says so, leaves Obsidian's vault list as it is and exi
 Obsidian and run it again. Each step prints under its own heading (`launcher:`, `obsidian:`,
 `tray:`). A step that fails does not stop the next one. A second run writes nothing. `setup` does
 not touch Claude Code: run `easy-note install claude` for that (see "Clients").
+
+On GNOME, the `hotkey:` step adds one custom shortcut, so Ctrl+Alt+N opens `easy-note quick`:
+
+```
+easy-note install hotkey      # only the shortcut
+easy-note uninstall hotkey    # remove it
+```
+
+Your other shortcuts stay. The step changes nothing when Ctrl+Alt+N is already in use, or when a
+shortcut of your own already runs `easy-note quick`. To check it, open GNOME Settings, then
+Keyboard, then the custom shortcuts: the entry is named `easy-note quick`. On another desktop,
+see "Bind a key".
 
 ## First note
 
@@ -282,6 +296,7 @@ easy-note hotkey
 ```
 
 prints the commands for your desktop (GNOME, KDE, or any other). It changes nothing: you run them.
+On GNOME, `easy-note install hotkey` (part of `easy-note setup`) does it for you.
 
 For a click instead of a key, add the launcher. It writes five files: the app entry
 `~/.local/share/applications/easy-note.desktop` and four icons under

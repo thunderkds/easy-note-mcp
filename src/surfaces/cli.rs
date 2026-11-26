@@ -69,6 +69,8 @@ pub enum Target {
     Launcher,
     /// The tray's login item, `easy-note-tray.desktop` in `~/.config/autostart`.
     Tray,
+    /// The GNOME shortcut: Ctrl+Alt+N opens `easy-note quick`.
+    Hotkey,
     /// The `easy-note.base` Obsidian dashboard in the notes dir, and the notes dir as a vault.
     Obsidian,
 }
@@ -212,10 +214,11 @@ pub enum Command {
         #[arg(long, value_name = "ID")]
         note: Option<String>,
     },
-    /// Set up the launcher, the Obsidian dashboard and vault, and the tray login item in one go.
+    /// Set up the launcher, the Obsidian dashboard and vault, the tray login item and the GNOME
+    /// shortcut in one go.
     Setup,
     /// Add the Claude Code hook (shows a diff, keeps a backup of settings.json), the launcher, the
-    /// tray login item, or the Obsidian dashboard file and vault.
+    /// tray login item, the GNOME shortcut, or the Obsidian dashboard file and vault.
     Install { target: Target },
     /// Remove what `install` added (a file that is not ours stays).
     Uninstall { target: Target },
@@ -495,6 +498,7 @@ fn installed(target: Target, action: super::install::Action) -> Outcome {
         Target::Launcher => super::install::launcher(action).map_err(|e| (String::new(), e)),
         Target::Tray => super::install::tray(action).map_err(|e| (String::new(), e)),
         Target::Obsidian => super::install::obsidian(action),
+        Target::Hotkey => super::install::hotkey(action).map_err(|e| (String::new(), e)),
     };
     match result {
         Ok(text) => say_raw(&safe(&text)),
@@ -505,17 +509,18 @@ fn installed(target: Target, action: super::install::Action) -> Outcome {
     }
 }
 
-/// `setup` (FR-041): `install launcher`, `install obsidian` and, in a tray build, `install tray`,
-/// each under its own heading. A failed step does not stop the next; exit 1 if any failed. It
+/// `setup` (FR-041): `install launcher`, `install obsidian`, in a tray build `install tray`, and
+/// `install hotkey`, each under its own heading. A failed step does not stop the next; exit 1 if any failed. It
 /// never runs `install claude` (DDR 0008 item 4).
 fn setup() -> Outcome {
     use super::install::{self, Action::Install};
     let mut failed = vec![];
-    for name in ["launcher", "obsidian", "tray"] {
+    for name in ["launcher", "obsidian", "tray", "hotkey"] {
         say(&format!("{name}:"))?;
         let result = match name {
             "launcher" => install::launcher(Install).map_err(|e| (String::new(), e)),
             "obsidian" => install::obsidian(Install),
+            "hotkey" => install::hotkey(Install).map_err(|e| (String::new(), e)),
             _ if cfg!(feature = "tray") => install::tray(Install).map_err(|e| (String::new(), e)),
             _ => Ok("tray not built in: skipped\n".to_string()),
         };

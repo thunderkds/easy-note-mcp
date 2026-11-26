@@ -1,6 +1,7 @@
 //! `install claude` and `uninstall claude` (FR-019, DDR 0003), `install launcher` and
-//! `uninstall launcher` (FR-026), `install tray` and `uninstall tray` (FR-033), and `install
-//! obsidian` / `uninstall obsidian` (FR-035, FR-040, DDR 0008).
+//! `uninstall launcher` (FR-026), `install tray` and `uninstall tray` (FR-033), `install
+//! obsidian` / `uninstall obsidian` (FR-035, FR-040, DDR 0008), and `install hotkey` /
+//! `uninstall hotkey` (FR-054).
 //!
 //! Install adds exactly one `UserPromptSubmit` entry (command `easy-note hook-prompt`, timeout 5)
 //! to the user-level `settings.json` and writes `commands/note.md`, both in the Claude Code config
@@ -252,6 +253,286 @@ pub fn obsidian(action: Action) -> Result<String, (String, String)> {
         Ok(line) => Ok(out + &line),
         Err(message) => Err((out, message)),
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The GNOME shortcut (FR-054, DDR 0003 item 8)
+// ---------------------------------------------------------------------------------------------
+
+const MEDIA_KEYS: &str = "org.gnome.settings-daemon.plugins.media-keys";
+const KEY_LIST: &str = "custom-keybindings";
+const OUR_PATH: &str =
+    "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/easy-note/";
+const OUR_COMMAND: &str = "easy-note quick";
+const OUR_BINDING: &str = "<Control><Alt>n";
+
+/// Run the action on the GNOME custom shortcut that opens `easy-note quick` with Ctrl+Alt+N.
+/// Nothing of the person's is changed: other entries of the list stay, a used key is not taken, and
+/// an entry at our path with another command is kept. Another desktop: no command runs.
+pub fn hotkey(action: Action) -> Result<String, String> {
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+    if !super::quick::is_desktop(&desktop, "gnome") {
+        return Ok("skipped: easy-note changes shortcuts on GNOME only. Run easy-note hotkey for the steps\n".to_string());
+    }
+    let keys = Gsettings::find()?;
+    let list = keys.list()?;
+    match action {
+        Action::Install => keys.bind(&list),
+        Action::Uninstall => keys.unbind(&list),
+    }
+}
+
+/// The paths in the custom shortcut list, each with the text `gsettings` printed for it, so a
+/// rewrite keeps the other entries as they were.
+struct Entry {
+    raw: String,
+    path: String,
+}
+
+struct Gsettings(PathBuf);
+
+impl Gsettings {
+    fn find() -> Result<Self, String> {
+        super::quick::find_in_path("gsettings")
+            .map(Self)
+            .ok_or_else(|| "gsettings is not on PATH: nothing was written\n".to_string())
+    }
+
+    fn run(&self, args: &[&str]) -> Result<String, String> {
+        let out = std::process::Command::new(&self.0)
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .map_err(|e| format!("cannot run gsettings: {e}\n"))?;
+        if !out.status.success() {
+            return Err(format!(
+                "gsettings {} failed: {}\n",
+                args.first().unwrap_or(&""),
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
+
+    fn list(&self) -> Result<Vec<Entry>, String> {
+        let text = self.run(&["get", MEDIA_KEYS, KEY_LIST])?;
+        string_array(&text).ok_or_else(|| {
+            format!("cannot read the custom shortcut list {text:?}: nothing was written\n")
+        })
+    }
+
+    /// One string key of the shortcut at `path`.
+    fn read(&self, path: &str, key: &str) -> Result<String, String> {
+        let text = self.run(&["get", &entry_schema(path), key])?;
+        match literal(&text) {
+            Some((value, "")) => Ok(value),
+            _ => Err(format!(
+                "cannot read the {key} of {path}: nothing was written\n"
+            )),
+        }
+    }
+
+    /// What already uses our key: another custom shortcut, or a GNOME setting.
+    fn user_of_our_key(&self, list: &[Entry]) -> Result<Option<String>, String> {
+        let ours = accelerator(OUR_BINDING);
+        for entry in list.iter().filter(|e| e.path != OUR_PATH) {
+            if accelerator(&self.read(&entry.path, "binding")?) == ours {
+                let name = self.read(&entry.path, "name")?;
+                return Ok(Some(format!("your custom shortcut {name:?}")));
+            }
+        }
+        // `<schema> <key> <value>` per line; the relocatable custom entries are not in it.
+        let all = self.run(&["list-recursively"])?;
+        Ok(all.lines().find_map(|line| {
+            let mut parts = line.splitn(3, ' ');
+            let (schema, key, value) = (parts.next()?, parts.next()?, parts.next()?);
+            quoted(value)
+                .iter()
+                .any(|text| accelerator(text) == ours)
+                .then(|| format!("the setting {schema} {key}"))
+        }))
+    }
+
+    fn bind(&self, list: &[Entry]) -> Result<String, String> {
+        // A shortcut that runs `quick` already, ours or the person's, is theirs to keep.
+        for entry in list {
+            if runs_quick(&self.read(&entry.path, "command")?) {
+                let binding = self.read(&entry.path, "binding")?;
+                if !binding.is_empty() {
+                    return Ok(format!(
+                        "already bound: {binding} runs easy-note quick ({})\n",
+                        entry.path
+                    ));
+                }
+            }
+        }
+        let listed = list.iter().any(|e| e.path == OUR_PATH);
+        let command = self.read(OUR_PATH, "command")?;
+        if !command.is_empty() && command != OUR_COMMAND {
+            return Ok(format!(
+                "kept {OUR_PATH}: not the shortcut easy-note writes. Nothing was written\n"
+            ));
+        }
+        if listed && command == OUR_COMMAND {
+            return Ok(format!(
+                "kept {OUR_PATH}: it has no key, so you turned it off. Set a key in GNOME Settings, Keyboard\n"
+            ));
+        }
+        if let Some(user) = self.user_of_our_key(list)? {
+            return Ok(format!(
+                "skipped: Ctrl+Alt+N is used by {user}. Run easy-note hotkey to bind another key\n"
+            ));
+        }
+        // The keys first, the list last: a failure on the way leaves no half shortcut in use.
+        let schema = entry_schema(OUR_PATH);
+        let values = [
+            ("name", OUR_COMMAND),
+            ("command", OUR_COMMAND),
+            ("binding", OUR_BINDING),
+        ];
+        for (key, value) in values {
+            self.run(&["set", &schema, key, &format!("'{value}'")])?;
+        }
+        for (key, value) in values {
+            if self.read(OUR_PATH, key)? != value {
+                return Err(not_saved());
+            }
+        }
+        if !listed {
+            let mut raw: Vec<&str> = list.iter().map(|e| e.raw.as_str()).collect();
+            let ours = format!("'{OUR_PATH}'");
+            raw.push(&ours);
+            self.write_list(&raw)?;
+        }
+        Ok(format!(
+            "added Ctrl+Alt+N for easy-note quick (GNOME custom shortcut {OUR_PATH})\n"
+        ))
+    }
+
+    fn unbind(&self, list: &[Entry]) -> Result<String, String> {
+        let listed = list.iter().any(|e| e.path == OUR_PATH);
+        let command = self.read(OUR_PATH, "command")?;
+        if command != OUR_COMMAND {
+            return Ok(if command.is_empty() {
+                format!("not installed ({OUR_PATH})\n")
+            } else {
+                format!("kept {OUR_PATH}: not the shortcut easy-note writes\n")
+            });
+        }
+        // The list first: the shortcut is off before its keys go.
+        if listed {
+            let raw: Vec<&str> = list
+                .iter()
+                .filter(|e| e.path != OUR_PATH)
+                .map(|e| e.raw.as_str())
+                .collect();
+            self.write_list(&raw)?;
+        }
+        let schema = entry_schema(OUR_PATH);
+        for key in ["name", "command", "binding"] {
+            self.run(&["reset", &schema, key])?;
+        }
+        if !self.read(OUR_PATH, "command")?.is_empty() {
+            return Err(not_saved());
+        }
+        Ok(format!("removed the shortcut {OUR_PATH}\n"))
+    }
+
+    /// Write the list and read it back: `gsettings` exits 0 when dconf cannot save.
+    fn write_list(&self, raw: &[&str]) -> Result<(), String> {
+        let value = if raw.is_empty() {
+            "@as []".to_string()
+        } else {
+            format!("[{}]", raw.join(", "))
+        };
+        self.run(&["set", MEDIA_KEYS, KEY_LIST, &value])?;
+        let saved = self.list()?;
+        if saved.iter().map(|e| e.raw.as_str()).eq(raw.iter().copied()) {
+            Ok(())
+        } else {
+            Err(not_saved())
+        }
+    }
+}
+
+fn not_saved() -> String {
+    "the shortcut was not saved: gsettings reported no error, but the value did not change\n"
+        .to_string()
+}
+
+fn entry_schema(path: &str) -> String {
+    format!("{MEDIA_KEYS}.custom-keybinding:{path}")
+}
+
+/// Whether a shortcut command is `easy-note quick`, by any path to the binary.
+fn runs_quick(command: &str) -> bool {
+    let mut words = command.split_whitespace();
+    let program = words.next().map(Path::new).and_then(Path::file_name);
+    program.is_some_and(|name| name == "easy-note") && words.next() == Some("quick")
+}
+
+/// A GTK accelerator as its modifiers and key, so the order, the case and the spellings of Control
+/// and Alt do not matter. `None` for text with no modifier or no key.
+fn accelerator(text: &str) -> Option<(std::collections::BTreeSet<String>, String)> {
+    let mut rest = text.to_lowercase();
+    let mut modifiers = std::collections::BTreeSet::new();
+    while let Some(tail) = rest.strip_prefix('<') {
+        let (name, after) = tail.split_once('>')?;
+        modifiers.insert(match name {
+            "primary" | "control" | "ctrl" | "ctl" => "control".to_string(),
+            "mod1" => "alt".to_string(),
+            other => other.to_string(),
+        });
+        rest = after.to_string();
+    }
+    (!modifiers.is_empty() && !rest.is_empty()).then_some((modifiers, rest))
+}
+
+/// The string literal at the start of GVariant text, and the text after it.
+fn literal(text: &str) -> Option<(String, &str)> {
+    let mut chars = text.char_indices();
+    let (_, quote) = chars.next().filter(|(_, c)| *c == '\'' || *c == '"')?;
+    let mut value = String::new();
+    while let Some((at, c)) = chars.next() {
+        if c == quote {
+            return Some((value, &text[at + 1..]));
+        }
+        value.push(if c == '\\' { chars.next()?.1 } else { c });
+    }
+    None
+}
+
+/// A GVariant string array, `@as []` or `['a', 'b']`. `None` for any other text.
+fn string_array(text: &str) -> Option<Vec<Entry>> {
+    if text == "@as []" || text == "[]" {
+        return Some(vec![]);
+    }
+    let mut rest = text.strip_prefix('[')?.strip_suffix(']')?;
+    let mut all = vec![];
+    loop {
+        let (path, after) = literal(rest)?;
+        all.push(Entry {
+            raw: rest[..rest.len() - after.len()].to_string(),
+            path,
+        });
+        if after.is_empty() {
+            return Some(all);
+        }
+        rest = after.strip_prefix(", ")?;
+    }
+}
+
+/// Every string literal in a line of GVariant text.
+fn quoted(mut text: &str) -> Vec<String> {
+    let mut all = vec![];
+    while let Some(at) = text.find(['\'', '"']) {
+        let Some((value, rest)) = literal(&text[at..]) else {
+            break;
+        };
+        all.push(value);
+        text = rest;
+    }
+    all
 }
 
 // ---------------------------------------------------------------------------------------------
