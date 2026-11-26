@@ -101,7 +101,7 @@ No confirmed finding and no `needs_validation` lead. Rejected leads:
 | Negative cases hold | ☑ pass / ☐ fail | Red run, this commit's `tests/hotkey.rs` on `src/` of `dabf507`: `test result: FAILED. 4 passed; 17 failed`. Mutations of `src/surfaces/install.rs` on an exported copy (2 diff lines each; unchanged copy 21 passed): M1 no used-key check 19/2 failed; M2 other entries dropped 20/1; M3 `mod1` not alt 20/1; M4 cleared key turned on 20/1; M5 foreign command overwritten 20/1; M6 uninstall ignores command 20/1; M10 custom conflicts skipped 20/1. **Survived (21 passed): M7, M8, M9, the three read-backs (F3)** |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass / ☐ fail | Reviewed: the 10 files of the diff, callers `cli.rs` `installed()`/`setup()`, `quick.rs` `find_in_path`/`hotkey`, tests that run `setup` or `hotkey` (`tests/setup.rs`, `tests/hotkey.rs`, `tests/cli.rs` loop), CI file, stale references. Skipped: all other source |
-| Full smoke suite still green (no regression) | ☑ pass / ☐ fail | `cargo fmt --check` exit 0; clippy `-D warnings` clean for the default and `window,tray` builds. `cargo test --locked`: `passed 739 failed 0 ignored 7`. `cargo test --locked --features window,tray` was **never green in one run**, each time one failure in a file this diff does not touch: run 1 `leak.rs` `planted_secret_never_leaks` (`tag` exit 1, stopped the run, cause not found; passed in runs 2 and 3); run 2 `passed 747 failed 1`, `hook.rs` p95 279 ms at load average 12 (alone: 16/16); run 3 `passed 747 failed 1`, `enrich.rs:878` rejects the text `-1`, which the random temp folder name `sched-bad-1hd0KH` held (alone: 48/48). No tripwire call |
+| Full smoke suite still green (no regression) | ☑ pass / ☐ fail | `cargo fmt --check` exit 0; clippy `-D warnings` clean for the default and `window,tray` builds. `cargo test --locked`: `passed 739 failed 0 ignored 7`. `cargo test --locked --features window,tray` was **never green in one run**, each time one failure in a file this diff does not touch: run 1 `leak.rs` `planted_secret_never_leaks` (`tag` exit 1, stopped the run, cause not found; passed in runs 2 and 3); run 2 `passed 747 failed 1`, `hook.rs` p95 279 ms at load average 12 (alone: 16/16); run 3 `passed 747 failed 1`, `enrich.rs:878` rejects the text `-1`, which the random temp folder name `sched-bad-1hd0KH` held (alone: 48/48). No tripwire call. **Supervisor rerun at `7983685`**, `cargo test --locked --features window,tray --no-fail-fast`, temp HOME, `XDG_CURRENT_DESKTOP` and `DBUS_SESSION_BUS_ADDRESS` unset: `features exit 0`, `window,tray: passed 748 failed 0 ignored 7`. An earlier Supervisor run had 744/4 while the reviewer built into the same target folder (`setup` ac8, two `tray.rs` "no tray" tests, `hook.rs` p95); none of the 4 failed in the rerun |
 | **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
 | **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☑ N/A | No UI component: command-line output and desktop settings only |
 | **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☑ N/A | No UI component |
@@ -116,7 +116,15 @@ No confirmed finding and no `needs_validation` lead. Rejected leads:
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: The reviewer holds no capture from before the implementation commit. What can be shown now: the prior
+**BEFORE** (Supervisor, 2026-11-26T10:41:21Z = 17:41:21 +07, before the implementation commit `7983685` of 17:56:57 +07):
+the new tests of `tests/hotkey.rs` on the unchanged source. All 17 new tests printed `FAILED`, among them
+
+```
+test setup_binds_the_key ... FAILED
+assertion `left == right` failed: error: invalid value 'hotkey' for '<TARGET>'
+```
+
+The reviewer, who did not hold that capture, showed the same from the prior side: the prior
 source (`dabf507`) has `pub enum Target { Claude, Launcher, Tray, Obsidian }` with no `Hotkey`, and the new tests run
 on that source on 2026-11-26 give `test result: FAILED. 4 passed; 17 failed`.
 
@@ -127,3 +135,23 @@ and, with the entry present, `already bound: <Control><Alt>n runs easy-note quic
 **DELTA**: A person on GNOME can run `easy-note setup` (or `install hotkey`) to bind Ctrl+Alt+N to the new-note box, and remove it with `uninstall hotkey`.
 
 **WITNESS**: qa-expert reviewer, 2026-11-26. No `memory/event-trace/HUN-303.jsonl` was in the worktree.
+
+---
+
+## Supervisor check (2026-11-26, `[admin]`)
+
+- `code-review` on `main...7983685`: the reviewer's findings stand (F1, F5, F7 read in the source and docs). P0: 0, P1: 0,
+  so no fix is applied and the reviewed commit stays the code to merge.
+- `security-review`: done by the Supervisor inline on `main...7983685` (the skill's own diff showed `main...origin/main`,
+  which holds already merged tasks; no sub-task was spawned, the fresh-context reviewer had already done an independent
+  pass). No finding: `gsettings` gets an argument list, the written values are constants or list entries as `gsettings`
+  printed them, and no new input crosses a trust boundary.
+- Lane check: C1 is too low for the size (10 files, 872 lines). Warn only.
+
+**Not done**
+
+- F1 to F8 are open (3 P2, 5 P3). A change to any file outside the review record needs a new reviewer run.
+  F1 (`PRD.md` NFR-001 does not list `gsettings`), F5 (write order), F7 and F8 (two wrong sentences in `README.md`) are small.
+- No real `gsettings set`/`reset` and no real Ctrl+Alt+N press was exercised.
+- The `.deb` description text (F2) is unchanged: the guide forbids touching `scripts/build_deb.sh`.
+
