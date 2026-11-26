@@ -180,3 +180,4 @@ A fake `claude` shell script that prints canned JSON, junk, or sleeps; temp note
 ## Questions Log
 
 * 2026-11-25 DECIDED scope and order: owner, chat 2026-11-25 ("let go")* 2026-11-26 DEBATE how the batch writes a note that already has an AI file, so the change is logged → call ai::enrich with the OLD kind, then ai::organize with the new kind; check the whole item before the first write; pass None for every field with an override (Advocate 1: enrich with the old kind, then organize; Advocate 2: the same; Advocate 3: the same) ⚠ decided for you — please review
+* 2026-11-26 DECIDED by the owner: option A (log the old title, summary and tags in full, clear stale draft keys, undo in HUN-302). This replaces the settled rule "do not change `src/core/ai.rs` or `src/core/overrides.rs`" for this logging and clearing only. AC 2 and AC 3: the answer is an object `{"items": [...]}`.
