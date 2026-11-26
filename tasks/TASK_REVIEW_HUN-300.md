@@ -75,8 +75,14 @@ Paused: auto-mode check failed — no `Memory:` line in the report — run the m
 > **before any implementation commit exists**; if it does not (docs, templates, skill-instruction
 > text), BEFORE is the **verbatim prior content** of what changed — a quoted excerpt, not a command.
 
-**BEFORE**: [pasted timestamped command output showing the thing absent/failing, captured before the
-first implementation commit] OR [verbatim excerpt of the prior content, for non-executable changes]
+**BEFORE** (captured before the first implementation commit; no `settings_get`, no `settings_save`, no `save_ai_settings`, no `notice_seen`, no direct `toml_edit`):
+
+```
+$ date -u +%Y-%m-%dT%H:%M:%SZ && git rev-parse HEAD && git status --short && grep -rnE 'settings_get|settings_save|save_ai_settings|notice_seen|toml_edit' src tests Cargo.toml README.md; echo "grep exit $? (1 = no match)"
+2026-11-26T04:11:32Z
+1e01f1811be37c7913b223894899c2624740bf8c
+grep exit 1 (1 = no match)
+```
 
 **AFTER**: [same command, post-change] OR [verbatim excerpt of the new content]
 
