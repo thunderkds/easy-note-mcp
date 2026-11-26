@@ -59,7 +59,7 @@ Paused: auto-mode check failed — no `Memory:` line in the report — run the m
 | Verification command run | ☑ pass / ☐ fail | The guide's five commands, chained, on the tree committed as 8f5a8f8, started 2026-11-26T04:38:44Z, ended 04:47:11Z, all exit 0. cargo fmt --check clean; both clippy runs with -D warnings clean; cargo test --locked: 679 passed, 0 failed, 7 ignored in 26 result lines; cargo test --locked --features window,tray: 688 passed, 0 failed, 7 ignored in 26 result lines. |
 | Negative cases hold | ☑ pass / ☐ fail | Red runs before each implementation step. Core: test enrich did not compile, 27 errors (no save_ai_settings, notice_seen, CHANGED_OUTSIDE). IPC: 93 passed, 12 failed, 1 ignored. Page: 87 passed, 25 failed, 1 ignored (existing page tests failed too, because the harness already loaded the missing settings.js). UX fixes (short toast, no empty band): 109 passed, 3 failed, 1 ignored; one of the 3 was the older test hun290_ac4_the_lock_is_a_file_in_the_notes_dir_and_only_one_owner_holds_it, which passed in every later run (likely a race with child processes of parallel tests, not proven). No red run exists for the 375 px max-height change (checked on screenshots) or for the new caption assertion. Refusals covered by tests: bad values, missing keys, invalid TOML, changed outside, no write permission, notice not confirmed, schedule with AI off, foreign page origin. |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☐ pass / ☐ fail | [what was reviewed vs. skipped, and why] |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass / ☐ fail | Fresh-context reviewer, `main...96b68c4`. Read: the diff of `src/core/config.rs`, `window/api.rs`, `window/mod.rs`, `assets/{settings.js,app.js,app.css,index.html,ipc.js}`, `Cargo.toml`, `Cargo.lock`, `README.md`, `tests/{enrich.rs,window_api.rs,fixtures/window/page_harness.js}`. Read as direct callers or neighbours: `surfaces/enrich.rs` (child argv, child env, `doctor` lines), `core/fsutil.rs`, `core/guard.rs` (masking), `assets/capture.js`. Skipped: store, MCP, hook, CLI and tray code (not changed by this diff). Details in `## Stage 4 review`. |
 | Full smoke suite still green (no regression) | ☑ pass / ☐ fail | Both feature sets green: 679 and 688 passed, 0 failed (verification row above). |
 | **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | [`overall` and `change_risk` as the tool returned them, the scope, the ref, and the absolute path of the verifier report after a literal `report:` label — e.g. "overall 86 (>= 80), change_risk pass, scope changes, ref `main...HEAD`, report: `/home/me/.easy-verifier-reports/kit/score_changes_20261028T0530Z.html`". The gate reads the path that follows `report:` and nothing else, so with no label, or a path that is absent, the row is unscored — write ☑ N/A instead. ☑ N/A with a reason when neither companion tool was run: the merge gate blocks on ☑ fail only, never on an absent or N/A row] |
 | **UI: Visual regression (diff or verdict pasted)** | ☑ pass / ☐ fail / ☐ N/A | pass by verdict on stub-IPC screenshots in /tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-easy-note-mcp/df0fca59-a759-4a06-a24b-092db63ce7d8/scratchpad/hun300-ux.I61moj (files named state-width.png; no earlier baseline images to diff). Read at 375 and 1280: dashboard with gear, loading, off, on, notice, saved, saved-closed, bad value, no write permission, unreadable file; same panel, border and buttons as the capture dialog; disabled switch is dashed and shows Turn on AI first. After the last two edits (error height, switch caption) re-read: err-read-375, err-perm-375, off-375, on-1280. |
@@ -158,3 +158,93 @@ grep exit 0 (1 = no match)
 **DELTA**: A person can now open Settings with the gear in the window and change the AI switches, limits, jobs and model, confirming what is sent before `schedule = "tray"` is saved, while the rest of config.toml stays as it was; the tray timer that would act on that value (HUN-296) is not on this branch, so "the tray picks it up at its next tick" (AC 5) is not provable here.
 
 **WITNESS**: `memory/event-trace/HUN-300.jsonl` (main checkout) records the verification command at 2026-11-26T04:41:44.635833+00:00; its end (04:47:11Z) and the test counts come from the implementer's logs, not from the trace. No second witness yet: the auto verify run or the owner provides it.
+
+---
+
+## Stage 4 review
+
+Reviewer: fresh context, commit `96b68c4049cf2c0f39149f0bdc4c7f7969bbfd69`, diff `main...96b68c4` (main = merge base `9df4590`). Method: `skills/code-review/SKILL.md` and `references/security-reviewer.md`, applied by reading them. No source or test file changed.
+
+**Verdict: pass. 0 P0, 0 P1, 5 P2, 6 P3.** Not ready to merge yet for a reason outside the code: the guide's Questions Log still says `OPEN HITL: owner approves the wording of the notice before merge`, and the `verify` row is empty. P2-1 to P2-4 are recommended before the merge.
+
+### Commands run
+
+All in the worktree, with a temp `HOME`, `XDG_CONFIG_HOME` and `EASY_NOTE_DIR`, `DISPLAY` and `WAYLAND_DISPLAY` unset, and a trap `claude` script first on `PATH`. The trap was never called.
+
+The guide's Verification Command, chained:
+
+| Run | Step | Result |
+|---|---|---|
+| 1 (start 04:49:04Z) | `cargo fmt --check` | exit 0 |
+| 1 | `cargo clippy --all-targets --locked -- -D warnings` | exit 0 |
+| 1 | `cargo test --locked` | **exit 101**: 678 passed, 1 failed, 7 ignored; the chain stopped (P2-5) |
+| 2 (04:52:49Z to 04:59:11Z) | `cargo fmt --check` | exit 0 |
+| 2 | `cargo clippy --all-targets --locked -- -D warnings` | exit 0 |
+| 2 | `cargo test --locked` | exit 0: 679 passed, 0 failed, 7 ignored (26 result lines) |
+| 2 | `cargo clippy --all-targets --locked --features window,tray -- -D warnings` | exit 0 |
+| 2 | `cargo test --locked --features window,tray` | exit 0: 688 passed, 0 failed, 7 ignored (26 result lines) |
+
+The clippy steps ended in about 1 s each, from the build cache of the worktree. Six Settings page tests were also run alone with `--nocapture`: 6 passed in 10.05 s with `node` v26.7.0 and no `skipped: no node` line.
+
+Probes: two throwaway tests in a `git archive` copy of the commit, outside the worktree, calling `window::api::handle`.
+
+Lane check (warn only): `lane: C2, 14 files, 1953 lines, EXCEEDS (lines 1953 > 500); unpredicted: Cargo.toml, src/surfaces/window/assets/app.css, src/surfaces/window/assets/index.html, src/surfaces/window/assets/ipc.js, src/surfaces/window/assets/settings.js, src/surfaces/window/mod.rs, tasks/TASK_GUIDE_HUN-300.md, tests/fixtures/window/page_harness.js`. The Supervisor decides if the task was under-labelled.
+
+### Acceptance Criteria
+
+| # | Verdict | Evidence |
+|---|---|---|
+| 1 | pass, with gaps | `config.rs` `write_ai`, `set_ai`. Other keys, tables and comments stay for LF files (13 odd shapes probed, all parse after the save). Temp file plus rename; bad input refused with the key named (`save_ai_settings_refuses_invalid_input_naming_the_key_and_changes_nothing`). Gaps: P2-1, P2-2, P3-3, P3-4. `toml_edit` is logged as a DEBATE decision in the guide. |
+| 2 | pass | All nine fields in `index.html`; values from `settings_get`; `ai_settings_shown` judges them with `ai_of`; a missing key is refused. |
+| 3 | pass for turning on | Page: `set_cancel` sends no `settings_save`. Core: `api.rs:229` refuses off-to-on without `confirm_notice: true` or a matching `notice_seen`; probes with `schedule = "tray"` and AI off, a forged `notice_seen` and `confirm_notice: 1` were all refused. Notice text matches the AC word for word. See P2-3, P2-4, P3-1, P3-2. |
+| 4 | pass | `command` and account folder are `<dd>` text, with the file path above. Never written: `ai_settings_shown` copies them from the file, `set_ai` has no such key. |
+| 5 | partly proven | Toast and `doctor` are tested; the open window reads `after_save` at each save (`window/mod.rs`). The tray tick cannot be checked: the timer (HUN-296) is not on this branch. |
+| 6 | pass | Switch disabled with `Turn on AI first.`; the core refuses `tray` with AI off, with and without confirm. |
+
+Success criteria 1, 2 and 3: pass (named tests ran green in run 2). Edge cases: missing file, invalid TOML, changed outside, bad interval and no write permission are covered by passing tests. Entry points `settings_get`, `settings_save` and `config::save_ai_settings` exist; the window itself calls `save_ai_settings_if`.
+
+### Findings
+
+**P0**: none. **P1**: none.
+
+**P2**
+
+- **P2-1** (confidence 100, probe) `src/core/config.rs:389-401`: a symlinked `config.toml` is replaced by a regular file. Scenario: the file links to a dotfiles repo; the person saves in Settings; `error` is null, the link is gone, the target still holds the old text, the new file is mode 0600. A later edit of the dotfile (for example `enrich = "off"`) then has no effect. A dangling link is replaced the same way. `save_dir` already does this for `init`; this change makes a window button do it. Action: resolve the link and write beside its target; add a test.
+- **P2-2** (confidence 100, probe) `src/core/config.rs:456`: a changed `jobs` list loses every comment inside the array. Before: `"organize", # keep me`, `# "drafts", disabled for now`, `"digest", # nightly` on separate lines. After unticking one job: `jobs = ["organize"]`. AC 1 asks to keep comments and README says they stay. The test `save_ai_settings_replaces_a_changed_jobs_list_and_keeps_its_line_comment` covers only the comment after the line. Action: edit the array in place, or state the limit.
+- **P2-3** (confidence 100, code) `src/surfaces/window/assets/settings.js:114-120, 218-224, 193-197`: the switch saves at once when turned on, but not when turned off. Scenario: switch on, `Confirm` (written, toast `Saved`); switch off; `Close`. No save is sent and the file still says `schedule = "tray"`. No run follows today (no timer), but it would with HUN-296. `Confirm` also writes every other unsaved field of the form, such as `after_save`, which the notice does not mention. Action: save the off state too, or warn on Close, or let Confirm only set the switch and Save write it; add a page test.
+- **P2-4** (confidence 100, probe and test `set_already_on`) `settings.js:84`, `api.rs:229`, `README.md:214-215`: while `Organize automatically` is on, a new model is saved with no notice, and `notice_seen` is not updated. The same holds for an account folder changed in the file. README says `another account folder or model shows it again`; that is true only when the switch is turned on again. AC 3 names only turning on, so the Supervisor or owner decides: ask again for a new text, or correct the README.
+- **P2-5** (confidence 100 for the failure) `tests/window_api.rs:3082`: `hun290_ac4_the_lock_is_a_file_in_the_notes_dir_and_only_one_owner_holds_it` failed once with `free again` (run 1) and passed in run 2; the implementer saw the same. The test and `window/single.rs` are not changed here. Likely cause, not proven: a child process of a parallel test holds a copy of the lock descriptor until it execs. This diff adds more tests that start processes; the failure rate was not measured. Action: separate task to make the test stable (CI runs `cargo test --locked`).
+
+**P3**
+
+- **P3-1** (100, probe) `api.rs:176, 198`: the same notice text can be asked twice. Confirm with `haiku`, turn off, save model `sonnet`, type `haiku` again, turn on: `confirmed_model` is null so the page asks, although the core accepts it as already seen. Against `not shown again for the same text`; the error is on the safe side.
+- **P3-2** (100, probe) `api.rs:160-171, 191`: masked values are used as real ones. `model = "my-secret=abcdef123"` is rewritten to `my-secret=[masked:secret_assign]` by a save that changes only the interval. Account folders `/a/secret=AAAA1111` and `/a/secret=BBBB2222` share one notice version. Both need odd values. Action: hash the unmasked account; do not write back a masked model.
+- **P3-3** (100, probe) `config.rs:394-401`: the file mode becomes 0600, and a `config.toml` that the person made read-only (0400) in a writable folder is overwritten without a word.
+- **P3-4** (100, probe) `config.rs:379-401`: a CRLF file is saved as LF and a BOM is removed, so lines the screen does not own change. In a multi-line inline `ai` table the last comment moves to the last new key.
+- **P3-5** (75, code only, no real browser) `settings.js:239-243`: only a click on the backdrop keeps focus. A click on text inside either dialog can move focus to the page, where Escape reaches no handler. `capture.js` guards its whole dialog.
+- **P3-6** (100) `tasks/TASK_GUIDE_HUN-300.md:172`: the `Pre-existing pin tests` row, which the guide says to fill before work starts, still holds its placeholder; the edge-case checklist is unticked.
+
+### Security (Risk Medium)
+
+Actor: page script, or a bad message on the IPC channel. Boundary: IPC into the core. Resources: `config.toml` and the argv of the child `claude`. No confirmed vulnerability.
+
+- Rejected, TOML injection through `model`: three payloads with quotes, newlines and table headers were stored as one string; no `command` key appeared.
+- Rejected, writing `command` or `claude_config_dir`: ignored in the request (code, test and probe).
+- Rejected, argv injection: `model` is one argv item after `--model`, no shell; a leading `-` is refused.
+- Rejected, other origin: `ipc_from` answers only `easy-note://localhost`; the quick window answers no settings command.
+- Rejected, script injection in the page: `settings.js` sets text through `textContent` and `value` only; CSP unchanged.
+- Rejected, file text or secrets in errors: parse errors keep the first line only, and answers pass `mask_for_output`. Odd input (wrong types, deep nesting, non-UTF-8 file, a directory as the file) gave an error object, no panic, no temp file left.
+- Hardening notes: `confirm_notice` is a flag the page sends, so the core cannot know a dialog was shown. `model` has no length cap and accepts NUL over IPC (3 MB was written). A very narrow gap lies between the stamp check and the rename in `write_ai`.
+- `needs_validation`: `config.rs:312` names the account from the window's `CLAUDE_CONFIG_DIR` when the file sets none. Missing fact: the environment of the process that will run the timer (HUN-296). Safe check: in HUN-296, compare the notice version in that process before a run.
+- For the owner, no AC requires it: turning on `AI` with `Run after each save` sends masked text at each save with no notice, and the hint does not say that text is sent.
+
+### UI Evidence rows, checked against the code
+
+- Visual regression: not re-run. The screenshots sit in a session scratchpad outside the repo; the code does give the capture dialog's panel and the dashed disabled switch with its reason.
+- Design system: confirmed 12 hex colours, one `rgba` value (the capture backdrop), spacing 4, 8, 12, 16, 20 px, IBM Plex only. One correction: `#3CF5A840` and `#3CF5A859` are not literally in the tokens file; they are alpha forms of `#3CF5A8` that the existing dialog and toast already use.
+- Responsiveness: the CSS under `max-width: 480px` gives the header buttons, switches, inputs, checkbox rows and dialog buttons 44 px. Not measured again. The real window cannot go below 800 x 560 (`window/mod.rs`).
+
+### Not verified
+
+- `skills/ux-evaluate` and the `code-review` / `security-review` Skill calls: this reviewer had no Skill tool, so the trace holds no such call. No second agent re-checked the security leads.
+- The real window on a display, and the startup-reads line of the implementer's report (not in the repo).
