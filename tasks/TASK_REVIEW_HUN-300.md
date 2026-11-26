@@ -56,9 +56,10 @@ Mode: auto
 7. A save keeps a symlinked config.toml before the merge, the owner's answer in chat on 2026-11-26; this replaces decision 4 for review finding P2-1 only — RULE: tasks/TASK_REVIEW_HUN-300.md § Auto decisions
 Checks: tests `cargo test --locked` 679 passed 0 failed, `cargo test --locked --features window,tray` 688 passed 0 failed (the older `hun290_ac4` lock test failed once and passed on the rerun); reviews: fresh-context reviewer pass (P0 0, P1 0, P2 5, P3 6), Supervisor code-review no P0 or P1, security-review no High or Medium issue at confidence 8 or higher, Companion score fail (73); real run: Demonstration AFTER below (auto-checked, not /verify)
 Memory: nothing new on this branch; the HUN-300 decision entry is written on main after the merge
-Not done: merge (admin: after the auto verify pass; the failing Companion score row blocks it, so it is yours); the other P2 and the P3 follow-ups; AC 5 tray pickup waits for HUN-296; auto verify: ☑ pass (session 074c57cd-3230-4091-b0c2-b521cadf1a4b, commit 25c7e24064330003021df0d5ac2633c5771365d6, log .claude/verify-runs/HUN-300-25c7e2406433.log)
+Not done: merge (admin: after the auto verify pass; the failing Companion score row blocks it, so it is yours); the other P2 and the P3 follow-ups; AC 5 tray pickup waits for HUN-296; auto verify: ☑ pass (session dc765ba0-87f2-4e62-9036-a69c13bddee3, commit a7bf5f6bd2ccffe0411c1d62cc5b40e9b8327c7d, log .claude/verify-runs/HUN-300-a7bf5f6bd2cc.log)
 Paused: auto-mode check failed — no `Memory:` line in the report — run the memory pass before you stop and record it there (each entry written, or `Memory: nothing new`); no test run in memory/event-trace/HUN-300.jsonl — write /home/hungnguyenhuu/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d/$CLAUDE_CODE_SESSION_ID with the task ID (minimal-track step 1): `mkdir -p /home/hungnguyenhuu/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d && printf '%s\n%s\n' "HUN-300" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /home/hungnguyenhuu/workspace/pets/hungnguyen111/easy-note-mcp/.claude/hooks/.state/active_task.d/$CLAUDE_CODE_SESSION_ID`, then rerun the task's tests so the trace records them under the task, then stop; extended track, but the trace has no `code-review` Skill call (Stage 4 runs in auto mode); Risk Medium, but the trace has no `security-review` Skill call [report be25f1359954]
 Paused: done not moved — the verify result is not confirmed by its run record (the merge gate's rule)
+Closed: row moved to Done 2026-11-26 — auto verify pass (session dc765ba0-87f2-4e62-9036-a69c13bddee3, commit a7bf5f6bd2ccffe0411c1d62cc5b40e9b8327c7d); Gates 5 and 6 checked
 
 ## Evidence
 
@@ -67,7 +68,7 @@ Paused: done not moved — the verify result is not confirmed by its run record 
 | **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass / ☐ fail | tests/enrich.rs (core writer, AC 1), tests/window_api.rs (IPC and page, AC 2 to 6, success criteria 2 and 3), tests/fixtures/window/page_harness.js (page scenarios). 33 new tests, each printed ok in the window,tray run; list below. The fix round adds 6 more in tests/enrich.rs (39 in total), listed in `## Fix round`. AC 5: toast and doctor are proven; that the tray picks a change up at its next tick is NOT provable on this branch, because the tray timer (HUN-296) is not in it. |
 | Verification command run | ☑ pass / ☐ fail | The guide's five commands, chained, on the tree committed as ce0ed72 (the P2-1 fix), started 2026-11-26T05:22:56Z, ended 05:30:26Z, all exit 0, first run. Temp HOME, XDG_CONFIG_HOME and EASY_NOTE_DIR, DISPLAY and WAYLAND_DISPLAY unset, a trap `claude` first on PATH (never called). cargo fmt --check clean; both clippy runs with -D warnings clean; cargo test --locked: 685 passed, 0 failed, 7 ignored in 26 result lines; cargo test --locked --features window,tray: 694 passed, 0 failed, 7 ignored in 26 result lines. The older hun290_ac4 lock test passed in both. |
 | Negative cases hold | ☑ pass / ☐ fail | Red runs before each implementation step. Core: test enrich did not compile, 27 errors (no save_ai_settings, notice_seen, CHANGED_OUTSIDE). IPC: 93 passed, 12 failed, 1 ignored. Page: 87 passed, 25 failed, 1 ignored (existing page tests failed too, because the harness already loaded the missing settings.js). UX fixes (short toast, no empty band): 109 passed, 3 failed, 1 ignored; one of the 3 was the older test hun290_ac4_the_lock_is_a_file_in_the_notes_dir_and_only_one_owner_holds_it, which passed in every later run (likely a race with child processes of parallel tests, not proven). No red run exists for the 375 px max-height change (checked on screenshots) or for the new caption assertion. Fix round (P2-1) red run, before the change to src/core/config.rs: of the 6 symlink tests 5 failed and 1 passed (the loop, which the read step already refused). Refusals covered by tests: a dangling link into a missing folder, a link loop, bad values, missing keys, invalid TOML, changed outside, no write permission, notice not confirmed, schedule with AI off, foreign page origin. |
-| verify | ☑ pass | auto-run by hook, session 074c57cd-3230-4091-b0c2-b521cadf1a4b, commit 25c7e24064330003021df0d5ac2633c5771365d6, log .claude/verify-runs/HUN-300-25c7e2406433.log — pass |
+| verify | ☑ pass | auto-run by hook, session dc765ba0-87f2-4e62-9036-a69c13bddee3, commit a7bf5f6bd2ccffe0411c1d62cc5b40e9b8327c7d, log .claude/verify-runs/HUN-300-a7bf5f6bd2cc.log — pass |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass / ☐ fail | Fresh-context reviewer, `main...96b68c4`. Read: the diff of `src/core/config.rs`, `window/api.rs`, `window/mod.rs`, `assets/{settings.js,app.js,app.css,index.html,ipc.js}`, `Cargo.toml`, `Cargo.lock`, `README.md`, `tests/{enrich.rs,window_api.rs,fixtures/window/page_harness.js}`. Read as direct callers or neighbours: `surfaces/enrich.rs` (child argv, child env, `doctor` lines), `core/fsutil.rs`, `core/guard.rs` (masking), `assets/capture.js`. Skipped: store, MCP, hook, CLI and tray code (not changed by this diff). Details in `## Stage 4 review`. |
 | Full smoke suite still green (no regression) | ☑ pass / ☐ fail | Both feature sets green on ce0ed72: 685 and 694 passed, 0 failed (verification row above). |
 | **Companion score (easy-verifier)** | ☑ fail | overall 73 (floor 80 missed), change_risk pass (feature, value 100), scope changes, ref `main...HEAD` at 291ce2c, abstentions: reliability, api, data, operations, infrastructure; gates: blast-radius (70) and solution-fit (85) answered, none left abstained; no findings were sent, so no divergence. security 30 comes from redaction hits over the changed files; the diff adds no key-shaped value (grep of added lines: 0), and one review note quotes a contrived `secret=` example. report: `/home/hungnguyenhuu/.easy-verifier-reports/easy-note-mcp-HUN-300/evidence-report-changes-20261126T050303-955159Z.html` |
@@ -276,3 +277,81 @@ Tests, in `tests/enrich.rs`, each printed ok in both runs:
 - `save_ai_settings_refuses_a_symlink_loop`
 
 Not changed: `save_dir` (`easy-note init`) still replaces a symlinked file (follow-up). File modes are handled as before, so the written target gets mode 0600 (P3-3). CRLF handling and every other finding are unchanged. README says nothing wrong about this, so it is unchanged. This fix was made after the Stage 4 review commit and has had no second review.
+
+---
+
+## Stage 4 review (fix round)
+
+Reviewer: fresh context, commit `a7bf5f6bd2ccffe0411c1d62cc5b40e9b8327c7d`, in depth on `git diff 96b68c4..a7bf5f6 -- src tests` (`src/core/config.rs`, `tests/enrich.rs`). Also read: `core/fsutil.rs`, `window/api.rs` (`settings_get`, `settings_save`), `assets/settings.js` (save error path), `tests/setup.rs` (the failed test below), DDR 0001, PROJECT_SPEC. Method: `skills/code-review/SKILL.md` and `references/security-reviewer.md`, applied by reading them (no Skill tool, so the trace holds no Skill call). No source or test file changed.
+
+**Verdict: pass. 0 P0, 0 P1, 1 P2, 5 P3. Review finding P2-1 of the first review (a save replaced a symlinked config.toml) is fixed.**
+
+### Commands run
+
+The guide's Verification Command, chained, with a temp `HOME`, `XDG_CONFIG_HOME` and `EASY_NOTE_DIR`, `DISPLAY`, `WAYLAND_DISPLAY` and `CLAUDE_CONFIG_DIR` unset, and a trap `claude` first on `PATH`. The trap was never called.
+
+Run 3 (new, empty `CARGO_TARGET_DIR`; 05:50:26Z to 06:03:17Z) is the result:
+
+| Step | Result |
+|---|---|
+| `cargo fmt --check` | exit 0 |
+| `cargo clippy --all-targets --locked -- -D warnings` | exit 0 |
+| `cargo test --locked` | exit 0: 685 passed, 0 failed, 7 ignored (26 result lines) |
+| `cargo clippy --all-targets --locked --features window,tray -- -D warnings` | exit 0 |
+| `cargo test --locked --features window,tray` | exit 0: 694 passed, 0 failed, 7 ignored (26 result lines) |
+
+The 6 symlink tests and both `hun290_ac4` lock tests printed ok in both test steps.
+
+Two earlier runs stopped at `cargo test --locked` with exit 101. Both causes lie in how the run was set up:
+
+- Run 1 (05:33:13Z, the worktree's own `target/`): `ac8_setup_runs_each_install_under_a_heading_and_a_second_run_writes_nothing` failed at `tests/setup.rs:463` (`!autostart.exists()`), so the default test ran a binary with the `tray` feature. The auto verify run for this commit was working in the same worktree at that time. Inferred, not proven: a build of that run replaced `target/debug/easy-note`. The test passed in run 3.
+- Run 2 (05:37:26Z): `save_ai_settings_follows_a_chain_of_symlinks_to_its_end` failed because this reviewer reused a target directory that last held a deliberately broken build (mutation 3 below), and cargo took it as fresh. The test passed in run 3.
+
+Probes: throwaway tests in a `git archive` copy of the commit, outside the worktree, with temp directories.
+
+| Case | Observed |
+|---|---|
+| Plain file, missing and present | created with its folder, mode 0600; a save with no change keeps the inode; no temp file left |
+| Config folder is itself a link, and config.toml inside it is a relative `../../` link | the physical target is written; the file at the textual path is untouched |
+| Chain of 1, 39, 40 links; 41 and 60 | written; refused with `Too many levels of symbolic links`, end unchanged |
+| Self loop; link to `.`, `..`, `/` | refused at the read, link unchanged |
+| Target with a trailing slash; `nothere/../x.toml`; `/dev/null` (not root) | refused, no temp file left |
+| Dangling link into a missing folder; through IPC `settings_save` | refused, names config.toml and the target; `settings_get` answers defaults with base `none` |
+| Target on another filesystem (`/dev/shm`) | written, no temp file left |
+| Link to a file that is not TOML | refused, file unchanged |
+| Target 0000 | refused at the read |
+| Target in a read-only folder | refused, target unchanged (P3-b) |
+| Target 0444 in a writable folder; target 0664 | **overwritten**, mode becomes 0600 (P3-c) |
+| Changed on disk through a link: target edited; link moved to other text; dangling target appears; link removed | each refused with `the settings changed outside the window`, nothing written |
+| Link moved to a file with the same text between read and save | the new target is written (the stamp is of the content) |
+| Link moved again and again while saves run | **one target got the other target's content** (P3-a) |
+| `save_dir` on a linked file | the link becomes a regular file (P3-d) |
+
+Mutation check on the 6 new tests: with `config.rs` of `96b68c4`, 5 fail and 1 passes (the loop); relative links resolved from the working directory, 2 fail; only one link followed, 1 fails. The tests catch each of these.
+
+Lane check (warn only): `lane: C2, 14 files, 2142 lines, EXCEEDS (lines 2142 > 500); unpredicted: Cargo.toml, src/surfaces/window/assets/app.css, src/surfaces/window/assets/index.html, src/surfaces/window/assets/ipc.js, src/surfaces/window/assets/settings.js, src/surfaces/window/mod.rs, tasks/TASK_GUIDE_HUN-300.md, tests/fixtures/window/page_harness.js`.
+
+### Findings
+
+**P0**: none. **P1**: none.
+
+**P2**
+
+- **P2-a** (confidence 75) `PROJECT_SPEC.md:123`, `docs/ddr/0001-native-runtime-and-write-targets.md:26`: the written rules are stale. The spec says writes go only inside the notes dir and `~/.config/easy-note/config.toml`, and `Never in any code repo`. A Settings save through a link now writes the target, and first a temp file beside it, which can be a dotfiles git repo. The DDR still names `easy-note init` as the only writer. The owner chose this behaviour (guide, Questions Log, 2026-11-26), so no code change is asked. Action: Supervisor or owner records the exception; the implementer must not touch these files.
+
+**P3**
+
+- **P3-a** (100, probe) `src/core/config.rs:376` and `:399`: the read and the write resolve the link in two separate lookups. Scenario: a dotfiles tool moves the link from A to B after the read and before `link_end`; text built from A replaces B, and B's own keys (for example `command`) are lost. The probe hit it at save 10 with a 3000-key file and the link moved about every 0.7 ms. P3 and not higher because a person's tool must move the link inside one save. The same gap would let a link moved to `/` reach the `expect` at `:400` (by reading, not probed). Action: call `link_end` first, then read and write that one path (not tested here).
+- **P3-b** (100, probe) `src/core/config.rs:398`: a write error through a link names only the link. Scenario: config.toml links into a read-only folder (a managed dotfiles store); the toast says `cannot write` config.toml `Permission denied`, and the person checks `~/.config/easy-note`, which is writable. Action: name the target too when it differs from the path.
+- **P3-c** (100, probe) `src/core/config.rs:411-413`: first-review P3-3 now reaches the target. Before the fix the target was never touched. Now a target made read-only (0444) is overwritten without a word, and a shared 0664 target becomes 0600, so other readers lose it. A file of another owner in a writable folder would be replaced too (by reading, not probed). Action: keep the target's mode and refuse a read-only target.
+- **P3-d** (100, probe) `src/core/config.rs:564-580`: `save_dir` (`easy-note init`) still replaces the link with a regular file. Outside this diff and already listed as a follow-up in `## Fix round`.
+- **P3-e** (100) `tests/enrich.rs`: no test covers the changed-on-disk refusal through a link, or a link behind a linked folder (both held in the probes). The loop test passes without the fix, and no test reaches the loop error of `link_end`.
+
+### Security (Risk Medium)
+
+No confirmed vulnerability. Rejected: writing an arbitrary file through the link (only someone who can already write `~/.config/easy-note` picks the target, the IPC request cannot pick a path, a target that is not valid `[ai]` TOML is refused, and `/dev/null` is refused for a normal user); a link planted in a sticky shared folder (the read through the full path comes first, so the kernel's link protection applies; only the timing gap of P3-a remains). First-review notes on the IPC channel still hold: the fix adds no input from the page.
+
+### Not verified
+
+- A save as root, a target owned by another user, and the error toast with a long target path in a real window.
+- The first review's other findings (P2-2 to P2-5, P3-1 to P3-6) were not rechecked.
