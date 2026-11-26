@@ -143,3 +143,99 @@ test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fin
 
 **WITNESS**: [who ran it and when — derived from `memory/event-trace/Txxx.jsonl`, never the
 implementing agent alone]
+
+---
+
+## Stage 4 review
+
+Reviewer: qa-expert, fresh context, from the repo only, 2026-11-26. Commit `d01b46939c2c9013e80be53d063c520986ccc718`, diff `main...d01b469`. Rules: `skills/code-review/SKILL.md` (read and followed by hand; no Skill tool call) and `skills/code-review/references/security-reviewer.md`. Review done alone: no second agent re-checked the security leads. No source or test file changed, no fix applied. The real `claude` CLI was never started.
+
+**Verdict: fail (changes required).** 1 unverified P0, 3 P1, 5 P2, P3 list below. The Verification Command is green.
+
+### Commands and results
+
+| Command (in the worktree unless said) | Result |
+|---|---|
+| `cargo fmt --check` | exit 0 |
+| `cargo clippy --all-targets --locked -- -D warnings` | exit 0, no warning |
+| `cargo test --locked` | exit 0; 27 `test result: ok` lines, 665 passed, 0 failed, 7 ignored; `tests/organize.rs`: `13 passed; 0 failed` |
+| `python3 scripts/lane_check.py tasks/TASK_GUIDE_HUN-294.md main...d01b469` | `lane: C2, 8 files, 1294 lines, EXCEEDS (lines 1294 > 500); unpredicted: tasks/TASK_GUIDE_HUN-294.md` (warn only) |
+| Scratch copy: 12 reviewer probes appended to a copy of `tests/organize.rs`, fake `claude`, `cargo test --locked --offline --test zz_probe p -- --nocapture --test-threads=1` | `17 passed; 0 failed; 8 filtered out` (the 12 probes and 5 original tests that match the filter; probes print behaviour, they do not assert it); output quoted per finding |
+| Scratch copy mutation: `organize::timeout(settings.timeout_secs, sent.len())` replaced by `Duration::from_secs(settings.timeout_secs)`, `cargo test --locked --offline --test organize` | `13 passed; 0 failed` (the mutation survives, F9) |
+
+Reachability: `surfaces::organize::run_batch` is in the diff; only tests call it (the `ai run` command is the next slice, as the guide says). Startup-reads check: not checkable, the implementer's final report is not in the repo.
+
+### P0 (unverified)
+
+| ID | File:line | Finding | Conf. | Action |
+|---|---|---|---|---|
+| F1 | `src/core/organize.rs:90-115`, `src/surfaces/organize.rs:206-212` | The schema sent as `--json-schema` has an array root. `--json-schema` structured output is, to the reviewer's knowledge (not a repo fact), a tool input schema, and the API requires `type: object` at the root. The only real-CLI evidence in the repo is for an object (`memory/learnings.md`, 2026-11-19: `structured_output` "(the object)"). Every test uses a fake that accepts any schema. Failure: each real batch exits non-zero, the person sees `claude exited 1; if it is not logged in, log in once`, and no note is ever organized. Outcome: `needs_validation`. | 50 | Owner or Supervisor runs one real call with a dummy text before the `ai run` slice: `echo 'Return one item with id x' \| claude -p --output-format json --json-schema '{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}}' --tools "" --strict-mcp-config --no-session-persistence --model haiku`. Pass: exit 0 and `structured_output` is an array. Fail: wrap the array in an object (`{"items":[…]}`); AC 2 and AC 3 wording then needs a ruling. |
+
+### P1
+
+| ID | File:line | Finding and failure scenario | Conf. | Action |
+|---|---|---|---|---|
+| F2 | `src/core/organize.rs:171-172`, `src/surfaces/organize.rs:153-154`, `src/core/ai.rs:295-301, 321-329` | A finished draft keeps its draft keys. Run 1 says `draft` with a reason and a suggestion. The person finishes the note. Run 2 says `todo`: `check_item` gives `None`, and `organize` reads `None` as "leave as is". Probe: `kind":"todo"` with `"draft_reason":"it stops mid-sentence","draft_suggestion":"half a thought about the tray icon"`, `stale=false`, and `effective` returns both. The old text now looks fresh. `docs/NOTE_FORMAT.md:139` (added here) says these keys are for kind `draft` only. | 100 | Clear both keys when the applied kind is not `draft` (needs a way to clear in `ai.rs`: a `Question:` if out of scope); add a draft-then-finished test. |
+| F3 | `src/core/organize.rs:169, 176-188` | A note whose `repo` is longer than 60 chars can never be organized. The repo replaces the project and then fails the 60-char cap, so the whole item is refused. Probe with a 62-char repo, two runs: `pending ... reason: "project is 62 chars; the limit is 60"`, no AI file. A project override does not help (same result), although the project would not be written. Each run sends the note again and uses a batch slot. | 100 | Decide cut or omit for a long repo (AC 5), do not check a project that will not be written, add a test. |
+| F4 | `src/surfaces/organize.rs:134-157`, `src/core/overrides.rs:245-274` | Applied changes with no log line (AC 7, FR-047 "Each applied item is one `ai-log.jsonl` line, so Undo works per note", NFR-015 "Every AI change can be undone"). `title`, `summary` and `tags_suggested` are overwritten by `ai::enrich`, which logs nothing; a new note's non-draft `kind` is not logged either. Probe 1: an existing file got `title":""`, `summary":""`, new tags; `new log lines=[]`; the old text is lost. Probe 2: new note, project and topic overridden, item applied, `new log lines for new note b=[]`; `overrides::undo` then removed the **person's** topic override (`Undone { field: "topic", now: None }`). | 100 behaviour, 75 on the reading of AC 7 | Supervisor ruling: narrow AC 7 / NFR-015 to the keys HUN-292 logs and record it, or log (and make undoable) title, summary and tags. At least one line per applied item. |
+
+### P2
+
+| ID | File:line | Finding and failure scenario | Conf. | Action |
+|---|---|---|---|---|
+| F5 | `src/surfaces/organize.rs:180, 123-125, 146-155` | AC 6: overrides are read before the call, which may last up to 5 x `timeout_secs`. An override set while it runs is not seen. Probe (fake writes topic and kind overrides during the call): the AI file topic and kind changed, `kept: []`, three `who: ai` lines were appended after the person's change, so the next `ai undo` takes back the AI line, not the person's fix. The effective value still shows the override, so this is not P1. | 100 | Read the overrides again after the call for the write step (AC 11 "once" then needs a ruling: one read for the writes, with the warning once); add a test. |
+| F6 | `src/surfaces/organize.rs:17-18, 146-157`, `src/core/ai.rs:300, 334`, `docs/NOTE_FORMAT.md:140-141` | AC 12 holds only for a new note. With an existing AI file, `enrich` succeeds, `organize` fails: the file keeps the old `organized_at` and old kind, project and topic, with a fresh `based_on`. Probe: `FR-029 pending total=0 stale=false`. The AC says "stays without `organized_at`". In both cases (new or old file) the FR-029 selection that FR-047 names will not pick the note again. The doc rule "older than `at`" is in no code, and the stamps have one-second resolution (equal stamps in the probe). | 100 | Ruling; carry to the `ai run` slice that selection must use `organized_at`; test the existing-file case. |
+| F7 | `src/surfaces/organize.rs:216-221` | Edge case "one item for two ids: both dropped". Two inbox files whose names are different secret-shaped strings both get the id `inbox/[masked:github_token]` in the prompt. One answer item is then applied to **both** notes (probe: two stdin lines with the same id, `written=2 pending=0`). One note gets the other's title, summary and topic. Rare trigger. | 100 | If two sent notes share a masked id, leave both pending (or send an index as the id); add a test. |
+| F8 | `src/core/organize.rs:199-202` (same order in `src/core/ai.rs:269-271`) | AC 3 "strings masked": a tag is lower-cased before it is masked, so the case-sensitive AWS pattern misses it. Probe: title gives `[masked:aws_key]`, but `"tags_suggested":["akiaiosfodnn7example"]` is written to the AI file. Security: `confirmed`, Low (needs a model answer that holds a key the input mask did not remove; upper-casing restores an access key ID). The reverse case, a GitHub token as a tag, passes `check_item` as a marker and is then refused by `enrich` with the misleading reason `tags_suggested[0] is not a tag`. | 100 | Mask the raw tag first; if it was masked, drop the tag or refuse the item in `check_item` with a clear reason; test an AWS key as a tag. |
+| F9 | `tests/organize.rs:362-396` and file | Test gaps: AC 2 timeout scaling is not tested through `run_batch` (the mutation above survives); no test for AC 11, for AC 12 on an existing file, for an override set during the call, or for draft-then-finished. | 100 | Add tests with the fixes. |
+
+### P3
+
+- `src/core/organize.rs:78-79`: the first note that does not fit ends the loop. A note that cannot fit (probe: 1,500 control chars with 100 normal names, `fit=0`; quote-heavy lists, 14,972 chars, `fit=0`) blocks every later note on each run. Normal text does not trigger it (full 60-char ASCII lists with a 1,500-char note: 10,692 chars, `fit=1`). Skip instead of stop, and bound the lists by chars.
+- `src/surfaces/organize.rs:102-103`: serde takes a positional array as an item (`[[id,"t","todo","s","p","tp",[]]]` was written), so AC 4 "fails the array schema writes nothing" is not strict. Check each element is an object.
+- `src/core/organize.rs:27-36, 76`: `</notes>` inside a note stays literal in the JSON line (newlines are escaped, so it cannot forge a line), and the prompt calls only the notes data, not the `<lists>` names, which come from earlier model answers. Hardening: escape `<`, and call the lists data.
+- `src/surfaces/organize.rs:183-191`: a repeated id in `ids` is sent twice and listed twice in `written` (probe).
+- `src/surfaces/organize.rs:118-145`: `ai::enrich` reads the body again after the hash check, so an edit in that very short gap gets a fresh `based_on` (same pattern as `ai enrich`). Not reproduced.
+- `src/surfaces/organize.rs:61, 195` against `src/core/store.rs:263-264`: the unmasked body now leaves the core and goes to the prompt builder, against the comment on `raw_body`. It is masked in `prompt`. Update the comment or give the core one function for this.
+- `src/surfaces/organize.rs:25-37` and `src/core/ai.rs:316-318`: `Outcome` ids and the reason `no AI detail for {id} to organize` are unmasked (an inbox file name). The `ai run` slice must mask them before print or log.
+- `src/surfaces/organize.rs:74-85`: `effective_with` lists the whole inbox once per inbox note (quadratic in inbox size).
+- `src/core/overrides.rs:210-219` (HUN-292, unchanged): a failed log write is silent; probe with an unwritable log: item reported written, no line.
+- Edge checklist: "schema check fails: ... one log line" writes no line and prints nothing (the reason is only returned); a filesystem path in a topic or project is capped but not masked (no path pattern in the guard); the guide's "Pre-existing pin tests" row is still the template text.
+- Stale text: `src/core/ai.rs:3-5` does not name the batch as a source of AI text; `docs/NOTE_FORMAT.md:137` speaks of `ai run`, which does not exist yet.
+- Empty `title` and `summary` are accepted and replace good text (see F4).
+
+### Security: sensitive-data inventory (blast radius)
+
+| Data | Reaches | Control |
+|---|---|---|
+| Note bodies of the batch | child `claude` stdin, so the person's Claude account | only with `[ai] enrich = "claude"`; masked, then cut to 1,500 chars; whole prompt at most 12,000 chars when notes are sent |
+| Note ids, including inbox file names | child stdin | masked (collision: F7) |
+| Project and topic names of **all** live notes (AI files and person overrides, including repo names), with counts | child stdin | masked, at most 50 each; includes notes outside the batch, as FR-047 asks |
+| Parent environment | child env | whole env minus the three `ANTHROPIC_*` variables (unchanged FR-037 behaviour) |
+| Schema, model name | child argv | no note data; no shell; fresh 0700 temp cwd; `--tools ""` |
+| Title, summary, tags, kind, model id, project, topic, draft keys | `.easy-note/ai/<id>.json`; in an Obsidian vault also `ai/<id>.md` (title, summary, tags, kind, model) | masked and capped (tag gap: F8) |
+| Project, topic, kind, draft keys, old and new | `.easy-note/ai-log.jsonl` | masked, cut to 200 chars |
+| Raw note files, overrides file | not written | byte-identical in the fixture test and in the inbox probe |
+| Errors and `Outcome` | caller | fixed reasons, field names and lengths; never the answer or note text; ids unmasked (P3); the exit hint holds the command and account dir path; child stderr discarded |
+
+Security leads:
+
+- Text in one note steers the answer for other notes of the batch: the path exists by design (one call, checked only by id). Reach: other notes' AI files (title, summary, tags, topic, project, draft suggestion), the same person's data. No tool call, no raw note write, overrides still win on display. Hardening note, Low; it makes F4 matter more. Real model behaviour not tested.
+- Rejected: a model id used as a path (ids are only compared for equality, `src/surfaces/organize.rs:217`; paths come from the canonical id); note text or answer in argv; a write to a note file (no note writer is called); an answer over 1 MiB (cut, then refused, tested).
+
+### Acceptance Criteria
+
+| AC | Result |
+|---|---|
+| 1 | met (tests and unit test); stall note in P3 |
+| 2 | met by code; scaling not covered through `run_batch` (F9); real CLI acceptance of the schema open (F1) |
+| 3 | met except F7 (shared masked id) and F8 (tag masking) |
+| 4 | met except the positional-array shape (P3) |
+| 5 | **not met** for a repo over 60 chars (F3) |
+| 6 | met for overrides present before the call; not for one set during it (F5) |
+| 7 | **not met** (F4) |
+| 8 | met (test); very short gap noted in P3 |
+| 9 | met for the fixture (GitHub token); AWS key as a tag is a gap (F8) |
+| 10 | met |
+| 11 | met by code, no test |
+| 12 | met for a new note only (F6) |
