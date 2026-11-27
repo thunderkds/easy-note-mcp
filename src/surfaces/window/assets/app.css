@@ -11,8 +11,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 
 .app { position: relative; min-height: 100vh; background: #121413; color: #DCE0DD; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column; }
 
+/* HUN-304: the content is a centred 1440 px container. The header's contents and the toast use the
+   same two edges (1440 / 2 - 28 = 692); the header's bottom line stays full width. */
 /* Header */
-.header { min-height: 60px; box-sizing: border-box; padding: 10px 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; border-bottom: 1px solid #232826; }
+.header { min-height: 60px; box-sizing: border-box; padding: 10px max(28px, calc(50% - 692px)); display: flex; flex-wrap: wrap; align-items: center; gap: 14px; border-bottom: 1px solid #232826; }
 .brand { flex: 1 1 0; display: flex; align-items: center; gap: 10px; min-width: 0; }
 .brand > svg { flex-shrink: 0; }
 .brand-name { font-weight: 600; font-size: 17px; color: #EAEDEA; white-space: nowrap; flex-shrink: 0; }
@@ -20,7 +22,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .dir-chip:empty { display: none; }
 .new-note { margin-left: auto; flex-shrink: 0; height: 38px; padding: 0 16px; background: #3CF5A8; color: #0E100F; border: 0; border-radius: 6px; box-shadow: 0 0 0 1px #3CF5A840, 0 0 18px #3CF5A840; font: 500 14px 'IBM Plex Sans', sans-serif; cursor: pointer; }
 
-.main { padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; box-sizing: border-box; width: 100%; max-width: 1440px; }
+.main { padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; box-sizing: border-box; width: 100%; max-width: 1440px; margin: 0 auto; }
 
 /* Counts strip */
 .counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); border: 1px solid #262B29; border-radius: 8px; overflow: hidden; }
@@ -39,6 +41,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .columns { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
 .notes { flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .detail { flex: 1 1 380px; min-width: 0; max-width: 100%; }
+/* HUN-304: two columns from 760 px, so each window from the 800 px minimum up shows the list and the
+   panel side by side; the panel stays in view and scrolls by itself. Narrower, it wraps (HUN-284). */
+@media (min-width: 760px) {
+  .columns { flex-wrap: nowrap; }
+  .notes { flex: 1 1 0; }
+  .detail { flex: 0 0 clamp(320px, calc(100vw - 620px), 380px); position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; color-scheme: dark; }
+}
 
 /* Search */
 .search { position: relative; display: block; }
@@ -96,6 +105,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .context { margin: 0; font: 400 12.5px 'IBM Plex Mono', monospace; color: #ABB3AE; overflow-wrap: anywhere; }
 .edited-at { white-space: nowrap; }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag, .ai-tag, .ai-title { overflow-wrap: anywhere; }
 .tag { padding: 3px 9px; border: 1px solid #2C3230; border-radius: 4px; font: 400 12px 'IBM Plex Mono', monospace; color: #B5BCB7; }
 .no-tags { font-size: 12.5px; color: #6E7772; }
 
@@ -130,7 +140,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .read-only { align-self: center; font-size: 12.5px; color: #8C9590; }
 
 /* Toast */
-.toast { position: fixed; right: 24px; bottom: 24px; z-index: 6; display: flex; align-items: center; gap: 14px; max-width: 420px; box-sizing: border-box; padding: 12px 16px; background: #181B1A; border: 1px solid #3CF5A859; border-radius: 6px; box-shadow: 0 0 0 1px #3CF5A840, 0 0 18px #3CF5A840; font-size: 13px; color: #EAEDEA; }
+.toast { position: fixed; right: max(24px, calc(50% - 692px)); bottom: 24px; z-index: 6; display: flex; align-items: center; gap: 14px; max-width: 420px; box-sizing: border-box; padding: 12px 16px; background: #181B1A; border: 1px solid #3CF5A859; border-radius: 6px; box-shadow: 0 0 0 1px #3CF5A840, 0 0 18px #3CF5A840; font-size: 13px; color: #EAEDEA; }
 .toast-text { font-family: 'IBM Plex Mono', monospace; overflow-wrap: anywhere; user-select: text; }
 .toast-undo { background: none; border: 0; padding: 0; color: #7EDDB0; font: 500 13px 'IBM Plex Sans', sans-serif; cursor: pointer; }
 

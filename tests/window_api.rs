@@ -17,9 +17,9 @@ use easy_note_mcp::surfaces::enrich;
 use easy_note_mcp::surfaces::window::{
     allowed_url,
     api::{handle, handle_with},
-    asset, capture_from, capture_ipc, initial_note_script, ipc, ipc_from, ipc_from_with,
-    ipc_threaded, ipc_with, reply_script, show_script, single, Capture, Running, CSP, ORIGIN,
-    QUICK_START, REFRESH,
+    asset, capture_from, capture_ipc, dashboard_sizes, initial_note_script, ipc, ipc_from,
+    ipc_from_with, ipc_threaded, ipc_with, reply_script, show_script, single, Capture, Running,
+    CSP, ORIGIN, QUICK_START, REFRESH,
 };
 use serde_json::{json, Value};
 
@@ -3945,4 +3945,112 @@ fn hun291_the_page_shows_edited_on_the_row_and_the_full_stamp_in_the_detail() {
         "{r}"
     );
     assert_eq!(r["context"][UNTOUCHED], "no project · today 06:00", "{r}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-304: the layout fits every allowed window size (FR-042)
+// ---------------------------------------------------------------------------------------------
+
+/// The declarations of the first rule of `css` that starts a line with `selector {`.
+fn css_rule<'a>(css: &'a str, selector: &str) -> &'a str {
+    let head = format!("\n{selector} {{");
+    let at = css
+        .find(&head)
+        .unwrap_or_else(|| panic!("app.css lacks the rule {selector}"));
+    let body = &css[at + head.len()..];
+    &body[..body.find('}').expect("end of rule")]
+}
+
+#[test]
+fn hun304_a_large_screen_shows_a_centred_container() {
+    let css = std::str::from_utf8(asset("/app.css").unwrap().1).unwrap();
+    let main = css_rule(css, ".main");
+    for must in ["max-width: 1440px", "margin: 0 auto"] {
+        assert!(main.contains(must), ".main lacks {must}: {main}");
+    }
+    // The header's contents and the toast stay on the container's edges (720 - 28 = 692).
+    let header = css_rule(css, ".header");
+    assert!(
+        header.contains("padding: 10px max(28px, calc(50% - 692px))"),
+        "{header}"
+    );
+    let toast = css_rule(css, ".toast");
+    assert!(
+        toast.contains("right: max(24px, calc(50% - 692px))"),
+        "{toast}"
+    );
+}
+
+#[test]
+fn hun304_every_allowed_width_shows_the_list_and_the_panel_side_by_side() {
+    let css = std::str::from_utf8(asset("/app.css").unwrap().1).unwrap();
+    let at = css
+        .find("@media (min-width: 760px) {")
+        .expect("no two-column block");
+    let block = &css[at..at + css[at..].find("\n}\n").expect("end of block")];
+    for must in [
+        ".columns { flex-wrap: nowrap; }",
+        ".notes { flex: 1 1 0; }",
+        "flex: 0 0 clamp(320px, calc(100vw - 620px), 380px)",
+        "position: sticky",
+        "top: 16px",
+        "max-height: calc(100vh - 32px)",
+        "overflow-y: auto",
+    ] {
+        assert!(block.contains(must), "the two-column block lacks {must}");
+    }
+    // The block comes after the base rules, or they would win over it.
+    assert!(at > css.find("\n.detail {").expect("base .detail rule"));
+    // The smallest window on a large screen is inside the two-column range.
+    assert!(dashboard_sizes(None).1 .0 >= 760.0);
+    // A long word in the panel wraps instead of scrolling the panel sideways.
+    assert!(css.contains(".tag, .ai-tag, .ai-title { overflow-wrap: anywhere; }"));
+}
+
+#[test]
+fn hun304_a_newly_picked_note_starts_at_the_top_of_the_panel() {
+    let app = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
+    let at = app
+        .find("function select(id, reveal)")
+        .expect("select(id, reveal)");
+    let select = &app[at..at + app[at..].find("\n  }\n").expect("end of select")];
+    // Only for another note: a board refresh selects the same one and keeps its place.
+    let reset = select
+        .find("if (state.sel !== id) $('detail').scrollTop = 0;")
+        .expect("select does not reset the panel's scroll");
+    assert!(reset < select.find("state.sel = id;").expect("state.sel = id"));
+}
+
+#[test]
+fn hun304_the_window_is_never_larger_than_the_screen() {
+    let usual = ((1280.0, 820.0), (800.0, 560.0));
+    for (screen, expected) in [
+        (None, usual),
+        (Some((3440.0, 1440.0)), usual),
+        (Some((1920.0, 1080.0)), usual),
+        (Some((1360.0, 900.0)), usual),
+        (Some((1366.0, 768.0)), ((1280.0, 688.0), (800.0, 560.0))),
+        (Some((1280.0, 720.0)), ((1200.0, 640.0), (800.0, 560.0))),
+        (Some((800.0, 600.0)), ((720.0, 520.0), (720.0, 520.0))),
+        (Some((640.0, 480.0)), ((560.0, 400.0), (560.0, 400.0))),
+        // A size that cannot be a screen keeps the usual sizes.
+        (Some((0.0, 0.0)), usual),
+        (Some((80.0, 80.0)), usual),
+        (Some((f64::NAN, f64::NAN)), usual),
+    ] {
+        assert_eq!(dashboard_sizes(screen), expected, "screen {screen:?}");
+    }
+}
+
+#[test]
+fn hun304_a_row_click_never_scrolls_the_page_to_a_panel_that_stays_in_view() {
+    // A stuck sticky panel has a larger `offsetTop` than the list, so the HUN-284 test alone
+    // reads it as wrapped and moves the page on each click.
+    let app = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
+    let at = app.find("function revealDetail(").expect("revealDetail");
+    let body = &app[at..at + app[at..].find("\n  }\n").expect("end of revealDetail")];
+    let stays = body
+        .find("if (getComputedStyle(aside).position === 'sticky') return;")
+        .expect("revealDetail does not leave a sticky panel alone");
+    assert!(stays < body.find("scrollIntoView(").expect("scrollIntoView"));
 }

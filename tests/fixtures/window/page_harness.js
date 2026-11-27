@@ -146,7 +146,7 @@ async function scenario(run) {
     if (m.cmd === 'settings_get' || m.cmd === 'settings_save') return answerSettings(m);
     return {};
   };
-  const ctx = vm.createContext({ document: doc, setTimeout, clearTimeout, navigator: {}, console, matchMedia: () => ({ matches: true }) });
+  const ctx = vm.createContext({ document: doc, setTimeout, clearTimeout, navigator: {}, console, matchMedia: () => ({ matches: true }), getComputedStyle: () => ({ position: 'static' }) });
   ctx.window = ctx;
   ctx.ipc = {
     postMessage(s) {

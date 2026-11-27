@@ -177,6 +177,7 @@
   // nothing scrolls.
   function revealDetail() {
     var aside = $('detail');
+    if (getComputedStyle(aside).position === 'sticky') return;  // HUN-304: two columns, already in view
     if (aside.offsetTop <= aside.previousElementSibling.offsetTop) return;
     var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     aside.scrollIntoView({ block: 'start', behavior: still ? 'auto' : 'smooth' });
@@ -654,6 +655,7 @@
       if (reveal) focusEditBox();
       return;
     }
+    if (state.sel !== id) $('detail').scrollTop = 0;  // HUN-304: the panel scrolls by itself; another note starts at its top
     state.sel = id;
     state.detailError = '';
     Object.keys(rowButtons).forEach(function (k) { rowButtons[k].setAttribute('aria-current', k === id ? 'true' : 'false'); });
