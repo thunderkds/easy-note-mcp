@@ -9,6 +9,7 @@ fn easy(home: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_easy-note"))
         .args(args)
         .env("HOME", home)
+        .env("XDG_CONFIG_HOME", home.join(".config"))
         .env("EASY_NOTE_DIR", home.join("notes"))
         // a bus address that points nowhere: no session bus, so no tray host
         .env(
@@ -29,6 +30,14 @@ fn text(bytes: &[u8]) -> String {
 #[test]
 fn ac3_no_tray_host_exits_1_with_the_hotkey_hint() {
     let home = tempfile::tempdir().unwrap();
+    // HUN-296 AC 6: the schedule is on, and with no host still no AI run starts.
+    let config = home.path().join(".config/easy-note");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(
+        config.join("config.toml"),
+        "[ai]\nenrich = \"claude\"\nschedule = \"tray\"\ninterval_min = 5\n",
+    )
+    .unwrap();
     let out = easy(home.path(), &["tray"]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
     let said = text(&out.stderr);
@@ -41,6 +50,13 @@ fn ac3_no_tray_host_exits_1_with_the_hotkey_hint() {
     assert!(
         !home.path().join(".config/autostart").exists(),
         "no autostart file"
+    );
+    assert!(
+        !home
+            .path()
+            .join("notes/.easy-note/ai-run-state.json")
+            .exists(),
+        "no AI run"
     );
 }
 

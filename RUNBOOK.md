@@ -48,10 +48,13 @@ cargo install --path . --root "$(mktemp -d)" && echo ok   # leaves PATH as it wa
 
 ## Scheduled AI runs (`ai run`)
 
-- Cron line and settings: README, "Organize the notes that wait". The log folder must exist.
+- Cron line, tray timer and settings: README, "Organize the notes that wait". The log folder must exist.
+- The tray starts `ai run` with no output of its own; read `ai-run-state.json` for what happened. A bad
+  config.toml gives one `no timed AI run` line on the tray's stderr. Restart the tray after an upgrade.
 - Last run, counts, failures and `last_error`: `<notes dir>/.easy-note/ai-run-state.json`. cron ignores its
   `next_after`, so a broken `claude` is called again at the next cron time.
-- Stop it: remove the cron line, or set `enrich = "off"` in `[ai]`.
+- Stop it: turn `Organize automatically` off (`schedule = "off"`) and remove any cron line, or set
+  `enrich = "off"` in `[ai]`.
 - `ai-hold.json` is not valid: `ai run` and `ai undo` refuse. Fix or delete it; deleting it lets the next run
   redo undone changes. The `ai-run.lock` and `ai-write.lock` files can stay: a dead process holds no lock.
 

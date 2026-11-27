@@ -5,8 +5,11 @@
 //! display, else its file with `xdg-open`. The folder opens with `xdg-open`. Every command is an
 //! argv list, never a shell. The recent list is read again each time the menu opens.
 //!
+//! While the tray runs it is also the AI's timer (FR-049): `AiTimer` starts `easy-note ai run`
+//! every `[ai] interval_min` while the schedule and the AI are both on (NFR-014).
+//!
 //! The first part of this file is always compiled and holds no D-Bus: the menu model, the argv of
-//! each action, the single-instance lock and the texts. The StatusNotifierItem part (`ksni`) is
+//! each action, the single-instance lock, the AI timer and the texts. The StatusNotifierItem part (`ksni`) is
 //! behind the cargo feature `tray`, so a default build links no tray crate (NFR-010). Without the
 //! feature `run` only says how to install a build that has one.
 //!
@@ -19,10 +22,12 @@ use std::fs::{self, File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 
 use super::cli::safe;
 use super::dashboard;
+use super::organize::{self, RunState};
+use crate::core::config::AiSettings;
 use crate::core::query::{self, Filters};
 use crate::core::store::Store;
 
@@ -280,6 +285,94 @@ pub fn acquire_lock(root: &Path) -> Result<File, String> {
     }
 }
 
+/// How often the AI timer reads config.toml and looks whether a run is due.
+const AI_LOOK_SECS: i64 = 60;
+
+/// The program and arguments of one timed AI run (`exe` is this binary).
+pub fn ai_run_argv(exe: &Path) -> (PathBuf, Vec<OsString>) {
+    (
+        exe.to_path_buf(),
+        ["ai", "run"].map(OsString::from).to_vec(),
+    )
+}
+
+/// May a timed run start at `now`? Only with the schedule and the AI on, no run in progress, a
+/// full interval since `since` (the tray's start or its last timed run), and no back-off.
+fn ai_run_due(
+    now: DateTime<Utc>,
+    since: DateTime<Utc>,
+    settings: &AiSettings,
+    state: &RunState,
+    lock_held: bool,
+) -> bool {
+    settings.effective_schedule()
+        && !lock_held
+        && now - since >= TimeDelta::minutes(i64::from(settings.interval_min))
+        && !state.backing_off(now.fixed_offset())
+}
+
+/// The tray's AI timer (FR-049). It uses the wall clock, so time asleep counts, and a long sleep
+/// gives one run.
+pub struct AiTimer {
+    since: DateTime<Utc>,
+    looked: DateTime<Utc>,
+    /// The config error already reported, so it is not repeated at every look.
+    complaint: Option<String>,
+}
+
+impl AiTimer {
+    /// `now` is the tray's start: the first run comes one interval later.
+    pub fn new(now: DateTime<Utc>) -> AiTimer {
+        AiTimer {
+            since: now,
+            looked: now,
+            complaint: None,
+        }
+    }
+
+    /// Feed one poll of the tray loop. At most once a minute it reads `settings` and, when a run
+    /// is due for the notes dir `root`, calls `spawn`. Returns a line for stderr, if any.
+    pub fn tick(
+        &mut self,
+        now: DateTime<Utc>,
+        root: &Path,
+        settings: impl FnOnce() -> Result<AiSettings, String>,
+        spawn: impl FnOnce(),
+    ) -> Option<String> {
+        if (0..AI_LOOK_SECS).contains(&(now - self.looked).num_seconds()) {
+            return None;
+        }
+        self.looked = now;
+        // A clock set back starts the wait again.
+        self.since = self.since.min(now);
+        let settings = match settings() {
+            Ok(settings) => settings,
+            Err(why) => {
+                if self.complaint.as_ref() == Some(&why) {
+                    return None;
+                }
+                let line = format!("easy-note: no timed AI run: {}", safe(&why));
+                self.complaint = Some(why);
+                return Some(line);
+            }
+        };
+        self.complaint = None;
+        if root.is_dir()
+            && ai_run_due(
+                now,
+                self.since,
+                &settings,
+                &RunState::read(root),
+                organize::run_lock_held(root),
+            )
+        {
+            self.since = now;
+            spawn();
+        }
+        None
+    }
+}
+
 /// The doctor's line about the tray host, or `None` when there is one.
 pub fn doctor_line(host_present: bool) -> Option<String> {
     (!host_present).then(|| format!("tray: no tray host ({HOTKEY_HINT})"))
@@ -307,6 +400,7 @@ mod icon {
     use ksni::menu::{MenuItem, StandardItem};
 
     use super::*;
+    use crate::core::config;
 
     /// Where `install launcher` puts the symbolic tray icon, below `$HOME`.
     const ICON_ROOT: &str = ".local/share/icons";
@@ -437,6 +531,7 @@ mod icon {
         let handle = tray
             .spawn()
             .map_err(|e| format!("no tray host ({e}); {HOTKEY_HINT}"))?;
+        let mut ai_timer = AiTimer::new(Utc::now());
         loop {
             match inbox.recv_timeout(POLL) {
                 Ok(Action::Quit) | Err(RecvTimeoutError::Disconnected) => break,
@@ -450,6 +545,18 @@ mod icon {
                     if saved != shown {
                         shown = saved;
                         handle.update(|tray| tray.saved = saved);
+                    }
+                    let said = ai_timer.tick(
+                        now,
+                        &store.root,
+                        || config::ai_settings().map_err(|e| e.to_string()),
+                        || {
+                            let (program, args) = ai_run_argv(&exe);
+                            spawn_detached(&program, &args);
+                        },
+                    );
+                    if let Some(line) = said {
+                        eprintln!("{line}");
                     }
                 }
             }
