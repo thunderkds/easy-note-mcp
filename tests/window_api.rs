@@ -3983,16 +3983,16 @@ fn hun304_a_large_screen_shows_a_centred_container() {
 
 #[test]
 fn hun304_a_newly_picked_note_starts_at_the_top_of_the_panel() {
-    let app = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
-    let at = app
-        .find("function select(id, reveal)")
-        .expect("select(id, reveal)");
-    let select = &app[at..at + app[at..].find("\n  }\n").expect("end of select")];
-    // Only for another note: a board refresh selects the same one and keeps its place.
-    let reset = select
-        .find("if (state.sel !== id) $('detail').scrollTop = 0;")
-        .expect("select does not reset the panel's scroll");
-    assert!(reset < select.find("state.sel = id;").expect("state.sel = id"));
+    // HUN-305: the card's body scrolls. A re-render of the same note (a focus refresh) keeps its
+    // place; another note starts at the top.
+    let app = text_of("/app.js");
+    let render = js_function(app, "renderDetail");
+    assert!(
+        render.contains("var keep = d && cardBody && cardId === d.id ? cardBody.scrollTop : 0;"),
+        "{render}"
+    );
+    assert!(render.contains("showCard(card, keep);"));
+    assert!(js_function(app, "showCard").contains("cardBody.scrollTop = keep;"));
 }
 
 #[test]
@@ -4066,15 +4066,14 @@ fn hun305_the_list_and_the_note_fill_the_window_and_scroll_on_their_own() {
         ".notes { flex: 0 0 clamp(300px, 32%, 440px); min-height: 0; }",
         "#groups { flex: 1; min-height: 0; overflow-y: auto;",
         // The note takes the rest, to the window's bottom, with its buttons in view.
-        ".detail { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column;",
-        ".detail > * { flex: 1 0 auto; }",
-        ".detail .actions { position: sticky; bottom: 0;",
+        // The note takes the rest, to the window's bottom. What is above the buttons scrolls in
+        // its own box, so the buttons stay in view and cover nothing.
+        ".detail { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column;",
+        ".detail > * { flex: 1 1 0; min-height: 0; }",
+        ".card-body { flex: 1 1 0; min-height: 0; overflow-y: auto;",
         ".edit-text { flex: 1 0 auto; }",
         // Over the list, never over the note's buttons: no wider than the narrowest list.
         ".toast { left: max(28px, calc(50% - 692px)); right: auto; max-width: 300px; }",
-        // A control that gets the focus is not left behind the pinned buttons. Set on the controls
-        // above the bar only: on the pane it also scrolls the note when a pinned button gets focus.
-        ".detail .ai-accept, .detail .edit-tags { scroll-margin-bottom: 112px; }",
     ] {
         assert!(block.contains(must), "the two-pane block lacks {must}");
     }
@@ -4090,14 +4089,10 @@ fn hun305_the_list_and_the_note_fill_the_window_and_scroll_on_their_own() {
             "the block comes before {base}"
         );
     }
-    assert!(
-        !css.contains("scroll-padding"),
-        "a pinned button scrolls the note"
-    );
-    assert!(
-        !css.contains("position: sticky; top: 16px"),
-        "the HUN-304 sticky panel stays"
-    );
+    // Nothing is pinned over the note: a bar over the text hides the control that has the focus.
+    for gone in ["scroll-padding", "scroll-margin", "position: sticky"] {
+        assert!(!css.contains(gone), "app.css still has {gone}");
+    }
     // A group never shrinks inside the scrolling list.
     assert!(css_rule(css, ".group").contains("flex-shrink: 0"));
     // The smallest window on a large screen is inside the two-pane range.

@@ -188,24 +188,46 @@
     aside.scrollIntoView({ block: 'start', behavior: still ? 'auto' : 'smooth' });
   }
 
+  // HUN-305: what is above the buttons scrolls in one box (`card-body`), so the buttons stay in view
+  // and cover nothing. `cardBody` is that box of the card on screen, `cardId` its note.
+  var cardBody = null;
+  var cardId = '';
+
+  function newCard(d) {
+    var card = el('article', 'card');
+    cardBody = el('div', 'card-body');
+    cardId = d.id;
+    cardBody.appendChild(cardHead(d));
+    card.appendChild(cardBody);
+    return card;
+  }
+
+  function showCard(card, keep) {
+    $('detail').replaceChildren(card);
+    cardBody.scrollTop = keep;
+  }
+
   function renderDetail() {
     var aside = $('detail');
     var d = state.detail;
+    // A re-render of the same note keeps its place; another note starts at the top.
+    var keep = d && cardBody && cardId === d.id ? cardBody.scrollTop : 0;
     if (!d) {
+      cardBody = null;
       var p = el('p', 'pick', state.detailError ? 'Could not read the note: ' + state.detailError : 'Pick a note to read it.');
       aside.replaceChildren(p);
       return;
     }
     if (state.edit && state.edit.id === d.id) {
-      aside.replaceChildren(renderEdit(d, state.edit));
+      showCard(renderEdit(d, state.edit), keep);
       return;
     }
-    var card = el('article', 'card');
-    card.appendChild(cardHead(d));
+    var card = newCard(d);
+    var body = cardBody;
 
-    card.appendChild(el('p', 'words-label', 'Your words'));
-    card.appendChild(el('p', 'words', d.text));
-    if (d.masked) card.appendChild(el('p', 'masked', 'secret masked'));
+    body.appendChild(el('p', 'words-label', 'Your words'));
+    body.appendChild(el('p', 'words', d.text));
+    if (d.masked) body.appendChild(el('p', 'masked', 'secret masked'));
 
     var ctx = d.context;
     var branch = typeof ctx === 'string' ? ctx : ctx && ctx.branch;
@@ -216,20 +238,20 @@
       context.appendChild(document.createTextNode(' · '));
       context.appendChild(el('span', 'edited-at', editedText(d.edited_at)));
     }
-    card.appendChild(context);
+    body.appendChild(context);
 
     var tagBox = el('div', 'tags');
     var tags = tagsOf(d);
     tags.forEach(function (t) { tagBox.appendChild(el('span', 'tag', '#' + t)); });
     if (!tags.length) tagBox.appendChild(el('span', 'no-tags', 'no tags'));
-    card.appendChild(tagBox);
+    body.appendChild(tagBox);
 
-    if (d.ai) card.appendChild(renderAi(d.ai, d));
+    if (d.ai) body.appendChild(renderAi(d.ai, d));
     else {
       var none = el('p', 'no-ai', 'No AI detail yet. Press Run AI, or in Claude Code run the ');
       none.appendChild(el('code', null, 'enrich_notes'));
       none.appendChild(document.createTextNode(' prompt; your own AI writes it in a separate file.'));
-      card.appendChild(none);
+      body.appendChild(none);
     }
 
     var acts = el('div', 'actions');
@@ -247,7 +269,7 @@
     acts.appendChild(button('act', 'Copy id', function () { copyId(d.id); }));
     acts.appendChild(button('act danger', 'Move to trash', function () { trashNote(d.id); }));
     card.appendChild(acts);
-    aside.replaceChildren(card);
+    showCard(card, keep);
   }
 
   function cardHead(d) {
@@ -263,33 +285,33 @@
   var editBox = null;
 
   function renderEdit(d, e) {
-    var card = el('article', 'card');
-    card.appendChild(cardHead(d));
+    var card = newCard(d);
+    var body = cardBody;
     if (e.error) {
       var err = el('p', 'error', e.error);
       err.setAttribute('role', 'alert');
-      card.appendChild(err);
+      body.appendChild(err);
     }
     // After a save refused as changed outside the window: the text in the file now, above the kept draft.
     if (e.outside) {
-      card.appendChild(el('p', 'words-label', 'Text in the file now'));
-      card.appendChild(el('p', 'words', d.text));
+      body.appendChild(el('p', 'words-label', 'Text in the file now'));
+      body.appendChild(el('p', 'words', d.text));
     }
     var label = el('label', 'edit-label', e.outside ? 'Your draft' : 'Your words');
     label.htmlFor = 'edit-text';
-    card.appendChild(label);
+    body.appendChild(label);
     var box = el('textarea', 'edit-text');
     box.id = 'edit-text';
     box.rows = 8;
     box.value = e.text;
     box.addEventListener('input', function () { e.text = box.value; });
     box.addEventListener('keydown', editKey);
-    card.appendChild(box);
+    body.appendChild(box);
     editBox = box;
 
     var tagLabel = el('label', 'edit-label', 'Tags');
     tagLabel.htmlFor = 'edit-tags';
-    card.appendChild(tagLabel);
+    body.appendChild(tagLabel);
     var tags = el('input', 'edit-tags');
     tags.id = 'edit-tags';
     tags.type = 'text';
@@ -298,7 +320,7 @@
     tags.setAttribute('autocomplete', 'off');
     tags.addEventListener('input', function () { e.tags = tags.value; });
     tags.addEventListener('keydown', editKey);
-    card.appendChild(tags);
+    body.appendChild(tags);
 
     var keys = el('div', 'edit-keys');
     [['Ctrl+Enter', ' save'], ['Esc', ' cancel']].forEach(function (k) {
@@ -307,7 +329,7 @@
       s.appendChild(document.createTextNode(k[1]));
       keys.appendChild(s);
     });
-    card.appendChild(keys);
+    body.appendChild(keys);
 
     var acts = el('div', 'actions');
     acts.appendChild(button('act primary', 'Save', saveEdit));
@@ -663,7 +685,6 @@
       if (reveal) focusEditBox();
       return;
     }
-    if (state.sel !== id) $('detail').scrollTop = 0;  // HUN-304/305: the panel scrolls by itself; another note starts at its top
     state.sel = id;
     state.detailError = '';
     Object.keys(rowButtons).forEach(function (k) { rowButtons[k].setAttribute('aria-current', k === id ? 'true' : 'false'); });

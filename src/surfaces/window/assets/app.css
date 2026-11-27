@@ -87,6 +87,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 /* Detail panel */
 .pick { margin: 0; padding: 24px; border: 1px dashed #2C3230; border-radius: 8px; color: #8C9590; }
 .card { border: 1px solid #262B29; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.card-body { display: flex; flex-direction: column; gap: 16px; }
+.card-body > * { flex-shrink: 0; }
 .card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .card-id { font: 400 12px 'IBM Plex Mono', monospace; color: #8C9590; }
 .card-head .chip { margin-left: auto; }
@@ -217,12 +219,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .columns { flex: 1; min-height: 0; flex-wrap: nowrap; align-items: stretch; }
   .notes { flex: 0 0 clamp(300px, 32%, 440px); min-height: 0; }
   #groups { flex: 1; min-height: 0; overflow-y: auto; color-scheme: dark; scrollbar-width: thin; display: flex; flex-direction: column; gap: 12px; }
-  .detail { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; color-scheme: dark; scrollbar-width: thin; }
-  .detail > * { flex: 1 0 auto; }
-  .detail .actions { position: sticky; bottom: 0; margin: auto -20px -20px; padding: 12px 20px 16px; background: #121413; border-radius: 0 0 8px 8px; }
-  /* A focused control above the pinned bar scrolls clear of it (not on the pane: that also moves the note
-     when a pinned button gets the focus). */
-  .detail .ai-accept, .detail .edit-tags { scroll-margin-bottom: 112px; }
+  .detail { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; color-scheme: dark; }
+  /* The card fills the pane. What is above the buttons scrolls in its own box, so they cover nothing.
+     The 4 px keeps a focus outline inside that box; the 14 px on the right keeps the scrollbar off
+     the content. */
+  .detail > * { flex: 1 1 0; min-height: 0; }
+  .card-body { flex: 1 1 0; min-height: 0; overflow-y: auto; scrollbar-width: thin; margin: -4px -14px -4px -4px; padding: 4px 14px 4px 4px; }
   .edit-text { flex: 1 0 auto; }
   /* The toast sits over the list, no wider than its narrowest width, so it never covers the note's buttons. */
   .toast { left: max(28px, calc(50% - 692px)); right: auto; max-width: 300px; }

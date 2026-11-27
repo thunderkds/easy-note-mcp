@@ -12,9 +12,10 @@ Mode: auto
 3. `scope by the scroll top to down` is read as: the page stays still, and the list and the note each scroll on their own — SAFER OPTION: the smallest reading that also makes the note extend ⚠ decided for you — please review
 4. `the list of note should just show the good` is read as: show only what helps to find a note. Rows lose the task, the tags and the kind chip; they keep time, two lines of text, `edited`, project and the AI or stale mark — SAFER OPTION: `edited` is FR-046, and search still reads task and tags ⚠ decided for you — please review
 5. The list column is 300 to 440 px; the note takes the rest of the 1440 px container; the counts strip is made shorter and its `by project` label shows only when there is no bar — SAFER OPTION: no feature is removed ⚠ decided for you — please review
-6. The first review (fail, 3 P1) was fixed and a second fresh reviewer checks the new commit — RULE: `docs/claude-md/pipeline-stages.md` § Stage 4: Review
+6. Each review fix gets a fresh reviewer on the new commit (first pass fail with 3 P1; second pass; third pass fail with 1 P1) — RULE: `docs/claude-md/pipeline-stages.md` § Stage 4: Review
 7. The HUN-304 sticky panel and its click check are replaced by the two panes; two HUN-304 tests are repointed or removed — RULE: `tasks/TASK_GUIDE_HUN-305.md` § Files to Change (Predicted)
-Checks: tests after the fix round, `cargo test --locked --features window,tray --no-fail-fast` — 28 suites, 774 passed, 0 failed, 7 ignored; default build 765 passed, 0 failed, 7 ignored; fmt and clippy clean in both builds; real run on virtual screens 3440x1440 and 1366x768 before the fix round (auto-checked, not /verify). The first review's full run had 1 failure, the intermittent HUN-290 lock test. After the S1 fix both builds ran again with the same counts
+8. The pinned button bar is replaced by a scroll box above the buttons, so no control can hide under it — SAFER OPTION: two fixes of the overlapping bar each left a hidden control ⚠ decided for you — please review
+Checks: tests after the fix round, `cargo test --locked --features window,tray --no-fail-fast` — 28 suites, 774 passed, 0 failed, 7 ignored; default build 765 passed, 0 failed, 7 ignored; fmt and clippy clean in both builds; real run on virtual screens 3440x1440 and 1366x768 before the fix round (auto-checked, not /verify). The first review's full run had 1 failure, the intermittent HUN-290 lock test. After the S1 fix both builds ran again with the same counts. After the structural fix of the third pass: window,tray 774 passed, 0 failed; default 764 passed, 1 failed (the same lock test), and `--test window_api` rerun 126 passed, 0 failed; real window at 800x560 after the last CSS change
 Memory: pending
 Not done: merge (admin: after the auto verify pass); auto verify: running (T182)
 
@@ -120,6 +121,28 @@ How it was checked: headless Chrome on scratch copies of the old and new assets 
 
 ux-evaluate: 8 pass, 0 new fail, 4 fail (older), 0 not checked, 0 not checkable. Overall: fail (older items only)
 
+### Third pass (85372a0)
+
+Reviewer: qa-expert, fresh context, 2026-11-27. Diff `92acda4..85372a088ede7d53d5b9244366b32d3269e1e106`. **Verdict: fail** (P0 0, P1 1, P2 1, P3 1). S1 is fixed, but a focused control above the pinned bar no longer always lands clear of it. No code changed.
+
+How it was checked: headless Chrome and a WebKitGTK view on Xvfb (not the app binary), on scratch copies of the `92acda4` and `85372a0` assets (CSP tag removed, fake `window.ipc`), temp HOME. `cargo test --locked --features window,tray --test window_api`: `test result: ok. 126 passed; 0 failed; 1 ignored`. No page script error in Chrome. No mutation check.
+
+| Check | Result when run |
+|---|---|
+| S1 a pinned button scrolls the note | fixed. Chrome 760x480, 800x560, 1280x820, 1920x1000: `focus()`, Tab, Shift+Tab and Esc on the view-mode pinned buttons leave the pane at 0 (old: 146 to 1308). WebKitGTK 760x480, 800x560: `focus()` leaves it at 0 (old: 96) |
+| Start of edit, text box top | fixed: label 58 px below the pane top at 760x480 (old: -104); the bottom is T2 |
+| `Add as tags` above the bar | holds: 31 px clear (Chrome every 7th px start position at four sizes, and Tab; WebKitGTK `focus()`) |
+| Tags field above the bar | holds in Chrome; fails in WebKitGTK (T1) |
+| Edit text box above the bar | fails (T2) |
+
+| # | Sev | File:line | Concrete failure | Confidence | Action |
+|---|---|---|---|---|---|
+| T1 | P1 (new) | `src/surfaces/window/assets/app.css:225` | In WebKitGTK, the engine of the app, focus scrolling did not keep the 112 px `scroll-margin-bottom` on the tags field. Edit a long note, then Tab from the text box to Tags: at 800x560 the field's bottom is 33 px behind the pinned bar (the field is 38 px high), at 760x480 it is 74 px past the bar's top, so a person types tags unseen. `92acda4`: 38 px clear at both sizes. The Fix round's "47 px above the bar" holds in Chrome only | 100 | Keep the offset off the pinned buttons by another means, for example `scrollIntoView({ block: 'nearest' })` on focus of the controls above the bar (untested). Check it with Tab in WebKitGTK |
+| T2 | P2 (new) | `app.css:225` | `.edit-text` is not in the selector, and the removed pane padding was what cleared it. Chrome: at the start of an edit and while typing, its bottom is 39 px behind the bar at 760x480 and 19 px at 760x500 and 1280x500 (old: 122 px clear); after a refused save at 760x480 it is 70 px behind. The screenshot `new-typed-760x480.png` shows the box cut by the bar. WebKitGTK 760x480: 38 px behind at the start of an edit (old: 47 px clear). Clear at 760x520 and at 800x560 in the same flows. Shift+Tab to the box in WebKitGTK at 760x480 is 38 px behind in both versions | 100 | Cover the text box in the T1 fix without moving its top out of the pane |
+| T3 | P3 (new) | `tests/window_api.rs:4077` | The test pins the CSS string and the absence of `scroll-padding`, so it passes with T1 and T2 | 100 | Pin whatever fixes T1; keep the real check in a WebKitGTK run |
+
+Screenshots: `/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-easy-note-mcp/8cd0dd43-7fc3-44cc-9fbf-68159c0c60ed/scratchpad/r305c.4rInAa/shots/`.
+
 ## Fix round (Supervisor, after the review of `497c5e1`)
 
 | Finding | State | Check |
@@ -142,6 +165,15 @@ ux-evaluate: 8 pass, 0 new fail, 4 fail (older), 0 not checked, 0 not checkable.
 | S1 a pinned button scrolls the note | fixed | browser at 760x480, 800x560, 1280x820: focus on each pinned button leaves the note at 0 (before: 146 to 346); the edit box top is in view (before: -84 at 760x480); the tags field lands 47 px above the bar |
 | S2 toast at 375 | AC 11 now names the two-pane range; the narrow case is older | |
 | S3, S4, F10-F13 | left as follow-ups | |
+
+### After the third pass
+
+| Finding | State | Check |
+|---|---|---|
+| T1 the Tags field hides behind the bar (WebKitGTK) | fixed by structure | nothing lies over the note: what is above the buttons scrolls in `.card-body`, and the buttons are its sibling below it (gap 12 px) |
+| T2 the edit box hides behind the bar | fixed by structure | same; browser at 760x480, 800x560, 1280x820: neither field overlaps the buttons. At 760x480 the top of the edit box scrolls out of the box while the caret at its end stays in view |
+| T3 tests pin strings | left as a follow-up | |
+| S1 stays fixed | | focus on each pinned button leaves the note at 0 |
 
 ## Evidence
 
