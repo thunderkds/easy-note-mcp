@@ -159,11 +159,10 @@
     b.appendChild(el('span', 'row-time', rowTime(n)));
     var body = el('span', 'row-body');
     body.appendChild(el('span', 'row-first', str(n.first)));
-    var tags = tagsOf(n).map(function (t) { return '#' + t; }).join(' ');
-    // `edited` (HUN-291) leads the line, beside the time, so a narrow row cuts the project and tags, not it.
-    body.appendChild(el('span', 'row-where', [editedText(n.edited), str(n.repo) || 'no project', str(n.task), tags].filter(Boolean).join(' · ')));
+    // HUN-305: only what helps to find a note. The panel shows the task, the tags and the kind.
+    // `edited` (HUN-291) leads the line, so a narrow row cuts the project, not it.
+    body.appendChild(el('span', 'row-where', [editedText(n.edited), str(n.repo) || 'no project'].filter(Boolean).join(' · ')));
     b.appendChild(body);
-    if (n.ai && n.kind) b.appendChild(el('span', 'chip', kindLabel(n.kind)));
     b.appendChild(el('span', 'row-mark' + (n.ai && n.stale ? ' stale' : ''), n.ai ? (n.stale ? 'stale' : 'AI') : ''));
     b.addEventListener('click', function () { select(n.id, true); });
     rowButtons[n.id] = b;
@@ -177,7 +176,6 @@
   // nothing scrolls.
   function revealDetail() {
     var aside = $('detail');
-    if (getComputedStyle(aside).position === 'sticky') return;  // HUN-304: two columns, already in view
     if (aside.offsetTop <= aside.previousElementSibling.offsetTop) return;
     var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     aside.scrollIntoView({ block: 'start', behavior: still ? 'auto' : 'smooth' });
@@ -655,7 +653,7 @@
       if (reveal) focusEditBox();
       return;
     }
-    if (state.sel !== id) $('detail').scrollTop = 0;  // HUN-304: the panel scrolls by itself; another note starts at its top
+    if (state.sel !== id) $('detail').scrollTop = 0;  // HUN-304/305: the panel scrolls by itself; another note starts at its top
     state.sel = id;
     state.detailError = '';
     Object.keys(rowButtons).forEach(function (k) { rowButtons[k].setAttribute('aria-current', k === id ? 'true' : 'false'); });

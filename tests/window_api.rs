@@ -3982,32 +3982,6 @@ fn hun304_a_large_screen_shows_a_centred_container() {
 }
 
 #[test]
-fn hun304_every_allowed_width_shows_the_list_and_the_panel_side_by_side() {
-    let css = std::str::from_utf8(asset("/app.css").unwrap().1).unwrap();
-    let at = css
-        .find("@media (min-width: 760px) {")
-        .expect("no two-column block");
-    let block = &css[at..at + css[at..].find("\n}\n").expect("end of block")];
-    for must in [
-        ".columns { flex-wrap: nowrap; }",
-        ".notes { flex: 1 1 0; }",
-        "flex: 0 0 clamp(320px, calc(100vw - 620px), 380px)",
-        "position: sticky",
-        "top: 16px",
-        "max-height: calc(100vh - 32px)",
-        "overflow-y: auto",
-    ] {
-        assert!(block.contains(must), "the two-column block lacks {must}");
-    }
-    // The block comes after the base rules, or they would win over it.
-    assert!(at > css.find("\n.detail {").expect("base .detail rule"));
-    // The smallest window on a large screen is inside the two-column range.
-    assert!(dashboard_sizes(None).1 .0 >= 760.0);
-    // A long word in the panel wraps instead of scrolling the panel sideways.
-    assert!(css.contains(".tag, .ai-tag, .ai-title { overflow-wrap: anywhere; }"));
-}
-
-#[test]
 fn hun304_a_newly_picked_note_starts_at_the_top_of_the_panel() {
     let app = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
     let at = app
@@ -4042,15 +4016,122 @@ fn hun304_the_window_is_never_larger_than_the_screen() {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// HUN-305: two full-height panes, simpler rows, the name Easy Taking Shot (FR-042)
+// ---------------------------------------------------------------------------------------------
+
+fn text_of(path: &str) -> &'static str {
+    std::str::from_utf8(asset(path).unwrap().1).unwrap()
+}
+
+/// The block that starts with `head` and ends at the first `}` in column 0.
+fn css_block<'a>(css: &'a str, head: &str) -> &'a str {
+    let at = css
+        .find(head)
+        .unwrap_or_else(|| panic!("app.css lacks {head}"));
+    &css[at..at + css[at..].find("\n}\n").expect("end of block")]
+}
+
 #[test]
-fn hun304_a_row_click_never_scrolls_the_page_to_a_panel_that_stays_in_view() {
-    // A stuck sticky panel has a larger `offsetTop` than the list, so the HUN-284 test alone
-    // reads it as wrapped and moves the page on each click.
-    let app = std::str::from_utf8(asset("/app.js").unwrap().1).unwrap();
-    let at = app.find("function revealDetail(").expect("revealDetail");
-    let body = &app[at..at + app[at..].find("\n  }\n").expect("end of revealDetail")];
-    let stays = body
-        .find("if (getComputedStyle(aside).position === 'sticky') return;")
-        .expect("revealDetail does not leave a sticky panel alone");
-    assert!(stays < body.find("scrollIntoView(").expect("scrollIntoView"));
+fn hun305_the_window_is_named_easy_taking_shot() {
+    let page = text_of("/");
+    for must in [
+        "<title>Easy Taking Shot — dashboard</title>",
+        r#"<span class="brand-name">Easy Taking Shot</span>"#,
+    ] {
+        assert!(page.contains(must), "index.html lacks {must}");
+    }
+    assert!(text_of("/quick.html").contains("<title>Easy Taking Shot — new note</title>"));
+    let shell = include_str!("../src/surfaces/window/mod.rs");
+    for must in [
+        r#".with_title("Easy Taking Shot")"#,
+        r#".with_title("Easy Taking Shot — new note")"#,
+    ] {
+        assert!(shell.contains(must), "mod.rs lacks {must}");
+    }
+}
+
+#[test]
+fn hun305_the_list_and_the_note_fill_the_window_and_scroll_on_their_own() {
+    let css = text_of("/app.css");
+    let block = css_block(css, "@media (min-width: 760px) and (min-height: 480px) {");
+    for must in [
+        // The page stays still.
+        ".app { height: 100vh; min-height: 0; overflow: hidden; }",
+        // The label stays when there is no project bar, so the cell is never blank.
+        ".by-project > .count-label:not(:only-child) { display: none; }",
+        ".main { flex: 1; min-height: 0;",
+        ".columns { flex: 1; min-height: 0; flex-wrap: nowrap; align-items: stretch; }",
+        // The list takes a fixed share and scrolls under the search and the filters.
+        ".notes { flex: 0 0 clamp(300px, 32%, 440px); min-height: 0; }",
+        "#groups { flex: 1; min-height: 0; overflow-y: auto;",
+        // The note takes the rest, to the window's bottom, with its buttons in view.
+        ".detail { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column;",
+        ".detail > * { flex: 1 0 auto; }",
+        ".detail .actions { position: sticky; bottom: 0;",
+        ".edit-text { flex: 1 0 160px; }",
+        ".toast { bottom: 96px; }",
+    ] {
+        assert!(block.contains(must), "the two-pane block lacks {must}");
+    }
+    // The block comes after the base rules, or they would win over it.
+    for base in [
+        "\n.detail {",
+        "\n.actions {",
+        "\n.edit-text {",
+        "\n.toast {",
+    ] {
+        assert!(
+            css.find("@media (min-width: 760px) and (min-height: 480px) {") > css.find(base),
+            "the block comes before {base}"
+        );
+    }
+    assert!(
+        !css.contains("position: sticky; top: 16px"),
+        "the HUN-304 sticky panel stays"
+    );
+    // A group never shrinks inside the scrolling list.
+    assert!(css_rule(css, ".group").contains("flex-shrink: 0"));
+    // The smallest window on a large screen is inside the two-pane range.
+    let (_, (width, height)) = dashboard_sizes(None);
+    assert!(width >= 760.0 && height >= 480.0);
+}
+
+#[test]
+fn hun305_a_list_row_shows_only_what_helps_to_find_a_note() {
+    let app = text_of("/app.js");
+    let row = js_function(app, "renderRow");
+    for must in [
+        "'row-first'",
+        "[editedText(n.edited), str(n.repo) || 'no project'].filter(Boolean)",
+        "'row-mark'",
+    ] {
+        assert!(row.contains(must), "renderRow lacks {must}");
+    }
+    for gone in ["n.task", "tagsOf(n)", "'chip'"] {
+        assert!(!row.contains(gone), "renderRow still shows {gone}");
+    }
+    // Search still reads the task and the tags (AC 8).
+    let hay = js_function(app, "hayOf");
+    for must in ["n.task", "tagsOf(n)"] {
+        assert!(hay.contains(must), "hayOf lacks {must}");
+    }
+    let first = css_rule(text_of("/app.css"), ".row-first");
+    assert!(first.contains("-webkit-line-clamp: 2"), "{first}");
+}
+
+#[test]
+fn hun305_a_short_window_leaves_the_list_more_room() {
+    let css = text_of("/app.css");
+    let head = "@media (min-width: 760px) and (min-height: 480px) and (max-height: 700px) {";
+    let block = css_block(css, head);
+    for must in [
+        ".filter { height: 26px;",
+        ".search input { height: 32px; }",
+        ".by-project { padding-top: 4px; padding-bottom: 4px; }",
+    ] {
+        assert!(block.contains(must), "the short-window block lacks {must}");
+    }
+    let tall = css.find("@media (min-width: 760px) and (min-height: 480px) {");
+    assert!(css.find(head) > tall, "the short-window block comes first");
 }

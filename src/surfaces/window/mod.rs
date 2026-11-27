@@ -388,7 +388,7 @@ mod shell {
         let proxy = event_loop.create_proxy();
         let (width, height) = QUICK_SIZE;
         let mut builder = WindowBuilder::new()
-            .with_title("easy-note — new note")
+            .with_title("Easy Taking Shot — new note")
             .with_inner_size(LogicalSize::new(width, height))
             .with_resizable(false)
             .with_always_on_top(true)
@@ -511,7 +511,7 @@ mod shell {
             });
         let ((width, height), (min_width, min_height)) = super::dashboard_sizes(screen);
         let window = WindowBuilder::new()
-            .with_title("easy-note")
+            .with_title("Easy Taking Shot")
             .with_inner_size(LogicalSize::new(width, height))
             .with_min_inner_size(LogicalSize::new(min_width, min_height))
             .build(&event_loop)
