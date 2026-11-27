@@ -100,7 +100,7 @@
       b.type = 'button';
       b.setAttribute('aria-pressed', 'false');
       b.appendChild(el('span', 'filter-n', '0'));
-      b.addEventListener('click', function () { state.filter = f[0]; renderList(); });
+      b.addEventListener('click', function () { state.filter = f[0]; showFromTop(); });
       box.appendChild(b);
       filterButtons.push(b);
     });
@@ -110,6 +110,12 @@
     var words = state.query.toLowerCase().split(/\s+/).filter(Boolean);
     var active = FILTER_DEFS.filter(function (f) { return f[0] === state.filter; })[0] || FILTER_DEFS[0];
     return state.notes.filter(function (n) { return active[2](n) && matches(n, words); });
+  }
+
+  // HUN-305: the list scrolls by itself; a new search or filter shows its newest results.
+  function showFromTop() {
+    renderList();
+    $('groups').scrollTop = 0;
   }
 
   function renderList() {
@@ -148,7 +154,8 @@
       frag.appendChild(g);
     });
     $('groups').replaceChildren(frag);
-    if (focused) focusRow(focused);
+    // The focus goes back without moving the list: a focus refresh keeps the place the person scrolled to.
+    if (focused && rowButtons[focused]) rowButtons[focused].focus({ preventScroll: true });
   }
 
   function renderRow(n) {
@@ -159,11 +166,10 @@
     b.appendChild(el('span', 'row-time', rowTime(n)));
     var body = el('span', 'row-body');
     body.appendChild(el('span', 'row-first', str(n.first)));
-    var tags = tagsOf(n).map(function (t) { return '#' + t; }).join(' ');
-    // `edited` (HUN-291) leads the line, beside the time, so a narrow row cuts the project and tags, not it.
-    body.appendChild(el('span', 'row-where', [editedText(n.edited), str(n.repo) || 'no project', str(n.task), tags].filter(Boolean).join(' · ')));
+    // HUN-305: only what helps to find a note. The panel shows the task, the tags and the kind.
+    // `edited` (HUN-291) leads the line, so a narrow row cuts the project, not it.
+    body.appendChild(el('span', 'row-where', [editedText(n.edited), str(n.repo) || 'no project'].filter(Boolean).join(' · ')));
     b.appendChild(body);
-    if (n.ai && n.kind) b.appendChild(el('span', 'chip', kindLabel(n.kind)));
     b.appendChild(el('span', 'row-mark' + (n.ai && n.stale ? ' stale' : ''), n.ai ? (n.stale ? 'stale' : 'AI') : ''));
     b.addEventListener('click', function () { select(n.id, true); });
     rowButtons[n.id] = b;
@@ -182,24 +188,47 @@
     aside.scrollIntoView({ block: 'start', behavior: still ? 'auto' : 'smooth' });
   }
 
+  // HUN-305: what is above the buttons scrolls in one box (`card-body`), so the buttons stay in view
+  // and cover nothing. `cardBody` is that box of the card on screen, `cardId` its note.
+  var cardBody = null;
+  var cardId = '';
+
+  function newCard(d) {
+    var card = el('article', 'card');
+    cardBody = el('div', 'card-body');
+    cardBody.tabIndex = 0;  // the keyboard scrolls a long note: the buttons are outside this box
+    cardId = d.id;
+    cardBody.appendChild(cardHead(d));
+    card.appendChild(cardBody);
+    return card;
+  }
+
+  function showCard(card, keep) {
+    $('detail').replaceChildren(card);
+    cardBody.scrollTop = keep;
+  }
+
   function renderDetail() {
     var aside = $('detail');
     var d = state.detail;
+    // A re-render of the same note keeps its place; another note starts at the top.
+    var keep = d && cardBody && cardId === d.id ? cardBody.scrollTop : 0;
     if (!d) {
+      cardBody = null;
       var p = el('p', 'pick', state.detailError ? 'Could not read the note: ' + state.detailError : 'Pick a note to read it.');
       aside.replaceChildren(p);
       return;
     }
     if (state.edit && state.edit.id === d.id) {
-      aside.replaceChildren(renderEdit(d, state.edit));
+      showCard(renderEdit(d, state.edit), keep);
       return;
     }
-    var card = el('article', 'card');
-    card.appendChild(cardHead(d));
+    var card = newCard(d);
+    var body = cardBody;
 
-    card.appendChild(el('p', 'words-label', 'Your words'));
-    card.appendChild(el('p', 'words', d.text));
-    if (d.masked) card.appendChild(el('p', 'masked', 'secret masked'));
+    body.appendChild(el('p', 'words-label', 'Your words'));
+    body.appendChild(el('p', 'words', d.text));
+    if (d.masked) body.appendChild(el('p', 'masked', 'secret masked'));
 
     var ctx = d.context;
     var branch = typeof ctx === 'string' ? ctx : ctx && ctx.branch;
@@ -210,20 +239,20 @@
       context.appendChild(document.createTextNode(' · '));
       context.appendChild(el('span', 'edited-at', editedText(d.edited_at)));
     }
-    card.appendChild(context);
+    body.appendChild(context);
 
     var tagBox = el('div', 'tags');
     var tags = tagsOf(d);
     tags.forEach(function (t) { tagBox.appendChild(el('span', 'tag', '#' + t)); });
     if (!tags.length) tagBox.appendChild(el('span', 'no-tags', 'no tags'));
-    card.appendChild(tagBox);
+    body.appendChild(tagBox);
 
-    if (d.ai) card.appendChild(renderAi(d.ai, d));
+    if (d.ai) body.appendChild(renderAi(d.ai, d));
     else {
       var none = el('p', 'no-ai', 'No AI detail yet. Press Run AI, or in Claude Code run the ');
       none.appendChild(el('code', null, 'enrich_notes'));
       none.appendChild(document.createTextNode(' prompt; your own AI writes it in a separate file.'));
-      card.appendChild(none);
+      body.appendChild(none);
     }
 
     var acts = el('div', 'actions');
@@ -241,7 +270,7 @@
     acts.appendChild(button('act', 'Copy id', function () { copyId(d.id); }));
     acts.appendChild(button('act danger', 'Move to trash', function () { trashNote(d.id); }));
     card.appendChild(acts);
-    aside.replaceChildren(card);
+    showCard(card, keep);
   }
 
   function cardHead(d) {
@@ -257,33 +286,33 @@
   var editBox = null;
 
   function renderEdit(d, e) {
-    var card = el('article', 'card');
-    card.appendChild(cardHead(d));
+    var card = newCard(d);
+    var body = cardBody;
     if (e.error) {
       var err = el('p', 'error', e.error);
       err.setAttribute('role', 'alert');
-      card.appendChild(err);
+      body.appendChild(err);
     }
     // After a save refused as changed outside the window: the text in the file now, above the kept draft.
     if (e.outside) {
-      card.appendChild(el('p', 'words-label', 'Text in the file now'));
-      card.appendChild(el('p', 'words', d.text));
+      body.appendChild(el('p', 'words-label', 'Text in the file now'));
+      body.appendChild(el('p', 'words', d.text));
     }
     var label = el('label', 'edit-label', e.outside ? 'Your draft' : 'Your words');
     label.htmlFor = 'edit-text';
-    card.appendChild(label);
+    body.appendChild(label);
     var box = el('textarea', 'edit-text');
     box.id = 'edit-text';
     box.rows = 8;
     box.value = e.text;
     box.addEventListener('input', function () { e.text = box.value; });
     box.addEventListener('keydown', editKey);
-    card.appendChild(box);
+    body.appendChild(box);
     editBox = box;
 
     var tagLabel = el('label', 'edit-label', 'Tags');
     tagLabel.htmlFor = 'edit-tags';
-    card.appendChild(tagLabel);
+    body.appendChild(tagLabel);
     var tags = el('input', 'edit-tags');
     tags.id = 'edit-tags';
     tags.type = 'text';
@@ -292,7 +321,8 @@
     tags.setAttribute('autocomplete', 'off');
     tags.addEventListener('input', function () { e.tags = tags.value; });
     tags.addEventListener('keydown', editKey);
-    card.appendChild(tags);
+    tags.addEventListener('focus', function () { tags.scrollIntoView({ block: 'nearest' }); });
+    body.appendChild(tags);
 
     var keys = el('div', 'edit-keys');
     [['Ctrl+Enter', ' save'], ['Esc', ' cancel']].forEach(function (k) {
@@ -301,7 +331,7 @@
       s.appendChild(document.createTextNode(k[1]));
       keys.appendChild(s);
     });
-    card.appendChild(keys);
+    body.appendChild(keys);
 
     var acts = el('div', 'actions');
     acts.appendChild(button('act primary', 'Save', saveEdit));
@@ -355,6 +385,7 @@
     if (state.edit !== e) return;
     renderDetail();
     focusEditBox();
+    if (cardBody) cardBody.scrollTop = 0;  // the message is above the draft
   }
 
   // AC 4: one `edit` request; the board is asked again after it (the list row). AC 2: a save refused
@@ -477,7 +508,10 @@
   }
 
   function focusRow(id) {
-    if (rowButtons[id]) rowButtons[id].focus();
+    var row = rowButtons[id];
+    if (!row) return;
+    row.focus();
+    row.scrollIntoView({ block: 'nearest' });  // a row that has the focus already does not scroll on focus()
   }
 
   function acceptAi(id) {
@@ -677,13 +711,13 @@
   $('search').addEventListener('input', function (e) {
     var value = e.target.value;
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(function () { state.query = value; renderList(); }, SEARCH_MS);
+    searchTimer = setTimeout(function () { state.query = value; showFromTop(); }, SEARCH_MS);
   });
   $('clear-search').addEventListener('click', function () {
     clearTimeout(searchTimer);
     state.query = '';
     $('search').value = '';
-    renderList();
+    showFromTop();
   });
   // The Rust shell calls window.__easyNote.refresh() on each window focus (mod.rs REFRESH).
   window.__easyNote.refresh = refreshBoard;

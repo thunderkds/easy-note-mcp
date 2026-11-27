@@ -11,8 +11,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 
 .app { position: relative; min-height: 100vh; background: #121413; color: #DCE0DD; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column; }
 
+/* HUN-304: the content is a centred 1440 px container. The header's contents and the toast use the
+   same two edges (1440 / 2 - 28 = 692); the header's bottom line stays full width. */
 /* Header */
-.header { min-height: 60px; box-sizing: border-box; padding: 10px 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; border-bottom: 1px solid #232826; }
+.header { min-height: 60px; box-sizing: border-box; padding: 10px max(28px, calc(50% - 692px)); display: flex; flex-wrap: wrap; align-items: center; gap: 14px; border-bottom: 1px solid #232826; }
 .brand { flex: 1 1 0; display: flex; align-items: center; gap: 10px; min-width: 0; }
 .brand > svg { flex-shrink: 0; }
 .brand-name { font-weight: 600; font-size: 17px; color: #EAEDEA; white-space: nowrap; flex-shrink: 0; }
@@ -20,7 +22,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .dir-chip:empty { display: none; }
 .new-note { margin-left: auto; flex-shrink: 0; height: 38px; padding: 0 16px; background: #3CF5A8; color: #0E100F; border: 0; border-radius: 6px; box-shadow: 0 0 0 1px #3CF5A840, 0 0 18px #3CF5A840; font: 500 14px 'IBM Plex Sans', sans-serif; cursor: pointer; }
 
-.main { padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; box-sizing: border-box; width: 100%; max-width: 1440px; }
+.main { padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; box-sizing: border-box; width: 100%; max-width: 1440px; margin: 0 auto; }
 
 /* Counts strip */
 .counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); border: 1px solid #262B29; border-radius: 8px; overflow: hidden; }
@@ -39,7 +41,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .columns { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
 .notes { flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .detail { flex: 1 1 380px; min-width: 0; max-width: 100%; }
-
 /* Search */
 .search { position: relative; display: block; }
 .search-icon { position: absolute; left: 12px; top: 11px; color: #8C9590; }
@@ -59,34 +60,36 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .error { margin: 0; font: 400 12px 'IBM Plex Mono', monospace; color: #E8968F; }
 
 /* Day groups and rows */
-.group { display: flex; flex-direction: column; gap: 6px; }
+.group { flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; }
 .group-label { margin: 4px 0 0; font: 400 11.5px 'IBM Plex Mono', monospace; color: #8C9590; }
 .rows { margin: 0; padding: 0; list-style: none; border: 1px solid #262B29; border-radius: 8px; overflow: hidden; }
 .rows > li { border-bottom: 1px solid #1F2321; }
-.row { width: 100%; display: flex; align-items: center; gap: 12px; padding: 11px 14px; background: transparent; border: 0; box-shadow: none; color: #DCE0DD; text-align: left; cursor: pointer; font: 400 14px 'IBM Plex Sans', sans-serif; }
+.row { width: 100%; display: flex; align-items: flex-start; gap: 12px; padding: 11px 14px; background: transparent; border: 0; box-shadow: none; color: #DCE0DD; text-align: left; cursor: pointer; font: 400 14px 'IBM Plex Sans', sans-serif; }
 .row[aria-current="true"] { background: #3CF5A814; box-shadow: inset 2px 0 0 #3CF5A8; }
-.row-time { width: 44px; flex-shrink: 0; font: 400 12px 'IBM Plex Mono', monospace; color: #8C9590; }
+.row-time { width: 44px; flex-shrink: 0; padding-top: 2px; font: 400 12px 'IBM Plex Mono', monospace; color: #8C9590; }
 .row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.row-first { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #DCE0DD; }
+.row-first { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; line-height: 1.45; color: #DCE0DD; }
 .row[aria-current="true"] .row-first { color: #EAEDEA; }
 .row-where { font: 400 12px 'IBM Plex Mono', monospace; color: #8C9590; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip { flex-shrink: 0; font: 400 11.5px 'IBM Plex Mono', monospace; color: #ABB3AE; padding: 2px 7px; border: 1px solid #2C3230; border-radius: 4px; }
-.row-mark { width: 40px; flex-shrink: 0; text-align: right; font: 400 11.5px 'IBM Plex Mono', monospace; color: #8C9590; }
+.row-mark { flex-shrink: 0; min-width: 20px; padding-top: 2px; text-align: right; font: 400 11.5px 'IBM Plex Mono', monospace; color: #8C9590; }
 .row-mark.stale { color: #E3B66B; }
-/* HUN-291: in a narrow window the second line runs under the chip and the AI mark, so `edited …` is not cut. */
+/* HUN-291: in a narrow window the second line runs under the AI mark, so `edited …` is not cut. */
 @media (max-width: 480px) {
-  .row { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto auto; gap: 2px 0; }
+  .row { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 2px 0; }
   .row-body { display: contents; }
   .row-time { grid-column: 1; grid-row: 1 / span 2; }
   .row-first { grid-column: 2; grid-row: 1; }
   .row-where { grid-column: 2 / -1; grid-row: 2; }
-  .row .chip { grid-column: 3; grid-row: 1; margin: -2px 0 -2px 12px; }
-  .row-mark { grid-column: 4; grid-row: 1; margin-left: 12px; }
+  .row-mark { grid-column: 3; grid-row: 1; margin-left: 12px; }
 }
 
 /* Detail panel */
 .pick { margin: 0; padding: 24px; border: 1px dashed #2C3230; border-radius: 8px; color: #8C9590; }
 .card { border: 1px solid #262B29; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.card-body { display: flex; flex-direction: column; gap: 16px; }
+.card-body > * { flex-shrink: 0; }
+.card-body:focus-visible { outline: 2px solid #3CF5A8; outline-offset: -2px; }
 .card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .card-id { font: 400 12px 'IBM Plex Mono', monospace; color: #8C9590; }
 .card-head .chip { margin-left: auto; }
@@ -96,6 +99,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .context { margin: 0; font: 400 12.5px 'IBM Plex Mono', monospace; color: #ABB3AE; overflow-wrap: anywhere; }
 .edited-at { white-space: nowrap; }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag, .ai-tag, .ai-title { overflow-wrap: anywhere; }
 .tag { padding: 3px 9px; border: 1px solid #2C3230; border-radius: 4px; font: 400 12px 'IBM Plex Mono', monospace; color: #B5BCB7; }
 .no-tags { font-size: 12.5px; color: #6E7772; }
 
@@ -130,7 +134,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .read-only { align-self: center; font-size: 12.5px; color: #8C9590; }
 
 /* Toast */
-.toast { position: fixed; right: 24px; bottom: 24px; z-index: 6; display: flex; align-items: center; gap: 14px; max-width: 420px; box-sizing: border-box; padding: 12px 16px; background: #181B1A; border: 1px solid #3CF5A859; border-radius: 6px; box-shadow: 0 0 0 1px #3CF5A840, 0 0 18px #3CF5A840; font-size: 13px; color: #EAEDEA; }
+.toast { position: fixed; right: max(24px, calc(50% - 692px)); bottom: 24px; z-index: 6; display: flex; align-items: center; gap: 14px; max-width: 420px; box-sizing: border-box; padding: 12px 16px; background: #181B1A; border: 1px solid #3CF5A859; border-radius: 6px; box-shadow: 0 0 0 1px #3CF5A840, 0 0 18px #3CF5A840; font-size: 13px; color: #EAEDEA; }
 .toast-text { font-family: 'IBM Plex Mono', monospace; overflow-wrap: anywhere; user-select: text; }
 .toast-undo { background: none; border: 0; padding: 0; color: #7EDDB0; font: 500 13px 'IBM Plex Sans', sans-serif; cursor: pointer; }
 
@@ -201,4 +205,44 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .set-input { height: 44px; font-size: 16px; }
 .set-check { min-height: 44px; }
 .set-actions .act { height: 44px; font-size: 16px; }
+}
+/* HUN-305: from 760 x 480 up the page stays still. The list and the note fill the window down to its
+   bottom edge and each scrolls on its own; the note takes the width the list leaves, and its buttons
+   stay in view. Smaller, the page scrolls as one column (HUN-284). Last, so it wins over the rules above. */
+@media (min-width: 760px) and (min-height: 480px) {
+  .app { height: 100vh; min-height: 0; overflow: hidden; }
+  .main { flex: 1; min-height: 0; padding-top: 16px; padding-bottom: 16px; gap: 16px; }
+  .counts { flex-shrink: 0; }
+  .count { padding: 10px 16px; justify-content: center; gap: 2px; }
+  .count-n { font-size: 22px; }
+  .by-project { padding: 10px 16px; justify-content: center; gap: 0; }
+  .by-project > .count-label:not(:only-child) { display: none; }
+  .columns { flex: 1; min-height: 0; flex-wrap: nowrap; align-items: stretch; }
+  .notes { flex: 0 0 clamp(300px, 32%, 440px); min-height: 0; }
+  #groups { flex: 1; min-height: 0; overflow-y: auto; color-scheme: dark; scrollbar-width: thin; display: flex; flex-direction: column; gap: 12px; }
+  .detail { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; color-scheme: dark; }
+  /* The card fills the pane. What is above the buttons scrolls in its own box, so they cover nothing.
+     The 4 px keeps a focus outline inside that box; the 14 px on the right keeps the scrollbar off
+     the content. */
+  .detail > * { flex: 1 1 0; min-height: 0; }
+  .card-body { flex: 1 1 0; min-height: 0; overflow-y: auto; scrollbar-width: thin; margin: -4px -14px -4px -4px; padding: 4px 14px 4px 4px; }
+  .edit-text { flex: 1 0 auto; }
+  /* The toast sits over the list, no wider than its narrowest width, so it never covers the note's buttons. */
+  .toast { left: max(28px, calc(50% - 692px)); right: auto; max-width: 300px; }
+}
+/* A very low window is one column at any width: a row click then brings the note into view (HUN-284). */
+@media (max-height: 479px) {
+  .detail { flex-basis: 100%; }
+}
+/* A short window (the 560 px minimum): the controls above the list take less height. */
+@media (min-width: 760px) and (min-height: 480px) and (max-height: 700px) {
+  .main { padding-top: 12px; padding-bottom: 12px; gap: 12px; }
+  .count { padding-top: 6px; padding-bottom: 6px; }
+  .count-n { font-size: 19px; }
+  .by-project { padding-top: 4px; padding-bottom: 4px; }
+  .notes { gap: 8px; }
+  .search input { height: 32px; }
+  .search-icon { top: 8px; }
+  .filters { gap: 4px; }
+  .filter { height: 26px; padding: 0 8px; font-size: 12px; }
 }

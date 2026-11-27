@@ -104,6 +104,31 @@ pub fn show_script(id: &str) -> String {
     )
 }
 
+/// The dashboard window's usual opening size and minimum size, in logical pixels.
+const OPEN_SIZE: (f64, f64) = (1280.0, 820.0);
+const MIN_SIZE: (f64, f64) = (800.0, 560.0);
+/// Kept free on a small screen, in width and in height, for the desktop's panel, dock and title
+/// bar: the window library reports the whole screen, not the free area.
+const DESKTOP_BARS: f64 = 80.0;
+
+/// `(opening size, minimum size)` for a screen of `screen` logical pixels (HUN-304): the usual
+/// sizes, made smaller so that the window is not larger than the screen. An unknown screen, or a
+/// side too small to be real (`DESKTOP_BARS` or less), keeps the usual size.
+pub fn dashboard_sizes(screen: Option<(f64, f64)>) -> ((f64, f64), (f64, f64)) {
+    let fit = |usual: f64, side: f64| {
+        let free = side - DESKTOP_BARS;
+        if free > 0.0 {
+            usual.min(free)
+        } else {
+            usual
+        }
+    };
+    let open = screen.map_or(OPEN_SIZE, |(width, height)| {
+        (fit(OPEN_SIZE.0, width), fit(OPEN_SIZE.1, height))
+    });
+    (open, (MIN_SIZE.0.min(open.0), MIN_SIZE.1.min(open.1)))
+}
+
 /// One IPC message from the page: `{"req": <number>, "cmd": ..., ...}`. `req` is taken out, the
 /// rest goes to `api::handle`, and the same `req` is put back at the top level of the answer
 /// (an error too), so the page matches each reply to its request. A `req` that is not a number
@@ -363,7 +388,7 @@ mod shell {
         let proxy = event_loop.create_proxy();
         let (width, height) = QUICK_SIZE;
         let mut builder = WindowBuilder::new()
-            .with_title("easy-note — new note")
+            .with_title("Easy Taking Shot — new note")
             .with_inner_size(LogicalSize::new(width, height))
             .with_resizable(false)
             .with_always_on_top(true)
@@ -476,10 +501,19 @@ mod shell {
         let event_loop = event_loop::<Ui>()?;
         let proxy = event_loop.create_proxy();
         let running = Running::default();
+        // Wayland may name no primary monitor: then the first one.
+        let screen = event_loop
+            .primary_monitor()
+            .or_else(|| event_loop.available_monitors().next())
+            .map(|monitor| {
+                let size = monitor.size().to_logical::<f64>(monitor.scale_factor());
+                (size.width, size.height)
+            });
+        let ((width, height), (min_width, min_height)) = super::dashboard_sizes(screen);
         let window = WindowBuilder::new()
-            .with_title("easy-note")
-            .with_inner_size(LogicalSize::new(1280.0, 820.0))
-            .with_min_inner_size(LogicalSize::new(800.0, 560.0))
+            .with_title("Easy Taking Shot")
+            .with_inner_size(LogicalSize::new(width, height))
+            .with_min_inner_size(LogicalSize::new(min_width, min_height))
             .build(&event_loop)
             .map_err(|e| e.to_string())?;
         let vbox = window

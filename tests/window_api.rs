@@ -17,9 +17,9 @@ use easy_note_mcp::surfaces::enrich;
 use easy_note_mcp::surfaces::window::{
     allowed_url,
     api::{handle, handle_with},
-    asset, capture_from, capture_ipc, initial_note_script, ipc, ipc_from, ipc_from_with,
-    ipc_threaded, ipc_with, reply_script, show_script, single, Capture, Running, CSP, ORIGIN,
-    QUICK_START, REFRESH,
+    asset, capture_from, capture_ipc, dashboard_sizes, initial_note_script, ipc, ipc_from,
+    ipc_from_with, ipc_threaded, ipc_with, reply_script, show_script, single, Capture, Running,
+    CSP, ORIGIN, QUICK_START, REFRESH,
 };
 use serde_json::{json, Value};
 
@@ -3945,4 +3945,253 @@ fn hun291_the_page_shows_edited_on_the_row_and_the_full_stamp_in_the_detail() {
         "{r}"
     );
     assert_eq!(r["context"][UNTOUCHED], "no project · today 06:00", "{r}");
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-304: the layout fits every allowed window size (FR-042)
+// ---------------------------------------------------------------------------------------------
+
+/// The declarations of the first rule of `css` that starts a line with `selector {`.
+fn css_rule<'a>(css: &'a str, selector: &str) -> &'a str {
+    let head = format!("\n{selector} {{");
+    let at = css
+        .find(&head)
+        .unwrap_or_else(|| panic!("app.css lacks the rule {selector}"));
+    let body = &css[at + head.len()..];
+    &body[..body.find('}').expect("end of rule")]
+}
+
+#[test]
+fn hun304_a_large_screen_shows_a_centred_container() {
+    let css = std::str::from_utf8(asset("/app.css").unwrap().1).unwrap();
+    let main = css_rule(css, ".main");
+    for must in ["max-width: 1440px", "margin: 0 auto"] {
+        assert!(main.contains(must), ".main lacks {must}: {main}");
+    }
+    // The header's contents and the toast stay on the container's edges (720 - 28 = 692).
+    let header = css_rule(css, ".header");
+    assert!(
+        header.contains("padding: 10px max(28px, calc(50% - 692px))"),
+        "{header}"
+    );
+    let toast = css_rule(css, ".toast");
+    assert!(
+        toast.contains("right: max(24px, calc(50% - 692px))"),
+        "{toast}"
+    );
+}
+
+#[test]
+fn hun304_a_newly_picked_note_starts_at_the_top_of_the_panel() {
+    // HUN-305: the card's body scrolls. A re-render of the same note (a focus refresh) keeps its
+    // place; another note starts at the top.
+    let app = text_of("/app.js");
+    let render = js_function(app, "renderDetail");
+    assert!(
+        render.contains("var keep = d && cardBody && cardId === d.id ? cardBody.scrollTop : 0;"),
+        "{render}"
+    );
+    assert!(render.contains("showCard(card, keep);"));
+    assert!(js_function(app, "showCard").contains("cardBody.scrollTop = keep;"));
+}
+
+#[test]
+fn hun304_the_window_is_never_larger_than_the_screen() {
+    let usual = ((1280.0, 820.0), (800.0, 560.0));
+    for (screen, expected) in [
+        (None, usual),
+        (Some((3440.0, 1440.0)), usual),
+        (Some((1920.0, 1080.0)), usual),
+        (Some((1360.0, 900.0)), usual),
+        (Some((1366.0, 768.0)), ((1280.0, 688.0), (800.0, 560.0))),
+        (Some((1280.0, 720.0)), ((1200.0, 640.0), (800.0, 560.0))),
+        (Some((800.0, 600.0)), ((720.0, 520.0), (720.0, 520.0))),
+        (Some((640.0, 480.0)), ((560.0, 400.0), (560.0, 400.0))),
+        // A size that cannot be a screen keeps the usual sizes.
+        (Some((0.0, 0.0)), usual),
+        (Some((80.0, 80.0)), usual),
+        (Some((f64::NAN, f64::NAN)), usual),
+    ] {
+        assert_eq!(dashboard_sizes(screen), expected, "screen {screen:?}");
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// HUN-305: two full-height panes, simpler rows, the name Easy Taking Shot (FR-042)
+// ---------------------------------------------------------------------------------------------
+
+fn text_of(path: &str) -> &'static str {
+    std::str::from_utf8(asset(path).unwrap().1).unwrap()
+}
+
+/// The block that starts with `head` and ends at the first `}` in column 0.
+fn css_block<'a>(css: &'a str, head: &str) -> &'a str {
+    let at = css
+        .find(head)
+        .unwrap_or_else(|| panic!("app.css lacks {head}"));
+    &css[at..at + css[at..].find("\n}\n").expect("end of block")]
+}
+
+#[test]
+fn hun305_the_window_is_named_easy_taking_shot() {
+    let page = text_of("/");
+    for must in [
+        "<title>Easy Taking Shot — dashboard</title>",
+        r#"<span class="brand-name">Easy Taking Shot</span>"#,
+    ] {
+        assert!(page.contains(must), "index.html lacks {must}");
+    }
+    assert!(text_of("/quick.html").contains("<title>Easy Taking Shot — new note</title>"));
+    let shell = include_str!("../src/surfaces/window/mod.rs");
+    for must in [
+        r#".with_title("Easy Taking Shot")"#,
+        r#".with_title("Easy Taking Shot — new note")"#,
+    ] {
+        assert!(shell.contains(must), "mod.rs lacks {must}");
+    }
+}
+
+#[test]
+fn hun305_the_list_and_the_note_fill_the_window_and_scroll_on_their_own() {
+    let css = text_of("/app.css");
+    let block = css_block(css, "@media (min-width: 760px) and (min-height: 480px) {");
+    for must in [
+        // The page stays still.
+        ".app { height: 100vh; min-height: 0; overflow: hidden; }",
+        // The label stays when there is no project bar, so the cell is never blank.
+        ".by-project > .count-label:not(:only-child) { display: none; }",
+        ".main { flex: 1; min-height: 0;",
+        ".columns { flex: 1; min-height: 0; flex-wrap: nowrap; align-items: stretch; }",
+        // The list takes a fixed share and scrolls under the search and the filters.
+        ".notes { flex: 0 0 clamp(300px, 32%, 440px); min-height: 0; }",
+        "#groups { flex: 1; min-height: 0; overflow-y: auto;",
+        // The note takes the rest, to the window's bottom, with its buttons in view.
+        // The note takes the rest, to the window's bottom. What is above the buttons scrolls in
+        // its own box, so the buttons stay in view and cover nothing.
+        ".detail { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column;",
+        ".detail > * { flex: 1 1 0; min-height: 0; }",
+        ".card-body { flex: 1 1 0; min-height: 0; overflow-y: auto;",
+        ".edit-text { flex: 1 0 auto; }",
+        // Over the list, never over the note's buttons: no wider than the narrowest list.
+        ".toast { left: max(28px, calc(50% - 692px)); right: auto; max-width: 300px; }",
+    ] {
+        assert!(block.contains(must), "the two-pane block lacks {must}");
+    }
+    // The block comes after the base rules, or they would win over it.
+    for base in [
+        "\n.detail {",
+        "\n.actions {",
+        "\n.edit-text {",
+        "\n.toast {",
+    ] {
+        assert!(
+            css.find("@media (min-width: 760px) and (min-height: 480px) {") > css.find(base),
+            "the block comes before {base}"
+        );
+    }
+    // Nothing is pinned over the note: a bar over the text hides the control that has the focus.
+    for gone in ["scroll-padding", "scroll-margin", "position: sticky"] {
+        assert!(!css.contains(gone), "app.css still has {gone}");
+    }
+    // A group never shrinks inside the scrolling list.
+    assert!(css_rule(css, ".group").contains("flex-shrink: 0"));
+    // The smallest window on a large screen is inside the two-pane range.
+    let (_, (width, height)) = dashboard_sizes(None);
+    assert!(width >= 760.0 && height >= 480.0);
+}
+
+#[test]
+fn hun305_a_list_row_shows_only_what_helps_to_find_a_note() {
+    let app = text_of("/app.js");
+    let row = js_function(app, "renderRow");
+    for must in [
+        "'row-first'",
+        "[editedText(n.edited), str(n.repo) || 'no project'].filter(Boolean)",
+        "'row-mark'",
+    ] {
+        assert!(row.contains(must), "renderRow lacks {must}");
+    }
+    for gone in ["n.task", "tagsOf(n)", "'chip'"] {
+        assert!(!row.contains(gone), "renderRow still shows {gone}");
+    }
+    // Search still reads the task and the tags (AC 8).
+    let hay = js_function(app, "hayOf");
+    for must in ["n.task", "tagsOf(n)"] {
+        assert!(hay.contains(must), "hayOf lacks {must}");
+    }
+    let first = css_rule(text_of("/app.css"), ".row-first");
+    assert!(first.contains("-webkit-line-clamp: 2"), "{first}");
+}
+
+#[test]
+fn hun305_a_short_window_leaves_the_list_more_room() {
+    let css = text_of("/app.css");
+    let head = "@media (min-width: 760px) and (min-height: 480px) and (max-height: 700px) {";
+    let block = css_block(css, head);
+    for must in [
+        ".filter { height: 26px;",
+        ".search input { height: 32px; }",
+        ".by-project { padding-top: 4px; padding-bottom: 4px; }",
+    ] {
+        assert!(block.contains(must), "the short-window block lacks {must}");
+    }
+    let tall = css.find("@media (min-width: 760px) and (min-height: 480px) {");
+    assert!(css.find(head) > tall, "the short-window block comes first");
+}
+
+#[test]
+fn hun305_a_focus_refresh_keeps_the_list_where_it_is() {
+    let app = text_of("/app.js");
+    let list = js_function(app, "renderList");
+    assert!(
+        list.contains("rowButtons[focused].focus({ preventScroll: true })"),
+        "a render scrolls the list back to the focused row"
+    );
+    // A shown note is still scrolled to, also when its row has the focus already.
+    let focus = js_function(app, "focusRow");
+    assert!(
+        focus.contains("scrollIntoView({ block: 'nearest' })"),
+        "{focus}"
+    );
+}
+
+#[test]
+fn hun305_a_new_search_or_filter_starts_at_the_top_of_the_list() {
+    let app = text_of("/app.js");
+    assert!(js_function(app, "showFromTop").contains("$('groups').scrollTop = 0;"));
+    for must in [
+        "state.filter = f[0]; showFromTop();",
+        "state.query = value; showFromTop();",
+        "$('search').value = '';\n    showFromTop();",
+    ] {
+        assert!(app.contains(must), "app.js lacks {must}");
+    }
+}
+
+#[test]
+fn hun305_a_low_window_is_one_column_and_long_words_wrap() {
+    let css = text_of("/app.css");
+    let low = css_block(css, "@media (max-height: 479px) {");
+    assert!(low.contains(".detail { flex-basis: 100%; }"), "{low}");
+    assert!(css.find("@media (max-height: 479px) {") > css.find("\n.detail {"));
+    assert!(css.contains(".tag, .ai-tag, .ai-title { overflow-wrap: anywhere; }"));
+}
+
+#[test]
+fn hun305_the_keyboard_reaches_and_scrolls_the_note() {
+    let app = text_of("/app.js");
+    // The scroll box takes the focus, so PageDown, the arrows and End scroll a long note.
+    assert!(js_function(app, "newCard").contains("cardBody.tabIndex = 0;"));
+    assert!(text_of("/app.css").contains(
+        ".card-body:focus-visible { outline: 2px solid #3CF5A8; outline-offset: -2px; }"
+    ));
+    // A refused save shows its message, above the draft.
+    let failed = js_function(app, "editFailed");
+    let top = failed
+        .find("if (cardBody) cardBody.scrollTop = 0;")
+        .expect("the message stays out of view");
+    assert!(failed.find("focusEditBox();").expect("focusEditBox") < top);
+    // The tags field is shown whole when it gets the focus.
+    assert!(js_function(app, "renderEdit")
+        .contains("tags.addEventListener('focus', function () { tags.scrollIntoView({ block: 'nearest' }); });"));
 }
