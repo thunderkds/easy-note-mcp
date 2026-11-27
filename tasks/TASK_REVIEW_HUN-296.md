@@ -84,6 +84,18 @@ Checks (temp HOME, XDG dirs and notes dir; fake `claude` first on `PATH`, never 
 
 ---
 
+## Auto decisions
+
+Mode: auto
+1. Ran the blocked auto verify one more time, after resetting its row — RULE: `docs/claude-md/tracks.md` `### Admin tag`
+2. Did not merge: the Companion score row is `☑ fail` and the merge gate blocks a fail row — RULE: `docs/claude-md/tracks.md` `### Stops that stay`
+Paused: merge not run — Companion score `☑ fail` (76, floor 80), a safety-hook block; the merge waits for the owner
+Checks: the tests and the two fresh-context reviews recorded above; the one retry ran with `CLAUDE_AUTO_VERIFY_TIMEOUT_S=3600`; `security-review` Skill call by the Supervisor on 2026-11-27 with one fresh agent over `main...feat/HUN-296-tray-timer` and `origin/main..main`: no HIGH or MEDIUM finding, static reading only (auto-checked, not /verify)
+Memory: `memory/learnings.md` — 2026-11-27 merged tasks stay in Review on an online board (main checkout)
+Not done: merge (admin: after the auto verify pass; the failing Companion score row blocks it, so it is yours); auto verify: ☑ pass (session 8be20537-92a3-461d-8a9c-037679cb9934, commit 06d40385bfeae93b26a8647106b3503c4b186ae8, log .claude/verify-runs/HUN-296-06d40385bfea.log)
+
+---
+
 ## Evidence
 
 | Check | Result | Notes / output snippet |
@@ -91,7 +103,7 @@ Checks (temp HOME, XDG dirs and notes dir; fake `claude` first on `PATH`, never 
 | **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass / ☐ fail | `tests/tray_timer.rs` (AC 1-4, new, 11 tests: `test result: ok. 11 passed; 0 failed`), `tests/tray.rs` (AC 6: `ac3_no_tray_host_exits_1_with_the_hotkey_hint` now asserts no AI run). AC 5: the menu code is unchanged and its pin tests pass. Deviation from the guide: the timer tests are not in `tests/tray.rs`, because that file is built only with the `tray` feature. Red first: `error[E0432]: unresolved imports ... ai_run_argv, ... AiTimer` before the code |
 | Verification command run | ☑ pass / ☐ fail | Supervisor, source of `d3ab419`: `cargo fmt`, `cargo clippy --all-targets --locked -- -D warnings` clean, `cargo test --locked --no-fail-fast`: 30 suites, 789 passed, 0 failed, 7 ignored, exit 0 |
 | Negative cases hold | ☑ pass / ☐ fail | F1 red run: `a_bad_config_says_one_line_once_and_the_timer_goes_on ... FAILED` before the fix. Reviewer mutants: 6 of 6 killed at `fab32bb`, 2 of 2 killed at `d3ab419` |
-| verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
+| verify | ☑ pass | auto-run by hook, session 8be20537-92a3-461d-8a9c-037679cb9934, commit 06d40385bfeae93b26a8647106b3503c4b186ae8, log .claude/verify-runs/HUN-296-06d40385bfea.log — pass |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass / ☐ fail | Fresh-context reviews of `476b3c8...fab32bb` and `fab32bb...d3ab419`; HUN-295 below it has its own review. Open P3, accepted as limits: F3 (notes dir kept from the tray start), F5 (`root.is_dir()` true from the start), F6 (loop wiring untested, CI builds without `tray`) |
 | Full smoke suite still green (no regression) | ☑ pass / ☐ fail | `cargo test --locked --features window,tray --no-fail-fast` at `d3ab419`: 30 suites, 798 passed, 0 failed, 7 ignored, exit 0. `window_api::hun290_ac4_...` failed once in two earlier runs and passed on the rerun: a known flaky test outside this diff |
 | **Companion score (easy-verifier)** | ☐ pass / ☑ fail / ☐ N/A | overall 76 (floor missed: 76 < 80), change_risk 100 pass (feature, confirmed; both test pairs confirmed after the first round showed `organize.rs` as unpaired), scope changes, ref `feat/HUN-295-ai-run...HEAD` at `d3ab419`, dimensions: architecture 100, supply-chain 100, test-strategy 72, requirement-fidelity 67, code-quality 67, blast-radius 65, security 59; abstentions: solution-fit (no_static_rule), reliability (insufficient_measured_weight), api, data, operations, infrastructure (below_coverage_floor); gate solution-fit left abstained (no listed ref concerns this change); review findings not sent (the packs hold none of their refs); a first call rated no change because the Supervisor typed a wrong 40-hex base (no such commit; the base is `476b3c85a04e3c38d98c760ded532f559a763b60`); the first reviewer prompt carried the same wrong hash, and the reviewer used `476b3c8`. report: /home/hungnguyenhuu/.easy-verifier-reports/easy-note-mcp-HUN-296/evidence-report-changes-20261127T034716-515610Z.html |
