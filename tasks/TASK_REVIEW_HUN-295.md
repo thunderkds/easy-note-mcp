@@ -30,6 +30,10 @@ Reviewer: qa-expert, fresh context, 2026-11-27, commit `b5516788305c2e21949d9638
 
 **Security review (Medium):** no finding. Checked: `last_error` is first line only, masked with `guard::mask`, cut to 200 chars (failure texts from `enrich::call` are fixed strings, no note text); every stderr line goes through `safe()`; the model name in `--dry-run` goes through `safe()`; lock, hold and state paths are fixed names under `<notes dir>/.easy-note/`, ids come from `canonical_id` / the store; no raw note is opened for writing (NFR-012: tests compare note bytes); a bad `ai-hold.json` makes `ai run` and `ai undo` refuse and is never overwritten (so a person's undo is never silently redone). Lock nesting: every holder of `ai::lock` calls only `_locked` / inner writers; grep found no `ai::lock` call reachable while it is held (flock is not reentrant across fds, so this matters).
 
+## Supervisor sign-off (Stage 4)
+
+Review read and accepted: 0 P0, 0 P1, 0 P2. F1 goes to the tray-timer task (HUN-296). F2 (doc sentence wider than the code) stays as a follow-up. F3 is a question for the owner.
+
 ## Evidence
 
 | Check | Result | Notes / output snippet |
@@ -40,7 +44,7 @@ Reviewer: qa-expert, fresh context, 2026-11-27, commit `b5516788305c2e21949d9638
 | verify | ☐ pass / ☐ fail / ☐ N/A | |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Read the full `git diff main...b551678` (src/core/ai.rs, src/core/overrides.rs, src/surfaces/cli.rs, src/surfaces/organize.rs, tests/ai_run.rs, tests/ai.rs, tests/organize.rs, README.md, RUNBOOK.md, docs/NOTE_FORMAT.md, guide). Callers checked by grep: `run_batch` (only `organize::run` and tests/organize.rs), `ai::lock` / `_locked` holders (ai.rs, overrides.rs, organize.rs; no nested lock), AI-file writers incl. `store.rs` `rm_with_ai` / `restore_with_ai` (F2), `ai::pending` vs `to_organize`. Full suite in the copy: `cargo test --locked --no-fail-fast`: 29 suites, 778 passed, 0 failed, 7 ignored. Worktree src/tests unchanged (`git diff --quiet b551678 -- src tests`). |
 | Full smoke suite still green (no regression) | ☑ pass | `cargo test --locked --features window,tray --no-fail-fast`: 29 suites, 787 passed, 0 failed, 7 ignored, exit 0; clippy with the features clean. Pin test changed: `tests/ai.rs` `note_tree` now skips `.easy-note/ai-write.lock` |
-| **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | |
+| **Companion score (easy-verifier)** | ☑ fail | overall 76 (floor missed: 76 < 80), change_risk 100 pass (feature, confirmed; no failed rule), scope changes, ref `main...HEAD` at `b551678` plus the review commit, dimensions: architecture 100, supply-chain 100, test-strategy 72, requirement-fidelity 67, code-quality 67, blast-radius 65, security 59; abstentions: api, data, infrastructure, operations, reliability, solution-fit; gates: none answered, solution-fit left abstained (no kit-held evidence rates the design at its listed refs); largest named gaps: `redaction_hits_observed` 2 (the matched values were not located), 33% of changed files are churn hotspots, 21% of requirement items traced, `max_function_ccn` 29 in `src/surfaces/cli.rs`; no findings sent, so no divergence; report: `/home/hungnguyenhuu/.easy-verifier-reports/easy-note-mcp-HUN-295/evidence-report-changes-20261127T025939-443105Z.html` |
 | **UI: Visual regression (diff or verdict pasted)** | ☐ pass / ☐ fail / ☑ N/A | No UI component: core library and command-line output only |
 | **UI: Design-system compliance (tokens/colors/typography verified)** | ☐ pass / ☐ fail / ☑ N/A | No UI component |
 | **UI: Responsiveness at target viewports** | ☐ pass / ☐ fail / ☑ N/A | No UI component |
