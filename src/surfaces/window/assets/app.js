@@ -196,6 +196,7 @@
   function newCard(d) {
     var card = el('article', 'card');
     cardBody = el('div', 'card-body');
+    cardBody.tabIndex = 0;  // the keyboard scrolls a long note: the buttons are outside this box
     cardId = d.id;
     cardBody.appendChild(cardHead(d));
     card.appendChild(cardBody);
@@ -320,6 +321,7 @@
     tags.setAttribute('autocomplete', 'off');
     tags.addEventListener('input', function () { e.tags = tags.value; });
     tags.addEventListener('keydown', editKey);
+    tags.addEventListener('focus', function () { tags.scrollIntoView({ block: 'nearest' }); });
     body.appendChild(tags);
 
     var keys = el('div', 'edit-keys');
@@ -383,6 +385,7 @@
     if (state.edit !== e) return;
     renderDetail();
     focusEditBox();
+    if (cardBody) cardBody.scrollTop = 0;  // the message is above the draft
   }
 
   // AC 4: one `edit` request; the board is asked again after it (the list row). AC 2: a save refused

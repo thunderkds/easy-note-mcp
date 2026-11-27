@@ -15,7 +15,7 @@ Mode: auto
 6. Each review fix gets a fresh reviewer on the new commit (first pass fail with 3 P1; second pass; third pass fail with 1 P1) — RULE: `docs/claude-md/pipeline-stages.md` § Stage 4: Review
 7. The HUN-304 sticky panel and its click check are replaced by the two panes; two HUN-304 tests are repointed or removed — RULE: `tasks/TASK_GUIDE_HUN-305.md` § Files to Change (Predicted)
 8. The pinned button bar is replaced by a scroll box above the buttons, so no control can hide under it — SAFER OPTION: two fixes of the overlapping bar each left a hidden control ⚠ decided for you — please review
-Checks: tests after the fix round, `cargo test --locked --features window,tray --no-fail-fast` — 28 suites, 774 passed, 0 failed, 7 ignored; default build 765 passed, 0 failed, 7 ignored; fmt and clippy clean in both builds; real run on virtual screens 3440x1440 and 1366x768 before the fix round (auto-checked, not /verify). The first review's full run had 1 failure, the intermittent HUN-290 lock test. After the S1 fix both builds ran again with the same counts. After the structural fix of the third pass: window,tray 774 passed, 0 failed; default 764 passed, 1 failed (the same lock test), and `--test window_api` rerun 126 passed, 0 failed; real window at 800x560 after the last CSS change
+Checks: tests after the fix round, `cargo test --locked --features window,tray --no-fail-fast` — 28 suites, 774 passed, 0 failed, 7 ignored; default build 765 passed, 0 failed, 7 ignored; fmt and clippy clean in both builds; real run on virtual screens 3440x1440 and 1366x768 before the fix round (auto-checked, not /verify). The first review's full run had 1 failure, the intermittent HUN-290 lock test. After the S1 fix both builds ran again with the same counts. After the structural fix of the third pass: window,tray 774 passed, 0 failed; default 764 passed, 1 failed (the same lock test), and `--test window_api` rerun 126 passed, 0 failed; real window at 800x560 after the last CSS change. After the fourth-pass fix: window,tray 775 passed, 0 failed; default 766 passed, 0 failed
 Memory: pending
 Not done: merge (admin: after the auto verify pass); auto verify: running (T182)
 
@@ -143,6 +143,33 @@ How it was checked: headless Chrome and a WebKitGTK view on Xvfb (not the app bi
 
 Screenshots: `/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-easy-note-mcp/8cd0dd43-7fc3-44cc-9fbf-68159c0c60ed/scratchpad/r305c.4rInAa/shots/`.
 
+### Fourth pass (e7da086)
+
+Reviewer: qa-expert, fresh context, 2026-11-27. Diff `85372a0..e7da08681bad8d66c6f0fd6bf2f6224945d8e455`. **Verdict: fail** (P0 0, P1 1, P2 1, P3 1). T1 and T2 are gone, but the keyboard no longer scrolls a long note. No code changed.
+
+How it was checked: headless Chrome and a WebKitGTK view on Xvfb (not the app binary), on scratch copies of the `85372a0` and `e7da086` assets (CSP tag removed, fake `window.ipc`), temp HOME. `cargo test --locked --features window,tray --test window_api`: `test result: ok. 126 passed; 0 failed; 1 ignored`. No page script error in Chrome. No mutation check.
+
+| Check | Result when run |
+|---|---|
+| T1 Tags field behind the bar | gone: nothing lies over the note; the buttons start 12 px below the scroll box (see K3) |
+| T2 edit box behind the bar | gone: Chrome and WebKitGTK, start of edit and typing, 800x560 and 1280x820 inside the box; at 760x480 the top scrolls out in Chrome, the bottom stays in view (WebKitGTK: 2 px past it) |
+| View card, edit card, buttons | hold at 760x480, 800x560, 1280x820: page does not scroll, buttons inside the window |
+| Same note re-rendered | holds: same row click, `Re-run` (error reply) and `Add as tags` keep the position at 600 (Chrome); same row click in WebKitGTK |
+| Another note | holds: starts at 0, Chrome and WebKitGTK |
+| Refused save | draft and focus are kept; message visibility at 760x480 is K2 |
+| Empty folder, detail error | hold (Chrome) |
+| One column | holds: 375x812 and 1280x470 (Chrome), 640x700 (WebKitGTK): the page scrolls, the card has no scroll box of its own |
+
+| # | Sev | File:line | Concrete failure | Confidence | Action |
+|---|---|---|---|---|---|
+| K1 | P1 (new) | `src/surfaces/window/assets/app.css:227`, `app.js:196-201` | A keyboard user cannot scroll a long note. The buttons are now outside the scroll box, and the box takes no focus. WebKitGTK, long note with no AI detail, Tab to `Edit`, `Run AI`, `Copy id`, `Move to trash`, then PageDown, Down, End: the note stays at 0 at 760x480 and 800x560. `85372a0`, same keys: 265, 312, 1998 and 329, 384, 1918. The Tab order after the list has no stop on the note (also on a note with `Add as tags`, where that button is the only stop inside it). PageDown on `Edit` also does nothing at 1280x820 and in Chrome. By code, an inbox note has no `Edit`, so edit mode is no way round. The mouse wheel works | 100 | Make the box focusable (`cardBody.tabIndex = 0`) with a visible focus outline. Trial in WebKitGTK with a script `focus()`: PageDown then scrolls (194, 258). Check with Tab |
+| K2 | P2 (new at this size) | `app.js:381-385`, `app.css:227` | WebKitGTK 760x480, long note: Edit, type, Ctrl+Enter, save refused. The message is at y 119-134 and the box starts at 154, so nothing in the card says the save failed. `85372a0`: visible (191-206). Visible at 800x560. The long "changed outside" case hides it in both versions (older F11) | 100 | Bring the message into view after a refused save |
+| K3 | P3 (new) | `app.css:227` | WebKitGTK: Tab to Tags leaves the bottom 11 of its 38 px outside the box (760x480, 800x560; 1280x820 after an outside-change refusal). The field's text still shows; the bottom of the focus outline is cut (`k-new-760x480-tags.png`) | 100 | Optional: `scrollIntoView({ block: 'nearest' })` on focus |
+
+T3 (tests match source strings) stays open; no test covers K1.
+
+Screenshots: `/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-easy-note-mcp/8cd0dd43-7fc3-44cc-9fbf-68159c0c60ed/scratchpad/r305d.g9zlsM/shots/`.
+
 ## Fix round (Supervisor, after the review of `497c5e1`)
 
 | Finding | State | Check |
@@ -174,6 +201,15 @@ Screenshots: `/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-
 | T2 the edit box hides behind the bar | fixed by structure | same; browser at 760x480, 800x560, 1280x820: neither field overlaps the buttons. At 760x480 the top of the edit box scrolls out of the box while the caret at its end stays in view |
 | T3 tests pin strings | left as a follow-up | |
 | S1 stays fixed | | focus on each pinned button leaves the note at 0 |
+
+### After the fourth pass
+
+| Finding | State | Check |
+|---|---|---|
+| K1 the keyboard cannot scroll a long note | fixed | real app, 800x560, key presses: from the search field, Tab reaches the note (outline), Page Down and End scroll it to the end, the next Tab is `Edit` |
+| K2 a refused save hides its message | fixed | real app at 800x560: the message shows above the draft after Ctrl+Enter; not re-run at 760x480 |
+| K3 the Tags field is cut | fixed | real app at 800x560: the whole field shows when it has the focus |
+| T3 tests match source strings | left as a follow-up | |
 
 ## Evidence
 

@@ -89,6 +89,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .card { border: 1px solid #262B29; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
 .card-body { display: flex; flex-direction: column; gap: 16px; }
 .card-body > * { flex-shrink: 0; }
+.card-body:focus-visible { outline: 2px solid #3CF5A8; outline-offset: -2px; }
 .card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .card-id { font: 400 12px 'IBM Plex Mono', monospace; color: #8C9590; }
 .card-head .chip { margin-left: auto; }

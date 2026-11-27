@@ -4176,3 +4176,22 @@ fn hun305_a_low_window_is_one_column_and_long_words_wrap() {
     assert!(css.find("@media (max-height: 479px) {") > css.find("\n.detail {"));
     assert!(css.contains(".tag, .ai-tag, .ai-title { overflow-wrap: anywhere; }"));
 }
+
+#[test]
+fn hun305_the_keyboard_reaches_and_scrolls_the_note() {
+    let app = text_of("/app.js");
+    // The scroll box takes the focus, so PageDown, the arrows and End scroll a long note.
+    assert!(js_function(app, "newCard").contains("cardBody.tabIndex = 0;"));
+    assert!(text_of("/app.css").contains(
+        ".card-body:focus-visible { outline: 2px solid #3CF5A8; outline-offset: -2px; }"
+    ));
+    // A refused save shows its message, above the draft.
+    let failed = js_function(app, "editFailed");
+    let top = failed
+        .find("if (cardBody) cardBody.scrollTop = 0;")
+        .expect("the message stays out of view");
+    assert!(failed.find("focusEditBox();").expect("focusEditBox") < top);
+    // The tags field is shown whole when it gets the focus.
+    assert!(js_function(app, "renderEdit")
+        .contains("tags.addEventListener('focus', function () { tags.scrollIntoView({ block: 'nearest' }); });"));
+}
