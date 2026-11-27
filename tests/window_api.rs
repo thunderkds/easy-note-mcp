@@ -4072,8 +4072,9 @@ fn hun305_the_list_and_the_note_fill_the_window_and_scroll_on_their_own() {
         ".edit-text { flex: 1 0 auto; }",
         // Over the list, never over the note's buttons: no wider than the narrowest list.
         ".toast { left: max(28px, calc(50% - 692px)); right: auto; max-width: 300px; }",
-        // A control that gets the focus is not left behind the pinned buttons.
-        "scroll-padding-bottom: 112px;",
+        // A control that gets the focus is not left behind the pinned buttons. Set on the controls
+        // above the bar only: on the pane it also scrolls the note when a pinned button gets focus.
+        ".detail .ai-accept, .detail .edit-tags { scroll-margin-bottom: 112px; }",
     ] {
         assert!(block.contains(must), "the two-pane block lacks {must}");
     }
@@ -4089,6 +4090,10 @@ fn hun305_the_list_and_the_note_fill_the_window_and_scroll_on_their_own() {
             "the block comes before {base}"
         );
     }
+    assert!(
+        !css.contains("scroll-padding"),
+        "a pinned button scrolls the note"
+    );
     assert!(
         !css.contains("position: sticky; top: 16px"),
         "the HUN-304 sticky panel stays"

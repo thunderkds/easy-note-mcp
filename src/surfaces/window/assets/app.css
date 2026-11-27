@@ -217,9 +217,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .columns { flex: 1; min-height: 0; flex-wrap: nowrap; align-items: stretch; }
   .notes { flex: 0 0 clamp(300px, 32%, 440px); min-height: 0; }
   #groups { flex: 1; min-height: 0; overflow-y: auto; color-scheme: dark; scrollbar-width: thin; display: flex; flex-direction: column; gap: 12px; }
-  .detail { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; color-scheme: dark; scrollbar-width: thin; scroll-padding-bottom: 112px; }
+  .detail { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; color-scheme: dark; scrollbar-width: thin; }
   .detail > * { flex: 1 0 auto; }
   .detail .actions { position: sticky; bottom: 0; margin: auto -20px -20px; padding: 12px 20px 16px; background: #121413; border-radius: 0 0 8px 8px; }
+  /* A focused control above the pinned bar scrolls clear of it (not on the pane: that also moves the note
+     when a pinned button gets the focus). */
+  .detail .ai-accept, .detail .edit-tags { scroll-margin-bottom: 112px; }
   .edit-text { flex: 1 0 auto; }
   /* The toast sits over the list, no wider than its narrowest width, so it never covers the note's buttons. */
   .toast { left: max(28px, calc(50% - 692px)); right: auto; max-width: 300px; }

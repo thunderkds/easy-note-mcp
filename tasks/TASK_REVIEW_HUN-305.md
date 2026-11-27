@@ -14,7 +14,7 @@ Mode: auto
 5. The list column is 300 to 440 px; the note takes the rest of the 1440 px container; the counts strip is made shorter and its `by project` label shows only when there is no bar — SAFER OPTION: no feature is removed ⚠ decided for you — please review
 6. The first review (fail, 3 P1) was fixed and a second fresh reviewer checks the new commit — RULE: `docs/claude-md/pipeline-stages.md` § Stage 4: Review
 7. The HUN-304 sticky panel and its click check are replaced by the two panes; two HUN-304 tests are repointed or removed — RULE: `tasks/TASK_GUIDE_HUN-305.md` § Files to Change (Predicted)
-Checks: tests after the fix round, `cargo test --locked --features window,tray --no-fail-fast` — 28 suites, 774 passed, 0 failed, 7 ignored; default build 765 passed, 0 failed, 7 ignored; fmt and clippy clean in both builds; real run on virtual screens 3440x1440 and 1366x768 before the fix round (auto-checked, not /verify). The first review's full run had 1 failure, the intermittent HUN-290 lock test
+Checks: tests after the fix round, `cargo test --locked --features window,tray --no-fail-fast` — 28 suites, 774 passed, 0 failed, 7 ignored; default build 765 passed, 0 failed, 7 ignored; fmt and clippy clean in both builds; real run on virtual screens 3440x1440 and 1366x768 before the fix round (auto-checked, not /verify). The first review's full run had 1 failure, the intermittent HUN-290 lock test. After the S1 fix both builds ran again with the same counts
 Memory: pending
 Not done: merge (admin: after the auto verify pass); auto verify: running (T182)
 
@@ -76,6 +76,50 @@ Screenshots: `/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-
 
 ux-evaluate: 6 pass, 0 new fail, 6 fail (older), 0 not checked, 0 not checkable. Overall: fail
 
+### Second pass (92acda4)
+
+Reviewer: qa-expert, fresh context, 2026-11-27. Diff `497c5e1..92acda44e59fafa9e36f44285069f4d0dd3181ed`. **Verdict: pass** (P0 0, P1 0, P2 3, P3 5). No code changed.
+
+How it was checked: headless Chrome on scratch copies of the old and new assets (CSP tag removed, fake `window.ipc`); the same pages in a WebKitGTK 2.52.6 view on Xvfb with synthetic Tab keys (not the app binary). One mutation check: `scroll-padding-bottom` removed, and the F6 check fails. `cargo test --locked --features window,tray --test window_api`: `test result: ok. 126 passed; 0 failed; 1 ignored`. `lane: C2, 9 files, 494 lines, FITS; unpredicted: tasks/TASK_GUIDE_HUN-305.md`. Entry point `easy-note dashboard`: reachable. No page script error in Chrome.
+
+| Finding | Result when run |
+|---|---|
+| F1 focus refresh | holds: list stays at 1800 with a focused row (old: 0), Chrome 760x480 to 1920x1000 and WebKitGTK; note pane position stays |
+| F2 low, wide window | holds: 1280x470, 1000x479, 760x470, 3440x400: click and `show` put the note at top 0; 1280x480 keeps two panes |
+| F3 toast | holds in the two-pane range: four toasts at six sizes cover no note control; toast right edge stays inside the list column. Below the range see S2 |
+| F4 search and filter | holds: search, `Clear search` and both tested filters leave the list at 0 |
+| F6 pinned bar hides a focused control (measured now) | holds: Tab to `Add as tags` ends above the bar at six sizes and four start positions (Chrome) and in WebKitGTK (800x560: bottom 453, bar 484; old: 500 to 548, bar 485). The edit tags field too. It causes S1 |
+| F7 edit box | holds: 227 px at 800x560, 382 at 1280x820, 562 at 1920x1000; dragging the handle +150 px grows it |
+| F8 repeated `show` | holds: the row comes into view; no outer container moves; trash in one column still shows the next row |
+| F9, F14 wording | read in the diff: fixed |
+
+| # | Sev | File:line | Concrete failure | Confidence | Action |
+|---|---|---|---|---|---|
+| S1 | P2 (new) | `app.css:220` | `scroll-padding-bottom: 112px` also applies to the pinned buttons, which always sit inside that padding. On a long note, each Tab onto one scrolls the note: 1280x820 from 0 to 346, 692, 1038, 1384 over `Edit`, `Re-run`, `Copy id`, `Move to trash` (Chrome); 96, 192, 288, 384 (WebKitGTK); old and mutated: 0. `editButton.focus()` after Esc moves it too (268 to 436 Chrome, 96 WebKitGTK). Starting an edit at 760x480 scrolls the top of the text box out of the pane (Chrome 83 px, label gone, `edit-760x480.png`; WebKitGTK 18 px) | 100 | Put the offset on the covered targets (`scroll-margin-bottom` on `.ai-accept`, `.edit-tags`) instead of the pane, or cancel it for the pinned buttons; untested. Test by Tab: pane position unchanged |
+| S2 | P2 (older) | `app.css:134` | AC 11 names no range, and at 375 with the page at its end the toast still covers `Move to trash` for its lifetime (`toast-375.png`). The rule predates this diff; the first pass listed it under F3 and the fix round does not mention it | 100 | Fix it, or limit AC 11 to the two-pane range |
+| S3 | P2 (carried F5) | `tests/window_api.rs:4076` | The tests match source substrings only; none measures the 80 px strip (seen by eye at 53 to 64 px), and S1 passes them all | 75 | Follow-up |
+| S4 | P3 (new) | `app.css:225` | The toast now covers the bottom list rows (up to about 110 px for a long error at 760x480, `toast-760x480-aiErr.png`) for up to 6 s | 100 | Optional |
+| F10-F13 | P3 (older) | as above | Left open as follow-ups; not re-measured | as above | Follow-up |
+
+`ux-evaluate`, screens the fix touches (screenshots in `/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-easy-note-mcp/8cd0dd43-7fc3-44cc-9fbf-68159c0c60ed/scratchpad/r305b.s7nopU/shots/`):
+
+| # | Flow / state | Width | Verdict | Screenshot | Reason |
+|---|---|---|---|---|---|
+| 1 | pick a long note | 1280 (row range) | pass | `pick-1280.png` | Pane reaches the bottom, buttons show |
+| 2 | scroll the list | 1280 (row range) | pass | `pick-1280.png`, `search-1280.png` | List scrolls inside its column; header stays; measured note position unchanged |
+| 3 | the list | 375 / 1280 | pass | `search-375.png`, `search-1280.png` | Time, two lines at most, `edited`, project, one mark or none |
+| B-a | default | 375 / 1280 | pass | `default-375.png`, `pick-1280.png` | `+ New note` prominent and in view |
+| B-b | default | 375 / 1280 | pass | same | One reading order |
+| B-c | default, edit | 375 / 1280 | pass | `edit-375.png`, `edit-1280.png` | Aligned, even gaps |
+| B-d | default | 375 | fail (older) | `search-375.png` | Targets under 44 px (F12) |
+| B-e | default | 375 | fail (older) | `search-375.png` | Body 14 px (F12) |
+| B-f | empty folder, no result | 375 / 1280 | fail (older) | `empty-375.png`, `noresult-1280.png` | Empty folder has no action (F13) |
+| B-g | toast | 375 / 1280 | pass | `toast-375.png`, `toast-1280x820-undo.png` | Feedback visible |
+| B-h | default, long search word | 375 | fail (older) | `default-375.png` | Default does not scroll sideways (360 px); long word (F10) carried from the first pass, not re-shot |
+| B-i | default | 375 / 1280 | pass | `default-375.png`, `pick-1280.png` | One accent, one button style |
+
+ux-evaluate: 8 pass, 0 new fail, 4 fail (older), 0 not checked, 0 not checkable. Overall: fail (older items only)
+
 ## Fix round (Supervisor, after the review of `497c5e1`)
 
 | Finding | State | Check |
@@ -85,11 +129,19 @@ ux-evaluate: 6 pass, 0 new fail, 6 fail (older), 0 not checked, 0 not checkable.
 | F3 toast covers a button | fixed | the toast sits over the list, left; no button covered at 760x560 (before: `Copy id`) |
 | F4 search keeps the old position | fixed | after a search the list is at 0 (before: up to 2046) |
 | F5 tests | partly fixed | new tests for F1-F4 and the `.tag` wrap rule; no test measures the 80 px strip |
-| F6 pinned bar hides a focused control | fixed, not measured | `scroll-padding-bottom: 112px` |
+| F6 pinned bar hides a focused control | fixed (see S1) | `scroll-margin-bottom` on the AI button and the tags field |
 | F7 edit box | fixed | 227 px at 800x560; it grows with the pane |
 | F8 repeated `show` | fixed | `scrollIntoView` in `focusRow` |
 | F9, F14 wording | fixed | `PRD.md` FR-042; the guide's UX rows name the range |
 | F10-F13 | left, older | follow-ups |
+
+### After the second pass
+
+| Finding | State | Check |
+|---|---|---|
+| S1 a pinned button scrolls the note | fixed | browser at 760x480, 800x560, 1280x820: focus on each pinned button leaves the note at 0 (before: 146 to 346); the edit box top is in view (before: -84 at 760x480); the tags field lands 47 px above the bar |
+| S2 toast at 375 | AC 11 now names the two-pane range; the narrow case is older | |
+| S3, S4, F10-F13 | left as follow-ups | |
 
 ## Evidence
 
@@ -99,7 +151,7 @@ ux-evaluate: 6 pass, 0 new fail, 6 fail (older), 0 not checked, 0 not checkable.
 | Verification command run | ☑ pass | `cargo test --locked --features window,tray --test window_api`: `test result: ok. 123 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out` |
 | Negative cases hold | ☑ pass | Under 760 px wide the page scrolls as one column and a row click brings the note into view; the empty folder shows its message. Red runs against the prior content above |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
-| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Scope: the 9 files of the diff, their callers in the window page and shell, and `tests/window_api.rs`. Review verdict: fail (P1 3), see `## Review findings (Stage 4)` |
+| Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Scope: the 9 files of the diff, their callers in the window page and shell, and `tests/window_api.rs`. Review verdict: fail (P1 3), see `## Review findings (Stage 4)`. Second pass, `92acda4`: the 6 files of `497c5e1..92acda4` and the screens they touch; verdict pass (P0 0, P1 0, P2 3, P3 5), see `### Second pass (92acda4)` |
 | Full smoke suite still green (no regression) | ☑ pass | Both builds, see `Checks:` |
 | **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | Pending |
 | **UI: Visual regression (diff or verdict pasted)** | ☑ pass | Screenshots read at 800x560, 1280x820, 1920x1000: only the changes of AC 1-11 |

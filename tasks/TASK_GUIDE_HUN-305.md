@@ -72,7 +72,7 @@ Signed: auto (Supervisor), 2026-11-27.
 | 8 | Search still finds a note by tag and by task | boundary |
 | 9 | The counts strip takes at most 80 px of height in the two-pane range and keeps its three counts and project bars | better UX |
 | 10 | Outside that range the page scrolls as one column, and a row click brings the note into view (HUN-284) | boundary |
-| 11 | The toast does not cover the note's buttons | better UX |
+| 11 | In the two-pane range the toast does not cover the note's buttons | better UX |
 | 12 | Nothing scrolls sideways at 375, 640, 800, 1000, 1280, 1920 and 3440 px; the content stays a centred column of at most 1440 px | HUN-304 stays true |
 
 ---
