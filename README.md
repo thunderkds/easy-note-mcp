@@ -4,7 +4,8 @@ Capture one-line notes from the terminal, from Claude Code, Codex and Cursor, an
 key press, into a folder of plain Markdown files. Each note gets its context for free: the repo,
 the branch and the task ID of the folder you were in. easy-note is one Linux binary with a CLI and
 an MCP server. It masks secrets on every write and read. It runs no model and makes no network
-call, with opt-in exceptions: `easy-note ai enrich` and `easy-note ai run` (need `[ai] enrich`) and the window's `Run AI`
+call, with opt-in exceptions: `easy-note ai enrich` and `easy-note ai run` (need `[ai] enrich`), the tray's timed `ai run`
+(also needs `schedule = "tray"`) and the window's `Run AI`
 button (your click, one note) ask your own `claude` CLI for AI detail
 (see "AI detail with your Claude subscription").
 
@@ -205,8 +206,15 @@ wait that doubles after each failed run (from `interval_min`, at most 4 hours). 
 After `easy-note ai undo` takes back a change of the AI, `ai run` leaves that note alone until you edit its text.
 `ai enrich <id>`, `ai enrich --pending`, `Run AI` and `note_enrich` still write it, and that ends the hold.
 
-To run it on a timer today, use cron (`crontab -e`). cron has a short `PATH`, so set `command` in `[ai]` to the
-full path of `claude`:
+The tray runs it for you. While `easy-note tray` runs (a build with the `tray` feature), `schedule = "tray"` and
+`enrich = "claude"`, the tray starts `ai run` every `interval_min` minutes. The first run comes one interval after
+the tray starts, not at once. A change in config.toml or in Settings applies within a minute, with no tray restart.
+No run starts while another one works, or before the wait of a failed run has passed. With the tray closed, or with
+either switch off, nothing runs by itself. A tray started at login may not have your shell's settings: its `PATH` may be
+short and `CLAUDE_CONFIG_DIR` unset. Set `command` in `[ai]` to the full path of `claude`, and set
+`claude_config_dir` to the account folder you want.
+
+Without a tray, use cron (`crontab -e`) and leave `schedule = "off"`. cron has a short `PATH` too:
 
 ```
 0 * * * * $HOME/.cargo/bin/easy-note ai run >> $HOME/.cache/easy-note-ai.log 2>&1
@@ -254,8 +262,8 @@ window read it, nothing is saved and the screen reads the file again. Before
 `Organize automatically` turns on, the window shows what is sent (masked note text, your own
 `claude` CLI, the account folder and the model) with `Confirm` and `Cancel`. `Confirm` saves the
 screen and records `notice_seen`, so the same text is not shown again; another account folder or
-model shows it again. The switch needs the AI on. It only saves `schedule = "tray"`: the tray timer
-that would run the AI on that schedule is not built yet, so nothing runs on a timer. `easy-note
+model shows it again. The switch needs the AI on. It saves `schedule = "tray"`, and the running tray
+then starts `ai run` on that schedule (see "Organize the notes that wait"). `easy-note
 doctor` shows the saved values (the model and `after_save` only while the AI is on).
 
 ```
@@ -359,7 +367,11 @@ To start it at login, `easy-note install tray` writes one file,
 starts at login unless you run `install tray`. If your session does not find `easy-note` (for
 example it sits in `~/.cargo/bin`), edit the `Exec=` line to the full path from `command -v easy-note`.
 
-If you also use easy-personal's tray, keep one tray: use that one and do not run `easy-note tray`.
+The tray is also the timer of `Organize automatically` (see "Organize the notes that wait"). After you install a
+new version, quit the tray and start it again.
+
+If you also use easy-personal's tray, keep one tray: use that one and do not run `easy-note tray`. Timed AI runs
+then need cron.
 
 ### VS Code
 

@@ -3824,8 +3824,8 @@ fn the_page_has_the_settings_gear_dialog_and_notice() {
         r#"id="ask-dialog" role="alertdialog" aria-modal="true""#,
         ">Organize automatically<",
         "Turn on AI first.",
-        // The tray timer is a later task: the caption claims no run.
-        "Saves your choice for timed AI runs. The timer is not built yet.",
+        // The tray is the timer (HUN-296): no run without its icon.
+        "The AI runs on this schedule while the tray icon shows.",
         "Run after each save",
         ">Confirm</button>",
         ">Cancel</button>",

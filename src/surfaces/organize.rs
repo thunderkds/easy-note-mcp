@@ -374,6 +374,12 @@ fn acquire_run_lock(root: &Path) -> Result<Option<File>, String> {
     }
 }
 
+/// Whether a run holds `ai-run.lock` now. It creates nothing.
+pub fn run_lock_held(root: &Path) -> bool {
+    File::open(root.join(".easy-note").join("ai-run.lock"))
+        .is_ok_and(|file| matches!(file.try_lock_shared(), Err(TryLockError::WouldBlock)))
+}
+
 fn plural(n: usize, word: &str) -> String {
     format!("{n} {word}{}", if n == 1 { "" } else { "s" })
 }
