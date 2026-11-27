@@ -210,8 +210,9 @@ The tray runs it for you. While `easy-note tray` runs (a build with the `tray` f
 `enrich = "claude"`, the tray starts `ai run` every `interval_min` minutes. The first run comes one interval after
 the tray starts, not at once. A change in config.toml or in Settings applies within a minute, with no tray restart.
 No run starts while another one works, or before the wait of a failed run has passed. With the tray closed, or with
-either switch off, nothing runs by itself. A tray started at login may have a short `PATH`, so set `command` in
-`[ai]` to the full path of `claude`.
+either switch off, nothing runs by itself. A tray started at login may not have your shell's settings: its `PATH` may be
+short and `CLAUDE_CONFIG_DIR` unset. Set `command` in `[ai]` to the full path of `claude`, and set
+`claude_config_dir` to the account folder you want.
 
 Without a tray, use cron (`crontab -e`) and leave `schedule = "off"`. cron has a short `PATH` too:
 

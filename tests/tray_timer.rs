@@ -168,34 +168,31 @@ fn the_config_is_read_at_most_once_a_minute() {
     assert_eq!(reads, 3);
 }
 
+/// A TOML parse error has several lines and quotes the bad line: only its first line is said.
 #[test]
 fn a_bad_config_says_one_line_once_and_the_timer_goes_on() {
     let notes = tempfile::tempdir().unwrap();
     let mut timer = AiTimer::new(start());
-    let mut look = |minute: i64| {
-        timer.tick(
-            at(minute, 0),
-            notes.path(),
-            || Err("config.toml: [ai] interval_min must be at least 5".to_string()),
-            || panic!("a bad config starts nothing"),
-        )
+    let broken = || {
+        Err("config.toml: TOML parse error at line 2, column 8\n  |\n2 | model = oops\n  |         ^\nexpected a value".to_string())
     };
-    let line = look(60).unwrap();
-    assert!(line.contains("interval_min"), "{line}");
-    assert!(!line.contains('\n'), "{line}");
-    assert_eq!(look(61), None, "said once");
+    let nothing = || panic!("a bad config starts nothing");
+
+    let line = timer
+        .tick(at(60, 0), notes.path(), broken, nothing)
+        .unwrap();
+    assert!(line.contains("TOML parse error at line 2"), "{line}");
+    assert!(!line.contains('\n') && !line.contains("oops"), "{line}");
+    let repeat = timer.tick(at(61, 0), notes.path(), broken, nothing);
+    assert_eq!(repeat, None, "said once");
 
     let mut runs = 0;
     let said = timer.tick(at(62, 0), notes.path(), || Ok(on(60)), || runs += 1);
     assert_eq!((said, runs), (None, 1));
     // broken again after a good read: said again
-    let again = timer.tick(
-        at(63, 0),
-        notes.path(),
-        || Err("config.toml: [ai] interval_min must be at least 5".to_string()),
-        || panic!("a bad config starts nothing"),
-    );
-    assert!(again.is_some());
+    assert!(timer
+        .tick(at(63, 0), notes.path(), broken, nothing)
+        .is_some());
 }
 
 #[test]

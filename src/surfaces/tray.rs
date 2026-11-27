@@ -296,17 +296,16 @@ pub fn ai_run_argv(exe: &Path) -> (PathBuf, Vec<OsString>) {
     )
 }
 
-/// May a timed run start at `now`? Only with the schedule and the AI on, no run in progress, a
-/// full interval since `since` (the tray's start or its last timed run), and no back-off.
+/// May a timed run start at `now`? Only with the schedule and the AI on, a full interval since
+/// `since` (the tray's start or its last timed run), and no back-off. The caller then checks the
+/// run lock.
 fn ai_run_due(
     now: DateTime<Utc>,
     since: DateTime<Utc>,
     settings: &AiSettings,
     state: &RunState,
-    lock_held: bool,
 ) -> bool {
     settings.effective_schedule()
-        && !lock_held
         && now - since >= TimeDelta::minutes(i64::from(settings.interval_min))
         && !state.backing_off(now.fixed_offset())
 }
@@ -351,20 +350,17 @@ impl AiTimer {
                 if self.complaint.as_ref() == Some(&why) {
                     return None;
                 }
-                let line = format!("easy-note: no timed AI run: {}", safe(&why));
+                // A TOML parse error goes on to quote the bad line: say the first line only.
+                let first = why.lines().next().unwrap_or_default();
+                let line = format!("easy-note: no timed AI run: {}", safe(first));
                 self.complaint = Some(why);
                 return Some(line);
             }
         };
         self.complaint = None;
         if root.is_dir()
-            && ai_run_due(
-                now,
-                self.since,
-                &settings,
-                &RunState::read(root),
-                organize::run_lock_held(root),
-            )
+            && ai_run_due(now, self.since, &settings, &RunState::read(root))
+            && !organize::run_lock_held(root)
         {
             self.since = now;
             spawn();
