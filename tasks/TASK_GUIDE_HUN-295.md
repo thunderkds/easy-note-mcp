@@ -48,16 +48,16 @@ Owner, chat 2026-11-25: "easy-note is the place where I only take notes; the AI 
 
 ### Requirement Fidelity Gate (sign off BEFORE implementation)
 
-- [ ] Restated intent confirmed to match the user's request
-- [ ] Domain terms align with `PROJECT_SPEC.md` glossary
-- [ ] Every Acceptance Criterion below traces to a line in the Requirement
-- [ ] All Requirement Refs exist in `PRD.md` and are covered
+- [x] Restated intent confirmed to match the user's request
+- [x] Domain terms align with `PROJECT_SPEC.md` glossary
+- [x] Every Acceptance Criterion below traces to a line in the Requirement
+- [x] All Requirement Refs exist in `PRD.md` and are covered
 
 ---
 
 ## Dependencies & Reachability
 
-**Depends on**: HUN-294 (batch engine)
+**Depends on**: HUN-294 (batch engine), HUN-302 (undo for the AI title, summary and tags)
 
 **Entry point**: `easy-note ai run [--limit N] [--dry-run]`
 
@@ -74,6 +74,10 @@ Owner, chat 2026-11-25: "easy-note is the place where I only take notes; the AI 
 | 5 | State file `<notes dir>/.easy-note/ai-run-state.json` holds last run time, counts, `failures`, `next_after` and one line `last_error`; a failed call doubles the wait (from `interval_min`, cap 4 h); a good run resets it; `ai run` called by hand ignores `next_after` but still records | FR-049 |
 | 6 | When `jobs` lacks `organize` and `drafts`, the run does nothing and says so | FR-048 |
 | 7 | The last line is one summary: `organized N, skipped M, left K pending, calls C`; exit 0 on success or partial, 1 when every call failed | FR-047 |
+| 8 | The pending test for organizing is: no AI file, or a stale one (as `ai::pending`), OR an AI file whose `organized_at` is missing or older than its `at`. A note that `ai::enrich` wrote but `ai::organize` could not (the batch engine reports `Enriched`) is therefore picked up again by the next run. It needs no change to `ai::enrich` or `ai::organize` | FR-047 |
+| 9 | *(changed 2026-11-27)* The run calls `overrides::read` once per run and passes the loaded overrides on; it never loops over `ai::effective`. Just before it writes a batch, under the write lock, it reads the overrides again, so a fix made during the call is kept | FR-050 |
+| 10 | *(added 2026-11-27)* After `ai undo` takes back an AI change, `ai run` skips that note until its text changes, also when the undo happens while the run's call is in flight. A successful `ai enrich <id>` ends the hold. Undo of a person's own fix sets no hold | NFR-015, owner 2026-11-27 |
+| 11 | *(added 2026-11-27)* One write lock per notes dir `.easy-note/ai-write.lock` is held around every AI file write, `ai set`, `ai undo` and `ai rm`, only while writing, never during the `claude` call | FR-050, owner 2026-11-27 |
 
 ---
 
@@ -133,6 +137,9 @@ cargo fmt --check \
 | `src/surfaces/cli.rs` | `ai run` subcommand |
 | `src/surfaces/organize.rs` | the loop, lock and state |
 | `src/core/config.rs` | none expected; call only |
+| `src/core/ai.rs`, `src/core/overrides.rs` | write lock, hold, run selection (AC 8, 10, 11) |
+| `tests/organize.rs` | `run_batch` takes the loaded overrides (AC 9) |
+| `docs/NOTE_FORMAT.md` | hold and lock files |
 | new `tests/ai_run.rs` | AC 1–7 |
 | `README.md`, `RUNBOOK.md` | `ai run` and a cron example |
 | Pre-existing pin tests | list each test that pins current behavior (help text, asset list, README, MCP tool count) and how it is handled |
@@ -168,3 +175,5 @@ Fake `claude` with a counter file to count calls; temp notes dir; lock tested wi
 ## Questions Log
 
 * 2026-11-25 DECIDED scope and order: owner, chat 2026-11-25 ("let go")
+* 2026-11-27 DECIDED owner, chat: after an AI undo, hold the note until its text changes (`ai enrich <id>` ends the hold) → AC 10
+* 2026-11-27 DECIDED owner, chat: one short write lock and a second read of the overrides before writing → AC 9 changed, AC 11

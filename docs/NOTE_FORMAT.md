@@ -170,8 +170,8 @@ with its earlier `based_on`, `at`, `model` and `organized_at`, or removes the fi
 created it; overrides stay. A file removed since with `ai rm` stays removed, and an AI file that is not valid is not
 replaced. The undo first logs the file it replaces, whole, on a line with `field: "ai_replaced"` (never undone
 itself); it writes the undo lines only after the AI file is back, so a failed undo can be run again. An item whose
-`ai_file` line cannot be read is put back key by key. A note whose old `based_on` comes back is stale again, so a later
-batch run can pick it.
+`ai_file` line cannot be read is put back key by key. After an undo of an AI item the note is held from `ai run`
+until its text changes (see "Run files").
 
 Lines written before `op` existed are one step each: an earlier `ai enrich` replacement takes one undo per key it
 logged. An AI file created then has no line, so it cannot be undone, and `ai undo` takes back the change logged before
@@ -182,6 +182,20 @@ An override of a trashed or missing note is kept and ignored; `doctor` lists it 
 ignored, named by `doctor`, and never overwritten.
 
 Readers that must not hold note text (easy-personal) must not read AI files either.
+
+### Run files (`ai run`, round 6)
+
+Four more files in `<notes dir>/.easy-note/`. None holds note text.
+
+- `ai-hold.json`: `{"<id>": "sha256:…"}`, written whole. `ai undo` of an AI item adds the note with the hash of its
+  text. `ai run` skips the note while its text has that hash. Any new `title` / `summary` write (`ai enrich`,
+  `note_enrich`, `Run AI`) removes the entry. An invalid file makes `ai run` and `ai undo` refuse; it is never
+  overwritten.
+- `ai-write.lock`: an empty file, locked while an AI file, `ai-overrides.json` or `ai-hold.json` is changed. Never
+  locked while `claude` runs.
+- `ai-run.lock`: an empty file, locked for the length of one `ai run`.
+- `ai-run-state.json`: `last_run`, `organized`, `skipped`, `left`, `calls`, `failures`, `next_after` (when an
+  unattended run may try again) and `last_error` (one masked line).
 
 ## Reader rules
 

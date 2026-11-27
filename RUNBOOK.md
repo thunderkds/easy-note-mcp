@@ -46,6 +46,15 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 cargo install --path . --root "$(mktemp -d)" && echo ok   # leaves PATH as it was
 ```
 
+## Scheduled AI runs (`ai run`)
+
+- Cron line and settings: README, "Organize the notes that wait". The log folder must exist.
+- Last run, counts, failures and `last_error`: `<notes dir>/.easy-note/ai-run-state.json`. cron ignores its
+  `next_after`, so a broken `claude` is called again at the next cron time.
+- Stop it: remove the cron line, or set `enrich = "off"` in `[ai]`.
+- `ai-hold.json` is not valid: `ai run` and `ai undo` refuse. Fix or delete it; deleting it lets the next run
+  redo undone changes. The `ai-run.lock` and `ai-write.lock` files can stay: a dead process holds no lock.
+
 ## Release steps
 
 1. On a clean `main` (`git status --short` prints nothing), bump `version` in `Cargo.toml` (the only
