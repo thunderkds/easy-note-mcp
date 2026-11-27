@@ -167,6 +167,11 @@ pub fn read(store: &Store) -> Overrides {
     }
 }
 
+/// `read` without its warning, for the second look just before an AI write (HUN-295).
+pub(crate) fn reread(store: &Store) -> Overrides {
+    parse(store).map(|(found, _)| found).unwrap_or_default()
+}
+
 fn check_value(field: &str, value: &str) -> Result<(), AiError> {
     if value.trim().is_empty() {
         return Err(AiError::Refused(
@@ -382,6 +387,7 @@ pub fn set(store: &Store, note_id: &str, field: &str, value: &str) -> Result<(),
     let value = mask(value.trim());
     check_value(field, &value)?;
     let id = store.canonical_id(note_id)?;
+    let _lock = ai::lock(store)?;
     let mut data = load_for_write(store)?;
     let entry = data.notes.entry(id.clone()).or_default();
     let old = entry.insert(field.to_string(), value.clone());
@@ -450,10 +456,11 @@ fn latest(store: &Store, id: &str) -> Vec<Line> {
 /// the log has no change left for the note.
 pub fn undo(store: &Store, note_id: &str) -> Result<Undone, AiError> {
     let id = store.canonical_id(note_id)?;
+    let lock = ai::lock(store)?;
     let mut step = latest(store, &id);
     match step.last() {
         None => Err(AiError::Refused("nothing to undo".into())),
-        Some(top) if top.who == "ai" => undo_ai(store, id, &step),
+        Some(top) if top.who == "ai" => undo_ai(&lock, store, id, &step),
         Some(_) => {
             let line = step.pop().expect("a step has a line");
             undo_person(store, id, line)
@@ -495,8 +502,16 @@ fn undo_person(store: &Store, id: String, line: Line) -> Result<Undone, AiError>
 }
 
 /// Take one AI step back. The file about to be replaced is logged first, so no AI text is lost; the
-/// step is marked undone only after the AI file is back, so a failed undo can be run again.
-fn undo_ai(store: &Store, id: String, step: &[Line]) -> Result<Undone, AiError> {
+/// step is marked undone only after the AI file is back, so a failed undo can be run again. The note
+/// is then held from `ai run` until its text changes (HUN-295).
+fn undo_ai(
+    lock: &ai::WriteLock,
+    store: &Store,
+    id: String,
+    step: &[Line],
+) -> Result<Undone, AiError> {
+    // A hold file that cannot be read stops the undo before anything changes.
+    ai::holds(store)?;
     // The first line of an item holds the state before all of it.
     let whole = step.first().filter(|l| l.field == AI_FILE);
     let plan = match whole {
@@ -529,6 +544,11 @@ fn undo_ai(store: &Store, id: String, step: &[Line]) -> Result<Undone, AiError> 
     }
     let back = ai::apply_restore(store, &id, plan)
         .map_err(|e| AiError::Refused(format!("nothing undone: {e}")))?;
+    ai::hold(lock, store, &id).map_err(|e| {
+        AiError::Refused(format!(
+            "the AI file is restored, but the hold could not be written: {e}; run undo again"
+        ))
+    })?;
     let done: Vec<Line> = step
         .iter()
         .rev()

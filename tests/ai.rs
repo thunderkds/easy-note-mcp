@@ -148,7 +148,10 @@ fn note_tree(notes: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
         for entry in entries {
             let path = entry.unwrap().path();
             let rel = path.strip_prefix(root).unwrap().to_path_buf();
-            if rel.starts_with(".easy-note/ai") || rel.ends_with("ai-log.jsonl") {
+            if rel.starts_with(".easy-note/ai")
+                || rel.ends_with("ai-log.jsonl")
+                || rel.ends_with("ai-write.lock")
+            {
                 continue;
             }
             if path.is_dir() {

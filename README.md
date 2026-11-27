@@ -4,7 +4,7 @@ Capture one-line notes from the terminal, from Claude Code, Codex and Cursor, an
 key press, into a folder of plain Markdown files. Each note gets its context for free: the repo,
 the branch and the task ID of the folder you were in. easy-note is one Linux binary with a CLI and
 an MCP server. It masks secrets on every write and read. It runs no model and makes no network
-call, with opt-in exceptions: `easy-note ai enrich` (needs `[ai] enrich`) and the window's `Run AI`
+call, with opt-in exceptions: `easy-note ai enrich` and `easy-note ai run` (need `[ai] enrich`) and the window's `Run AI`
 button (your click, one note) ask your own `claude` CLI for AI detail
 (see "AI detail with your Claude subscription").
 
@@ -183,6 +183,34 @@ transcript. The CLI runs in an empty temp folder with no tools and no MCP server
 goes through the same caps and masking as `note_enrich`. Each call counts against your Claude
 usage limits and takes a few seconds. With `after_save = true`, `n`, `/note`, the quick box and
 `note_add` start `easy-note ai enrich <id>` in the background; the save never waits for it.
+
+### Organize the notes that wait
+
+`easy-note ai run` asks the same CLI to organize the notes: title, kind, summary, project, topic, tags and, for a
+draft, why it looks unfinished. One call covers a batch of notes.
+
+```
+easy-note ai run                       # at most max_per_run notes, newest first
+easy-note ai run --limit 5             # at most 5 (never more than max_per_run)
+easy-note ai run --dry-run             # how many notes, calls and which model; starts and writes nothing
+```
+
+It needs `enrich = "claude"`, and `jobs` with `organize` or `drafts`. It picks notes with no AI detail, detail for
+older text, or detail that was never organized. The last line is `organized N, skipped M, left K pending, calls C`.
+Only one run works on a notes folder at a time: a second one prints `already running`. A run stops at the first
+failed call and exits 1 when no call worked. `.easy-note/ai-run-state.json` keeps the last run, its counts and a
+wait that doubles after each failed run (from `interval_min`, at most 4 hours). The wait is for unattended runs:
+`ai run` by hand does not wait.
+
+After `easy-note ai undo` takes back a change of the AI, `ai run` leaves that note alone until you edit its text.
+`ai enrich <id>`, `ai enrich --pending`, `Run AI` and `note_enrich` still write it, and that ends the hold.
+
+To run it on a timer today, use cron (`crontab -e`). cron has a short `PATH`, so set `command` in `[ai]` to the
+full path of `claude`:
+
+```
+0 * * * * $HOME/.cargo/bin/easy-note ai run >> $HOME/.cache/easy-note-ai.log 2>&1
+```
 
 ## Notes are plain files
 

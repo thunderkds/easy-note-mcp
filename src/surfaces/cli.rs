@@ -92,6 +92,16 @@ pub enum AiAction {
     Undo { id: String },
     /// Rewrite the Obsidian view of every AI detail (needs a `.obsidian` folder in or above the notes dir).
     Render,
+    /// Organize the notes that wait, in batches, with your own `claude` CLI, within the `[ai]`
+    /// limits (needs `[ai] enrich = "claude"`).
+    Run {
+        /// At most this many notes (never more than `max_per_run`).
+        #[arg(long)]
+        limit: Option<usize>,
+        /// Print what a run would do; start nothing and write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Ask your own `claude` CLI to write the AI detail of notes (needs `[ai] enrich = "claude"`).
     Enrich {
         #[arg(required_unless_present = "pending", conflicts_with = "pending")]
@@ -458,6 +468,9 @@ fn dispatch(command: Command) -> Outcome {
                     limit,
                 },
         } => super::enrich::run(&ids, pending, limit).map_err(Fail::runtime),
+        Command::Ai {
+            action: AiAction::Run { limit, dry_run },
+        } => super::organize::run(limit, dry_run).map_err(Fail::runtime),
         Command::Stats { json, filters } => read::stats(json, filters.into()),
         Command::Doctor => read::doctor(),
         Command::Path => read::path(),

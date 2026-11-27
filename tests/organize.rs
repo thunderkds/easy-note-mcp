@@ -156,7 +156,8 @@ impl Sb {
     }
     fn run(&self, ids: &[&String]) -> Result<Outcome, String> {
         let ids: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
-        run_batch(&self.store(), &self.settings(), &ids)
+        let all = overrides::read(&self.store());
+        run_batch(&self.store(), &self.settings(), &ids, &all)
     }
     /// A valid AI file through the existing writers, with a kind, project and topic.
     fn seed(&self, id: &str, kind: &str, project: &str, topic: &str) {
@@ -390,7 +391,13 @@ fn a_failed_call_junk_or_a_timeout_writes_nothing() {
         ..sb.settings()
     };
     let start = Instant::now();
-    let err = run_batch(&sb.store(), &settings, &[a.clone(), b.clone()]).unwrap_err();
+    let err = run_batch(
+        &sb.store(),
+        &settings,
+        &[a.clone(), b.clone()],
+        &Default::default(),
+    )
+    .unwrap_err();
     assert_eq!(err, "timeout");
     assert!(
         start.elapsed() < Duration::from_secs(10),
@@ -474,7 +481,13 @@ fn with_enrich_off_nothing_runs() {
         enrich: false,
         ..sb.settings()
     };
-    let err = run_batch(&sb.store(), &settings, std::slice::from_ref(&a)).unwrap_err();
+    let err = run_batch(
+        &sb.store(),
+        &settings,
+        std::slice::from_ref(&a),
+        &Default::default(),
+    )
+    .unwrap_err();
     assert!(err.contains("AI enrich is off"), "{err}");
     assert_eq!(sb.calls(), 0);
 }
@@ -622,7 +635,13 @@ fn when_organize_fails_after_enrich_the_note_is_still_pending_for_organizing() {
         },
         ..sb.store()
     };
-    let out = run_batch(&store, &sb.settings(), std::slice::from_ref(&a)).unwrap();
+    let out = run_batch(
+        &store,
+        &sb.settings(),
+        std::slice::from_ref(&a),
+        &Default::default(),
+    )
+    .unwrap();
     assert!(out.written.is_empty(), "{out:?}");
     assert!(pending_reason(&out, &a).contains("organiz"), "{out:?}");
     let f = sb.ai_file(&a).unwrap();

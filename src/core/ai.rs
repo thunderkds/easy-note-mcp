@@ -11,8 +11,8 @@
 //! Writing an AI file is the one overwrite in easy-note: a temp file in `.easy-note/ai/`, fsynced,
 //! then renamed over the old file, so a re-run replaces stale detail.
 
-use std::collections::HashMap;
-use std::fs;
+use std::collections::{BTreeMap, HashMap};
+use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -268,9 +268,90 @@ pub enum ItemError {
     Organize(AiError),
 }
 
+/// The one write lock of a notes dir, `.easy-note/ai-write.lock` (HUN-295): held while an AI file,
+/// the overrides or the hold file is read to be changed and written, never while `claude` runs. The
+/// system drops it when the process ends. It is not reentrant: a holder calls only `_locked` writers.
+pub struct WriteLock(#[allow(dead_code)] File);
+
+/// Wait for the write lock.
+pub fn lock(store: &Store) -> Result<WriteLock, AiError> {
+    let folder = store.root.join(".easy-note");
+    fs::create_dir_all(&folder)
+        .and_then(|()| {
+            let file = OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .write(true)
+                .open(folder.join("ai-write.lock"))?;
+            file.lock()?;
+            Ok(WriteLock(file))
+        })
+        .map_err(|e| AiError::Refused(format!("cannot lock ai-write.lock: {}", e.kind())))
+}
+
+/// The notes `ai undo` holds back from `ai run`: note id to the hash its body had at the undo.
+pub type Holds = BTreeMap<String, String>;
+
+fn holds_path(root: &Path) -> PathBuf {
+    root.join(".easy-note").join("ai-hold.json")
+}
+
+/// The holds. A missing file is none; one that cannot be read is an error, so nothing a person
+/// undid is redone and the file is never overwritten.
+pub fn holds(store: &Store) -> Result<Holds, AiError> {
+    let bad = || AiError::Refused("ai-hold.json is not valid; fix or remove it first".into());
+    match fs::read(holds_path(&store.root)) {
+        Ok(raw) => serde_json::from_slice(&raw).map_err(|_| bad()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Holds::new()),
+        Err(_) => Err(bad()),
+    }
+}
+
+fn save_holds(store: &Store, holds: &Holds) -> Result<(), AiError> {
+    let folder = store.root.join(".easy-note");
+    fs::create_dir_all(&folder)?;
+    let mut data = serde_json::to_string(holds).expect("holds serialize");
+    data.push('\n');
+    let (mut file, tmp) = create_temp(&folder)?;
+    let result = write_all_sync(&mut file, data.as_bytes())
+        .and_then(|()| (store.rename)(&tmp, &holds_path(&store.root)));
+    unlink_quiet(&tmp);
+    result?;
+    Ok(())
+}
+
+/// Hold a note until its text changes (its AI detail was undone). The caller holds the write lock.
+pub(crate) fn hold(_lock: &WriteLock, store: &Store, id: &str) -> Result<(), AiError> {
+    let (id, body) = store.raw_body(id)?;
+    let mut all = holds(store)?;
+    all.insert(id, based_on(&body));
+    save_holds(store, &all)
+}
+
+/// End a hold: new AI detail was written. A failure only leaves an old entry behind.
+fn release(store: &Store, id: &str) {
+    if let Ok(mut all) = holds(store) {
+        if all.remove(id).is_some() {
+            let _ = save_holds(store, &all);
+        }
+    }
+}
+
 /// One applied item of the batch organizer: `enrich`, then `organize`, logged under one id, so one
 /// undo takes both back (HUN-302).
 pub fn apply_item(
+    store: &Store,
+    note_id: &str,
+    input: &Input,
+    organized: &Organized,
+) -> Result<Detail, ItemError> {
+    let lock = lock(store).map_err(ItemError::Enrich)?;
+    apply_item_locked(&lock, store, note_id, input, organized)
+}
+
+/// `apply_item` for a caller that already holds the write lock.
+pub(crate) fn apply_item_locked(
+    _lock: &WriteLock,
     store: &Store,
     note_id: &str,
     input: &Input,
@@ -284,6 +365,8 @@ pub fn apply_item(
 /// Write the AI file of one note (`note_enrich`), replacing an old one. Caps are checked on the
 /// masked text, as stored; nothing is written on a refusal or an unknown id.
 pub fn enrich(store: &Store, note_id: &str, input: &Input) -> Result<Detail, AiError> {
+    store.canonical_id(note_id)?;
+    let _lock = lock(store)?;
     enrich_in(store, note_id, input, &overrides::new_op(store))
 }
 
@@ -334,6 +417,7 @@ fn enrich_in(store: &Store, note_id: &str, input: &Input, op: &str) -> Result<De
     // Logged first: no AI file is written when the log cannot be (HUN-294, HUN-302).
     overrides::log_ai_write(store, &detail.id, op, old.as_ref(), &detail)?;
     write(store, &detail)?;
+    release(store, &detail.id);
     crate::core::ai_view::sync(store, &detail.id);
     Ok(detail)
 }
@@ -343,6 +427,8 @@ fn enrich_in(store: &Store, note_id: &str, input: &Input, op: &str) -> Result<De
 /// with `who: ai` before the write (refused when that log fails), and never touches the note.
 /// Refused when the note has no AI file.
 pub fn organize(store: &Store, note_id: &str, input: &Organized) -> Result<Detail, AiError> {
+    store.canonical_id(note_id)?;
+    let _lock = lock(store)?;
     organize_in(store, note_id, input, &overrides::new_op(store))
 }
 
@@ -493,7 +579,7 @@ pub(crate) fn apply_restore(store: &Store, id: &str, plan: Restore) -> Result<Ba
             Ok(Back::Restored)
         }
         Restore::Remove { .. } => {
-            remove(store, id)?;
+            remove_locked(store, id)?;
             Ok(Back::Removed)
         }
         Restore::Gone => Ok(Back::Gone),
@@ -614,9 +700,15 @@ pub(crate) fn of<'a>(details: &'a HashMap<String, Detail>, note_id: &str) -> Opt
 /// Delete the AI file of a note (`ai rm`); `Ok(false)` when it has none. The note is untouched.
 pub fn remove(store: &Store, note_id: &str) -> Result<bool, AiError> {
     let id = store.canonical_id(note_id)?;
-    match fs::remove_file(path(&store.root, &id)) {
+    let _lock = lock(store)?;
+    remove_locked(store, &id)
+}
+
+/// `remove` for a caller that already holds the write lock.
+fn remove_locked(store: &Store, id: &str) -> Result<bool, AiError> {
+    match fs::remove_file(path(&store.root, id)) {
         Ok(()) => {
-            crate::core::ai_view::sync_remove(store, &id);
+            crate::core::ai_view::sync_remove(store, id);
             Ok(true)
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
@@ -669,6 +761,31 @@ pub fn pending(store: &Store, limit: usize) -> Result<PendingPage, AiError> {
         items,
         total,
     })
+}
+
+/// The ids `ai run` organizes, newest first (FR-047): no AI file, a stale one (as `pending`), or
+/// one whose `organized_at` is missing or older than its `at`. Held notes are left out.
+pub fn to_organize(store: &Store) -> Result<Vec<String>, AiError> {
+    let held = holds(store)?;
+    let details = all(&store.root);
+    let time = |text: &str| DateTime::parse_from_rfc3339(text).ok();
+    let mut found: Vec<(DateTime<FixedOffset>, String)> = vec![];
+    for (item, hash) in store.iter_hashed() {
+        let Item::Note(note) = item else { continue };
+        let done = of(&details, note.id()).is_some_and(|d| {
+            let organized = d.organized_at.as_deref().and_then(time);
+            Some(&d.based_on) == hash.as_ref()
+                && organized.zip(time(&d.at)).is_some_and(|(o, at)| o >= at)
+        });
+        if done || (hash.is_some() && held.get(note.id()) == hash.as_ref()) {
+            continue;
+        }
+        if let Some(created) = note.get_str("created").and_then(time) {
+            found.push((created, note.id().to_string()));
+        }
+    }
+    found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    Ok(found.into_iter().map(|(_, id)| id).collect())
 }
 
 #[cfg(test)]
