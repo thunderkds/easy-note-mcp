@@ -15,8 +15,10 @@ Mode: auto
 6. Each review fix gets a fresh reviewer on the new commit (first pass fail with 3 P1; second pass; third pass fail with 1 P1) — RULE: `docs/claude-md/pipeline-stages.md` § Stage 4: Review
 7. The HUN-304 sticky panel and its click check are replaced by the two panes; two HUN-304 tests are repointed or removed — RULE: `tasks/TASK_GUIDE_HUN-305.md` § Files to Change (Predicted)
 8. The pinned button bar is replaced by a scroll box above the buttons, so no control can hide under it — SAFER OPTION: two fixes of the overlapping bar each left a hidden control ⚠ decided for you — please review
-Checks: tests after the fix round, `cargo test --locked --features window,tray --no-fail-fast` — 28 suites, 774 passed, 0 failed, 7 ignored; default build 765 passed, 0 failed, 7 ignored; fmt and clippy clean in both builds; real run on virtual screens 3440x1440 and 1366x768 before the fix round (auto-checked, not /verify). The first review's full run had 1 failure, the intermittent HUN-290 lock test. After the S1 fix both builds ran again with the same counts. After the structural fix of the third pass: window,tray 774 passed, 0 failed; default 764 passed, 1 failed (the same lock test), and `--test window_api` rerun 126 passed, 0 failed; real window at 800x560 after the last CSS change. After the fourth-pass fix: window,tray 775 passed, 0 failed; default 766 passed, 0 failed
-Memory: pending
+9. The remaining findings R1 to R3, S3, S4 and F10 to F13 are left as follow-ups; no code changed after the fifth review — RULE: `skills/code-review/SKILL.md` § Workflow
+10. The failing Companion score stands: no rescore and no change of the row — RULE: `skills/score/SKILL.md` § Never
+Checks: tests at `9c4e047`, `cargo test --locked --features window,tray --no-fail-fast` — 28 suites, 775 passed, 0 failed, 7 ignored; default build 766 passed, 0 failed, 7 ignored; fmt and clippy clean. The intermittent HUN-290 lock test failed in two earlier runs and passed on reruns. Real window on virtual screens, with real key presses at 800x560; review by five fresh reviewer passes — last: pass, 0 P0, 0 P1, 1 P2, 2 P3; Companion score fail, 72 under the floor of 80 (auto-checked, not /verify)
+Memory: `memory/decisions.md` — HUN-305 redesign: two panes, scroll box above the buttons, display name; `memory/learnings.md` — a pinned bar over scrolling text keeps hiding the focused control; `memory/MEMORY.md` — one line for each
 Not done: merge (admin: after the auto verify pass); auto verify: running (T182)
 
 ## Review findings (Stage 4)
@@ -170,6 +172,29 @@ T3 (tests match source strings) stays open; no test covers K1.
 
 Screenshots: `/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-easy-note-mcp/8cd0dd43-7fc3-44cc-9fbf-68159c0c60ed/scratchpad/r305d.g9zlsM/shots/`.
 
+### Fifth pass (9c4e047)
+
+Reviewer: qa-expert, fresh context, 2026-11-27. Diff `e7da086..9c4e0479a5cdc4626d7fd222387647b13642743f`. **Verdict: pass** (P0 0, P1 0, P2 1, P3 2). K1 is gone. K3 is gone for the field itself. K2 is not gone at 760x480. No code changed.
+
+How it was checked: a WebKitGTK view on Xvfb with synthetic keys (not the app binary), on scratch copies of the `e7da086` and `9c4e047` assets (CSP tag removed, fake `window.ipc`), temp HOME. `cargo test --locked --features window,tray --test window_api`: `test result: ok. 127 passed; 0 failed; 1 ignored`. No page script error. No mutation check.
+
+| Check | Result when run |
+|---|---|
+| K1 keyboard scroll | gone: Tab from the last row reaches the note; PageDown, End, Home scroll it (760x480: 194, 2244, 0; 800x560: 258, 2164, 0; 1280x820: 446, 1890, 0). The next Tab is a button, or `Add as tags` on an AI note; Shift+Tab goes back |
+| K1 focus outline | computed `solid` at 1280x820; the harness view did not draw focus styles at the smaller sizes, so not judged there |
+| K1 one column (640x700) | the added Tab stop causes no fault: PageDown, End, Home scroll the page |
+| K2 refused save | 800x560, 1280x820: message in view, also after Tags had scrolled the box. 760x480: not gone (R1) |
+| K3 Tags field | gone: the whole field is inside the box at 760x480, 800x560, 1280x820 (`e7da086` at 800x560: 11 px outside); Shift+Tab to the text box still works |
+| Edit start, Cancel, short note | no script error; page, `.app`, `.main` and `#detail` do not scroll in the two-pane range |
+
+| # | Sev | File:line | Concrete failure | Confidence | Action |
+|---|---|---|---|---|---|
+| R1 | P2 (K2 open) | `src/surfaces/window/assets/app.js:388` | 760x480, long note: Edit, type, Ctrl+Enter, save refused. The message is still at y 119-134 and the box starts at 154 (box scroll 76, not 0), the same numbers as `e7da086`. By inference, WebKit scrolls to the caret after the line has run. Reach: the window minimum is 800x560, so only a small screen gets this size. The Fix round checked 800x560, where this flow already showed the message. The long "changed outside" case still hides the message at every size (box scroll 2313 at 800x560, same as before; older F11) | 100 | Set the scroll after the caret reveal (for example in `requestAnimationFrame`), or call `scrollIntoView` on the message then; untested. Check at 760x480 and with a long note changed outside |
+| R2 | P3 (rest of K3) | `app.js:324`, `app.css:228` | The field now ends exactly at the box's bottom edge (800x560: both 476), so by geometry the focus outline below it (2 px, offset 2 px) is still clipped | 75 | Optional: `scroll-margin-bottom: 4px` on `.edit-tags` |
+| R3 | P3 | `tests/window_api.rs:4181` | The new test matches source strings, so it passes with R1 (carried T3) | 100 | Follow-up |
+
+Screenshots: `/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-easy-note-mcp/8cd0dd43-7fc3-44cc-9fbf-68159c0c60ed/scratchpad/r305e.GTFaK0/shots/`.
+
 ## Fix round (Supervisor, after the review of `497c5e1`)
 
 | Finding | State | Check |
@@ -215,16 +240,16 @@ Screenshots: `/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-
 
 | Check | Result | Notes / output snippet |
 |-------|--------|------------------------|
-| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/window_api.rs`, four `hun305_*` tests (AC 1-8, 11). Red before the code: `test result: FAILED. 3 passed; 3 failed` (the three new tests of the first set), and `0 passed; 1 failed` for the short window. After: `test result: ok. 123 passed; 0 failed; 1 ignored`. AC 2-6, 9-12 measured in a headless browser at seven sizes |
-| Verification command run | ☑ pass | `cargo test --locked --features window,tray --test window_api`: `test result: ok. 123 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out` |
+| **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/window_api.rs`, the `hun305_*` tests and the repointed `hun304_a_newly_picked_note_starts_at_the_top_of_the_panel` (AC 1-8, 11). Red before the code: `test result: FAILED. 3 passed; 3 failed` (the first set), and each later test seen to fail before its fix. After, at `9c4e047`: `test result: ok. 127 passed; 0 failed; 1 ignored`. AC 2-6, 9-12 measured in a headless browser at seven sizes |
+| Verification command run | ☑ pass | `cargo test --locked --features window,tray --test window_api` at `9c4e047` (fifth reviewer): `test result: ok. 127 passed; 0 failed; 1 ignored` |
 | Negative cases hold | ☑ pass | Under 760 px wide the page scrolls as one column and a row click brings the note into view; the empty folder shows its message. Red runs against the prior content above |
 | verify | ☐ pass / ☐ fail / ☐ N/A | [leave it: the auto verify hook writes this row, with its run record. If you ran /verify yourself, tick pass and make the whole Notes cell "/verify by the user, session <id>, commit <sha>" (the full 40-character commit). The merge gate counts no other row, even with the word "pass" in it] |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Scope: the 9 files of the diff, their callers in the window page and shell, and `tests/window_api.rs`. Review verdict: fail (P1 3), see `## Review findings (Stage 4)`. Second pass, `92acda4`: the 6 files of `497c5e1..92acda4` and the screens they touch; verdict pass (P0 0, P1 0, P2 3, P3 5), see `### Second pass (92acda4)` |
 | Full smoke suite still green (no regression) | ☑ pass | Both builds, see `Checks:` |
-| **Companion score (easy-verifier)** | ☐ pass / ☐ fail / ☐ N/A | Pending |
-| **UI: Visual regression (diff or verdict pasted)** | ☑ pass | Screenshots read at 800x560, 1280x820, 1920x1000: only the changes of AC 1-11 |
+| **Companion score (easy-verifier)** | ☑ fail | overall 72 (floor missed: 72 < 80), change_risk pass 100 (bugfix, confirmed), scope changes, ref `feat/HUN-304-window-layout...HEAD` at `9c4e047`, abstentions: solution-fit, reliability, api, data, operations, infrastructure; gates: code-quality answered (75, confidence 0.6), solution-fit left abstained; divergence: none (no findings sent). Below 80: security 30 (6 high-entropy matches in the changed files, this review file with its commit hashes among them; the diff adds no secret, by the review of the diff), blast-radius 65, requirement-fidelity 67, code-quality 69, test-strategy 72. report: `/home/hungnguyenhuu/.easy-verifier-reports/easy-note-mcp-HUN-304/evidence-report-changes-20261127T064309-304173Z.html` |
+| **UI: Visual regression (diff or verdict pasted)** | ☑ pass | Screenshots read at 800x560, 1280x820, 1920x1000 and in the real window at 800x560: only the changes of AC 1-11, plus a focus outline on the note box |
 | **UI: Design-system compliance (tokens/colors/typography verified)** | ☑ pass | CSS diff adds no colour and no font. Measured: list 300 px at 800 and 440 px from 1440, gap 20 px, side padding 28 px, container 1440 px |
-| **UI: Responsiveness at target viewports** | ☑ pass | Page height equals the window and no sideways scroll at 800, 1000, 1280, 1920, 3440 px; list and note reach their ends; buttons end inside the window. 375 and 640: one column, page scroll. Refresh keeps both scroll positions |
+| **UI: Responsiveness at target viewports** | ☑ pass | Page height equals the window and no sideways scroll at 800, 1000, 1280, 1920, 3440 px; list and note reach their ends; the buttons sit below the note's scroll box. 375 and 640: one column, page scroll. A refresh keeps both scroll positions. Open: at 760x480 only, a refused save hides its message (R1) |
 
 ---
 
@@ -238,11 +263,11 @@ Screenshots: `/tmp/claude-1000/-home-hungnguyenhuu-workspace-pets-hungnguyen111-
 name       easy-note
 ```
 
-**AFTER** (same method, this branch):
+**AFTER** (same method, `9c4e047`; the pane numbers are from `e7da086`, whose layout it keeps):
 
 ```
-800x560    page [560, 560]    list 300 x 305, note 424 x 409, buttons end at 547
-1920x1000  page [1000, 1000]  list 440 x 697, note 924 x 825, buttons end at 983
+800x560    page [560, 560]    list 300 x 305, note scroll box 320 high, buttons end at 527
+1920x1000  page [1000, 1000]  list 440 x 697, note scroll box 736 high, buttons end at 963
 name       Easy Taking Shot
 ```
 
