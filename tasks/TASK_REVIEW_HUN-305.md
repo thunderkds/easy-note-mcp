@@ -19,6 +19,7 @@ Mode: auto
 10. The failing Companion score stands: no rescore and no change of the row — RULE: `skills/score/SKILL.md` § Never
 Checks: tests at `9c4e047`, `cargo test --locked --features window,tray --no-fail-fast` — 28 suites, 775 passed, 0 failed, 7 ignored; default build 766 passed, 0 failed, 7 ignored; fmt and clippy clean. The intermittent HUN-290 lock test failed in two earlier runs and passed on reruns. Real window on virtual screens, with real key presses at 800x560; review by five fresh reviewer passes — last: pass, 0 P0, 0 P1, 1 P2, 2 P3; Companion score fail, 72 under the floor of 80 (auto-checked, not /verify)
 Memory: `memory/decisions.md` — HUN-305 redesign: two panes, scroll box above the buttons, display name; `memory/learnings.md` — a pinned bar over scrolling text keeps hiding the focused control; `memory/MEMORY.md` — one line for each
+Paused: merge not run — the user asked for it (2026-11-27, "merge it"); the merge gate refused: the attributes scan of the repository took longer than 10 s, a safety-hook block (`docs/claude-md/tracks.md` `### Stops that stay`). The Companion score row is also `☑ fail`. The merge is the user's
 Not done: merge (admin: after the auto verify pass); auto verify: ☑ pass (session b4b77715-b1d7-40fb-b196-3e028d587e6b, commit e50b87b968cdf5c119fa7a78e89d8e5067a1ee36, log .claude/verify-runs/HUN-305-e50b87b968cd.log)
 Closed: row moved to Done 2026-11-27 — auto verify pass (session b4b77715-b1d7-40fb-b196-3e028d587e6b, commit e50b87b968cdf5c119fa7a78e89d8e5067a1ee36); Gates 5 and 6 checked
 
