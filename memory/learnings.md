@@ -151,3 +151,10 @@
 - **Pattern**: to run the suite on `main` without touching the desktop, keep the command runner-first and pass `--config 'env.GSETTINGS_BACKEND="memory"' --config 'env.DISPLAY.value=""' --config 'env.DISPLAY.force=true'` (same for `WAYLAND_DISPLAY`, `DBUS_SESSION_BUS_ADDRESS`).
 - **Gotcha**: under `[admin]` the gate also refuses read-only commands that put `$(...)` or several `git merge-tree` calls in one command.
 **Files**: scripts/cleanup_task.py, scripts/board_sync.py, .claude/hooks/stop_auto_verify.py, .claude/hooks/lib/auto_closeout.py
+
+### 2026-11-27 — A bar pinned over scrolling text keeps hiding the focused control; put the scroll box above it (HUN-305)
+- **Gotcha**: three fixes of a `position: sticky` button bar each left a fault (`scroll-padding` scrolled the note on button focus; `scroll-margin` was ignored by WebKitGTK on Tab). A flex column with a scrolling body and the buttons as a sibling removes the class.
+- **Gotcha**: moving buttons out of a scroll box takes keyboard scrolling away; give the box `tabIndex = 0` and a focus outline.
+- **Gotcha**: Chrome and WebKitGTK scroll to a focused control differently, and a headless Chrome pass proved neither T1 nor R1. Check focus and keys in WebKitGTK (the real app with XTEST on `Xvfb`; plain Tab works, Shift+Tab by XTEST did not move the focus).
+- **Pattern**: each fix after a review needs a fresh reviewer; five passes cost about an hour. Run the real engine with keys before the first review.
+**Files**: src/surfaces/window/assets/app.js, src/surfaces/window/assets/app.css

@@ -66,6 +66,8 @@
 - [HUN-302 grouped AI undo](decisions.md#2026-11-27--hun-302-one-ai-undo-takes-back-one-applied-item-an-undone-change-can-be-redone-by-a-later-run) — `op` id, `ai_file` snapshot, `ai_replaced`; HUN-295 needs a hold and a write lock
 - [Time-box the reviewer spawn](learnings.md#2026-11-27--an-open-ended-reviewer-brief-costs-30-to-40-minutes-hun-302) — cap mutants; do not chase failures outside the diff; HUN-290 lock test flaky
 
-- [HUN-304 window layout](decisions.md#2026-11-27--hun-304-dashboard-layout-centred-1440-px-container-two-columns-from-760-px-window-sized-to-the-screen) — centred container, sticky panel, `dashboard_sizes`; waits for a hand merge (score 79)
+- [HUN-304 window layout](decisions.md#2026-11-27--hun-304-dashboard-layout-centred-1440-px-container-two-columns-from-760-px-window-sized-to-the-screen) — centred container, sticky panel, `dashboard_sizes`; merged by hand over a failing score (`5e235b1`)
 - [Sticky panel and headless scroll](learnings.md#2026-11-27--a-stuck-sticky-panel-reads-as-wrapped-and-a-headless-smooth-scroll-hides-it-hun-304) — check computed `position`; resize via `XResizeWindow`
 - [Board close and dead verify runs](learnings.md#2026-11-27--merged-tasks-stay-in-review-on-an-online-board-a-dead-verify-run-blocks---start-cleanup-refuses-hun-ids) — push status by hand; rename dead log; cleanup script refuses HUN IDs
+- [HUN-305 redesign](decisions.md#2026-11-27--hun-305-dashboard-redesign-two-full-height-panes-a-scroll-box-above-the-notes-buttons-the-name-easy-taking-shot) — two panes, `.card-body`, name in the window only; merged by hand over a failing score (`5e235b1`)
+- [Pinned bars hide focus](learnings.md#2026-11-27--a-bar-pinned-over-scrolling-text-keeps-hiding-the-focused-control-put-the-scroll-box-above-it-hun-305) — scroll box above the buttons; test keys in WebKitGTK

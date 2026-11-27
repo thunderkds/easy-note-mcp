@@ -144,4 +144,10 @@
 **Decision**: `.main`, the header contents and the toast share the edges of a centred 1440 px container. From 760 px up the list and the panel are two columns; the panel is sticky and scrolls by itself. `window::dashboard_sizes` opens at most (screen - 80 px) and shrinks the minimum with it. A screen under 840 px shows one column.
 **Why**: the user asked for a centred container on large screens and a layout that fits every allowed size.
 **Files**: src/surfaces/window/assets/app.css, src/surfaces/window/assets/app.js, src/surfaces/window/mod.rs, tests/window_api.rs, PRD.md FR-042, tasks/TASK_REVIEW_HUN-304.md
-**Follow-ups**: not merged at 2026-11-27 (Companion score 79 < 80: the owner decides). Open P3: F1 long unbroken `ai.model` scrolls the panel sideways; F3 size from the primary monitor; F5 stale test comment; four older UX fails at 375 px.
+**Follow-ups**: merged 2026-11-27 by the owner by hand with HUN-305 (`5e235b1`), over a failing Companion score (79 < 80). Open P3: F1 long unbroken `ai.model` scrolls the panel sideways; F3 size from the primary monitor; F5 stale test comment; four older UX fails at 375 px.
+
+### 2026-11-27 — HUN-305 dashboard redesign: two full-height panes, a scroll box above the note's buttons, the name Easy Taking Shot
+**Decision**: From 760 x 480 px up the page does not scroll: the list and the note fill the height and scroll on their own. The note card is `.card-body` (scrolls, `tabIndex 0`) with `.actions` as its sibling below. Rows show time, two lines, `edited`, project and the AI mark. The window and quick window titles and the header say `Easy Taking Shot`; the command, package, launcher and tray keep `easy-note`.
+**Why**: the user called the HUN-304 layout not good and asked for a note that extends and scrolls, a cleaner list and the new name.
+**Files**: src/surfaces/window/assets/app.css, src/surfaces/window/assets/app.js, src/surfaces/window/mod.rs, tests/window_api.rs, PRD.md FR-042, tasks/TASK_REVIEW_HUN-305.md
+**Follow-ups**: merged 2026-11-27 by the owner by hand (`5e235b1`, brings HUN-304), over a failing Companion score (72 < 80); the `[admin]` gate first refused on its 10 s attributes scan. 775 and 766 tests passed on the merged `main`. The name's reach (launcher, tray) waits for the owner. Open: R1 a refused save hides its message at 760x480; tests match source strings.
