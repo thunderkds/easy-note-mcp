@@ -18,7 +18,7 @@
 | **New test(s) cover Acceptance Criteria (file paths pasted)** | ☑ pass | `tests/window_api.rs` (9 tests `hun290_*`: lock file, stale-lock takeover by a killed child, focus request with and without id, bad line, no-listener wait, long path, other notes dir, show script, page `show`), `tests/dashboard.rs` (`hun290_a_second_dashboard_call_focuses_the_open_window`, `window` feature only: NOT run here, see below). Run 2026-11-25: `cargo test --locked --test window_api hun290` -> `test result: ok. 9 passed; 0 failed` |
 | Verification command run | ☑ pass | Both halves ran after the GTK packages were installed (2026-11-25): `cargo fmt --check` clean; `cargo clippy --all-targets --locked --features window,tray -- -D warnings` clean; `cargo test --locked --features window,tray` no failed test; `cargo test --locked` 0 failed. The first window run FAILED `hun290_a_second_dashboard_call_focuses_the_open_window` (tests/dashboard.rs:294, exit 1, `no dashboard yet`); see `## Fix after the window build` |
 | Negative cases hold | ☑ pass | Mutation run by the Supervisor: in `src/surfaces/window/single.rs:57` `return Ok(None)` on `WouldBlock` changed to `{}` (a held lock no longer stops the second caller). `cargo test --locked --test window_api hun290` then printed `hun290_ac4_the_lock_is_a_file_in_the_notes_dir_and_only_one_owner_holds_it ... FAILED`, `hun290_ac4_a_killed_window_leaves_a_lock_the_next_start_takes_over ... FAILED` and `test result: FAILED. 7 passed; 2 failed`. Reverted with `git checkout src/surfaces/window/single.rs`. |
-| verify | ☑ pass | auto-run by hook, session f4690ae2-ac3f-4191-9ae8-cd4d94a08c49, commit 8446f529f97b974e3e92ce980758410cc6384b0d, log .claude/verify-runs/HUN-290-8446f529f97b.log — pass |
+| verify | ☑ pass | auto-run by hook, session 05988126-aaa0-43f5-9917-f6cc9a1fba75, commit 9df459047ad71b783743fb805660d3a98954f344, log .claude/verify-runs/HUN-290-9df459047ad7.log — pass; done not moved: Gate 5: no test run in memory/event-trace/HUN-290.jsonl |
 | Review scope bounded to the change's blast radius (affected set, not whole repo) | ☑ pass | Fresh-context reviewer read `main...375dc7d`: `src/surfaces/window/single.rs` (new), `window/mod.rs`, `dashboard.rs::run`, `app.js`, `page_harness.js`, `tests/window_api.rs`, `tests/dashboard.rs`, README, RUNBOOK. Tray was checked to call `dashboard` unchanged. Callers of `window::open` read for the new `Owner` argument. |
 | Full smoke suite still green (no regression) | ☑ pass | Default build and `--features window,tray` build: all suites ok, 0 failed (after the fix) |
 | **Companion score (easy-verifier)** | ☑ N/A | Not run in this session: the easy-verifier tool is not available here. The merge gate blocks on a `fail` row only. |
@@ -107,6 +107,7 @@ Not done: merge (admin: after the auto verify pass); real focus behavior on X11 
 
 Code-review (Supervisor, `Skill({ skill: "code-review" })` over `main...c9953a8`, bounded to the diff): no P0, P1 or P2 beyond the reviewer's findings. Lane check: `lane: C1, 9 files, 446 lines, EXCEEDS (files 9 > 6; lines 446 > 250); unpredicted: src/surfaces/window/assets/app.js, src/surfaces/window/single.rs, tests/fixtures/window/page_harness.js` — the task was under-labelled: C2 would fit. The three unpredicted files are the page hook, the new module and the page-harness case; all are in scope of AC 3 and AC 4.
 Paused: done not moved — report incomplete: auto verify slot
+Paused: done not moved — Gate 5: no test run in memory/event-trace/HUN-290.jsonl; report incomplete: auto verify slot
 
 ## Fix after the window build
 
@@ -141,3 +142,7 @@ Questions asked:
 No P0, P1 or P2 findings. The first review's open item (feature half not compiled) is closed by the green window,tray run above. Real focus behavior on a live X11/Wayland session was not exercised here (no display run by this reviewer); that stays for `/verify`.
 
 Verdict: pass with findings
+
+## Board close (Supervisor, 2026-11-27, `[admin]` board cleanup the user asked for)
+
+The hook did not move the row: it found no test run in this task's trace. The branch is merged (407066d). The auto verify row passed on 9df4590. On `main` at 9ccc442, with the display and D-Bus variables emptied, `cargo test --locked --features window,tray --no-fail-fast` ran under this task: 764 passed, 0 failed, 7 ignored. Not tested: real focus behavior on a real X11 or Wayland display.

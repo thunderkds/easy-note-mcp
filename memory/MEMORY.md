@@ -57,3 +57,15 @@
 - [HUN-292 overrides, log, ai set/undo merged](decisions.md#2026-11-25--hun-292-ai-overrides-change-log-ai-set--ai-undo-merged) — `.easy-note/ai-overrides.json`, `ai-log.jsonl`, `effective_with`; invalid file refuses writes; enrich then organize
 - [HUN-290 one dashboard window merged](decisions.md#2026-11-25--hun-290-one-dashboard-window-per-notes-dir-merged) — `window.lock` + `window.sock`, second call focuses; quick window excluded
 - [Closure moves only named fields; window tests need GTK](learnings.md#2026-11-25--a-rust-2021-closure-moves-only-the-fields-it-names-hun-290-lock-dropped-at-once) — `let owner = self;`; the scan walks every worktree target
+- [CLI needs an object schema; UI step limit; score hit](learnings.md#2026-11-26--claude---json-schema-needs-an-object-at-the-root-a-fake-cli-hides-it-hun-294) — array root fails on the real CLI; probe once before review
+- [HUN-294 batch engine merged](decisions.md#2026-11-26--hun-294-batch-organizer-engine-the-old-ai-text-is-logged-whole-until-undo-exists-merged-over-a-failing-companion-score) — `run_batch`, `{items}` schema, log old text whole; HUN-302 before HUN-295, fix F5 first
+- [HUN-300 Settings merged](decisions.md#2026-11-26--hun-300-settings-screen-a-save-writes-through-a-symlinked-configtoml-merged-over-a-failing-companion-score) — `save_ai_settings`, writes through a symlinked config.toml, `notice_seen`
+- [HUN-303 GNOME shortcut, waits for merge](decisions.md#2026-11-26--hun-303-setup-binds-ctrlaltn-on-gnome-waits-for-a-hand-merge-over-a-failing-companion-score) — `install hotkey`; never takes a used key; reads each write back
+- [HUN-291 edited time merged](decisions.md#2026-11-26--hun-291-edited-time-in-ls-search-mcp-and-the-window-merged-over-a-failing-companion-score) — edited column, MCP `updated`; AI never sets it
+- [Isolate desktop settings; /tmp quota](learnings.md#2026-11-26--a-temp-home-does-not-isolate-gnome-settings-a-full-tmp-quota-writes-empty-files-hun-303) — `GSETTINGS_BACKEND=memory`; target dirs on disk
+- [HUN-302 grouped AI undo](decisions.md#2026-11-27--hun-302-one-ai-undo-takes-back-one-applied-item-an-undone-change-can-be-redone-by-a-later-run) — `op` id, `ai_file` snapshot, `ai_replaced`; HUN-295 needs a hold and a write lock
+- [Time-box the reviewer spawn](learnings.md#2026-11-27--an-open-ended-reviewer-brief-costs-30-to-40-minutes-hun-302) — cap mutants; do not chase failures outside the diff; HUN-290 lock test flaky
+
+- [HUN-304 window layout](decisions.md#2026-11-27--hun-304-dashboard-layout-centred-1440-px-container-two-columns-from-760-px-window-sized-to-the-screen) — centred container, sticky panel, `dashboard_sizes`; waits for a hand merge (score 79)
+- [Sticky panel and headless scroll](learnings.md#2026-11-27--a-stuck-sticky-panel-reads-as-wrapped-and-a-headless-smooth-scroll-hides-it-hun-304) — check computed `position`; resize via `XResizeWindow`
+- [Board close and dead verify runs](learnings.md#2026-11-27--merged-tasks-stay-in-review-on-an-online-board-a-dead-verify-run-blocks---start-cleanup-refuses-hun-ids) — push status by hand; rename dead log; cleanup script refuses HUN IDs

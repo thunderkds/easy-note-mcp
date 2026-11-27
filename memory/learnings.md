@@ -115,3 +115,39 @@
 - **Gotcha**: the `[admin]` attributes scan (10 s) walks every `target/` in every worktree; with seven worktrees it took 13 s and refused the merge. Delete `target/` of finished or throwaway worktrees (`rm -rf .claude/worktrees/<id>/target`), it is regenerable.
 - **Gotcha**: a command with a `git` word next to `$(...)`, `$VAR` or a heredoc is refused as a possible hidden push; put the steps in a script file and run it, or split the command.
 **Files**: src/surfaces/window/single.rs, tests/window_api.rs, .claude/hooks/pre_bash_block_unsafe_merge.py
+
+### 2026-11-26 — `claude --json-schema` needs an object at the root; a fake CLI hides it (HUN-294)
+- **Gotcha**: `claude -p --json-schema '{"type":"array",...}'` exits 1 with `API Error: 400 tools.1.custom.input_schema.type: Input should be 'object'`. The same schema inside `{"type":"object","properties":{"items":...}}` returns `structured_output.items`. All 13 tests passed with a fake `claude` that accepts any schema.
+- **Pattern**: when a task changes the child's argv or schema, make one real call with dummy text before review (cost under 0.01 USD with `--model haiku`).
+- **Gotcha**: UI implementers hit the 90-call step limit near the end (HUN-291, HUN-300); resume them with a short ordered list of the remaining steps.
+- **Gotcha**: the Companion score gives security 30 on a branch whose diff adds no secret, when a changed file already holds planted test secrets (`tests/mcp.rs`).
+**Files**: src/core/organize.rs, src/surfaces/enrich.rs, tests/organize.rs, tests/mcp.rs
+
+### 2026-11-26 — A temp HOME does not isolate GNOME settings; a full `/tmp` quota writes empty files (HUN-303)
+- **Gotcha**: `gsettings` writes the desktop through D-Bus even with a temp `HOME`. After HUN-303, `easy-note setup` on GNOME does that. Run agents with `XDG_CURRENT_DESKTOP` unset and a stub `gsettings` on `PATH`.
+- **Pattern**: start the auto verify run as `env -u XDG_CURRENT_DESKTOP GSETTINGS_BACKEND=memory python3 .claude/hooks/stop_auto_verify.py --start <ID>`. Reads inside that run show the default settings, not the person's.
+- **Gotcha**: when the per-user `/tmp` quota is used up, a heredoc into the scratch folder leaves an empty file with no visible error, and the script then "succeeds". Keep cargo target dirs on the main disk.
+**Files**: src/surfaces/install.rs, tests/hotkey.rs, .claude/hooks/stop_auto_verify.py
+
+### 2026-11-27 — An open-ended reviewer brief costs 30 to 40 minutes (HUN-302)
+- **Gotcha**: a reviewer asked for full test runs in both builds plus mutation checks ran 32 min, then 46 min; the second spent over 20 min measuring a flaky test the diff cannot touch.
+- **Pattern**: give the reviewer a time box, cap the mutants, and say that a failure outside the diff is recorded in one line and not investigated.
+- **Gotcha**: `hun290_ac4_the_lock_is_a_file_in_the_notes_dir_and_only_one_owner_holds_it` (tests/window_api.rs, `window,tray` build) is intermittent on `main` too (2 of 150 runs).
+**Files**: tests/window_api.rs, tasks/TASK_REVIEW_HUN-302.md
+
+
+### 2026-11-27 — A stuck sticky panel reads as wrapped, and a headless smooth scroll hides it (HUN-304)
+- **Gotcha**: the `offsetTop` of a stuck `position: sticky` element includes the stuck offset, so "is it below the list?" turns true and `scrollIntoView` moved the page 16 px on each row click. Check `getComputedStyle(el).position` first.
+- **Gotcha**: with `--virtual-time-budget`, headless Chrome does not finish a smooth scroll, so a scroll position looks unchanged. Wrap `scrollIntoView` with `behavior: 'auto'` when you measure.
+- **Pattern**: to check the real window at another size with no window manager, run it on `Xvfb` and call `XResizeWindow` through `ctypes`; `xwininfo` and `xprop WM_NORMAL_HINTS` read the size and the minimum.
+- **Gotcha**: the HUN-290 lock test failed 2 of 4 window-feature runs here while other cargo runs were active (2 of 150 on a quiet `main` before).
+**Files**: src/surfaces/window/assets/app.js, tests/window_api.rs
+
+### 2026-11-27 — Merged tasks stay in Review on an online board; a dead verify run blocks `--start`; cleanup refuses HUN IDs
+- **Gotcha**: eight merged tasks stayed in Ready for Review on Linear, although several reports said `Closed: row moved to Done`. In board mode `online`, push the status: `python3 scripts/board_sync.py push status <ID> done`, then `pull`.
+- **Gotcha**: HUN-302 reached `main` with an empty `verify` row. Its run log held only the command line, no verdict, and no run process was alive. `--start` refuses while that log exists: rename it, then start again.
+- **Gotcha**: the auto close-out says `done not moved: no test run` when no test call is filed under the task. Register the task in `active_task.d`, then run a runner-first `cargo test`.
+- **Gotcha**: `scripts/cleanup_task.py` accepts only `T<number>` and refuses `HUN-<number>`, so merged worktrees stay (up to 17 GB each).
+- **Pattern**: to run the suite on `main` without touching the desktop, keep the command runner-first and pass `--config 'env.GSETTINGS_BACKEND="memory"' --config 'env.DISPLAY.value=""' --config 'env.DISPLAY.force=true'` (same for `WAYLAND_DISPLAY`, `DBUS_SESSION_BUS_ADDRESS`).
+- **Gotcha**: under `[admin]` the gate also refuses read-only commands that put `$(...)` or several `git merge-tree` calls in one command.
+**Files**: scripts/cleanup_task.py, scripts/board_sync.py, .claude/hooks/stop_auto_verify.py, .claude/hooks/lib/auto_closeout.py

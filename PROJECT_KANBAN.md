@@ -1,5 +1,5 @@
 # PROJECT_KANBAN.md
-**Last updated**: 2026-11-25
+**Last updated**: 2026-11-27
 
 > Board cache, pulled from the board by `python3 scripts/board_sync.py pull`. Do not edit it by hand:
 > the board is the source of truth, and the next pull overwrites this file.
@@ -10,22 +10,18 @@
 
 ### Todo
 - [ ] **HUN-266** — Manual run: measure how Cursor starts a stdio MCP server (HUN-251 follow-up) | Owner | C0 | Risk: Low | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-266.md`
-- [ ] **HUN-290** — One dashboard window: a second open focuses the window that is open | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-290.md`
-- [ ] **HUN-291** — Show the time a note was last edited: \`updated\` in lists, MCP and the window | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-291.md`
-- [ ] **HUN-292** — AI file keys, overrides, change log, \`ai set\` and \`ai undo\` (core) | Backend-Implementer | C2 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-292.md`
-- [ ] **HUN-293** — \`[ai]\` config keys for the scheduler and batch run, and a \`doctor\` line | Backend-Implementer | C1 | Risk: Low | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-293.md`
-- [ ] **HUN-294** — Batch organizer engine: one model call per batch, checked item by item | Backend-Implementer | C2 | Risk: High | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-294.md`
-- [ ] **HUN-295** — \`easy-note ai run\`: caps, batches, a run lock, back-off and \`--dry-run\` | Backend-Implementer | C2 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-295.md`
-- [ ] **HUN-296** — Tray timer: run \`ai run\` on the schedule while the tray is up | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-296.md`
 - [ ] **HUN-297** — Daily digest per project and topic, and the read-only \`note_context\` MCP tool | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-297.md`
 - [ ] **HUN-298** — Window views: group by project, topic or kind; Drafts view; AI status; \`Run now\` | Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-298.md`
 - [ ] **HUN-299** — Window fixes: change project, topic or kind, rename or merge a topic, Undo | Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-299.md`
-- [ ] **HUN-300** — Settings screen: AI switches, schedule and limits, with the one-time "what is sent" notice | Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-300.md`
 - [ ] **HUN-301** — UX pass: keyboard keys, first-run empty state, and a \`ux-evaluate\` check of every screen | Frontend-Implementer | C1 | Risk: Low | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-301.md`
 
 ### In Progress
+- [ ] **HUN-305** — Dashboard redesign: full-height list and note panes, simpler list rows, name Easy Taking Shot | Frontend-Implementer | C2 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-305.md`
 
 ### Ready for Review
+- [ ] **HUN-295** — \`easy-note ai run\`: caps, batches, a run lock, back-off and \`--dry-run\` | Backend-Implementer | C2 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-295.md`
+- [ ] **HUN-296** — Tray timer: run \`ai run\` on the schedule while the tray is up | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-296.md`
+- [ ] **HUN-304** — Dashboard window layout: centred container on large screens, fit every allowed window size | Frontend-Implementer | C2 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-304.md`
 
 ### Done
 - [x] **HUN-251** — Spike: how Claude Code, Codex and Cursor start stdio MCP servers, and what the prompt hook sees | QA-Automation-Agent | C1 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-251.md`
@@ -65,6 +61,14 @@
 - [x] **HUN-287** — Debian package: scripts/build_deb.sh builds an installable .deb (window + tray) | ? | ? | Risk: ? | P2 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-287.md`
 - [x] **HUN-288** — Dashboard window: Run AI button in the detail panel enriches that note now | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-288.md`
 - [x] **HUN-289** — quick: the design's capture dialog in its own small window, not the zenity box | Backend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-289.md`
+- [x] **HUN-290** — One dashboard window: a second open focuses the window that is open | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-290.md`
+- [x] **HUN-291** — Show the time a note was last edited: \`updated\` in lists, MCP and the window | Backend-Implementer | C1 | Risk: Low | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-291.md`
+- [x] **HUN-292** — AI file keys, overrides, change log, \`ai set\` and \`ai undo\` (core) | Backend-Implementer | C2 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-292.md`
+- [x] **HUN-293** — \`[ai]\` config keys for the scheduler and batch run, and a \`doctor\` line | Backend-Implementer | C1 | Risk: Low | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-293.md`
+- [x] **HUN-294** — Batch organizer engine: one model call per batch, checked item by item | Backend-Implementer | C2 | Risk: High | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-294.md`
+- [x] **HUN-300** — Settings screen: AI switches, schedule and limits, with the one-time "what is sent" notice | Frontend-Implementer | C2 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-300.md`
+- [x] **HUN-302** — Undo for the AI title, summary, tags and draft keys | Backend-Implementer | C2 | Risk: Medium | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-302.md`
+- [x] **HUN-303** — \`easy-note setup\` binds Ctrl+Alt+N on GNOME, and the install guide says so | Backend-Implementer | C1 | Risk: Medium | P1 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-303.md`
 
 ### Closed (will not do)
 - [~] **HUN-255** — Secret guard: declared patterns, mask on write and read, leak test suite | Backend-Implementer | C1 | Risk: High | P0 | @hungnh1110 | Guide: `tasks/TASK_GUIDE_HUN-255.md`
