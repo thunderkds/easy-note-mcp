@@ -100,7 +100,7 @@
       b.type = 'button';
       b.setAttribute('aria-pressed', 'false');
       b.appendChild(el('span', 'filter-n', '0'));
-      b.addEventListener('click', function () { state.filter = f[0]; renderList(); });
+      b.addEventListener('click', function () { state.filter = f[0]; showFromTop(); });
       box.appendChild(b);
       filterButtons.push(b);
     });
@@ -110,6 +110,12 @@
     var words = state.query.toLowerCase().split(/\s+/).filter(Boolean);
     var active = FILTER_DEFS.filter(function (f) { return f[0] === state.filter; })[0] || FILTER_DEFS[0];
     return state.notes.filter(function (n) { return active[2](n) && matches(n, words); });
+  }
+
+  // HUN-305: the list scrolls by itself; a new search or filter shows its newest results.
+  function showFromTop() {
+    renderList();
+    $('groups').scrollTop = 0;
   }
 
   function renderList() {
@@ -148,7 +154,8 @@
       frag.appendChild(g);
     });
     $('groups').replaceChildren(frag);
-    if (focused) focusRow(focused);
+    // The focus goes back without moving the list: a focus refresh keeps the place the person scrolled to.
+    if (focused && rowButtons[focused]) rowButtons[focused].focus({ preventScroll: true });
   }
 
   function renderRow(n) {
@@ -476,7 +483,10 @@
   }
 
   function focusRow(id) {
-    if (rowButtons[id]) rowButtons[id].focus();
+    var row = rowButtons[id];
+    if (!row) return;
+    row.focus();
+    row.scrollIntoView({ block: 'nearest' });  // a row that has the focus already does not scroll on focus()
   }
 
   function acceptAi(id) {
@@ -677,13 +687,13 @@
   $('search').addEventListener('input', function (e) {
     var value = e.target.value;
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(function () { state.query = value; renderList(); }, SEARCH_MS);
+    searchTimer = setTimeout(function () { state.query = value; showFromTop(); }, SEARCH_MS);
   });
   $('clear-search').addEventListener('click', function () {
     clearTimeout(searchTimer);
     state.query = '';
     $('search').value = '';
-    renderList();
+    showFromTop();
   });
   // The Rust shell calls window.__easyNote.refresh() on each window focus (mod.rs REFRESH).
   window.__easyNote.refresh = refreshBoard;

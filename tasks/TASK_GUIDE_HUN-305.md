@@ -122,8 +122,8 @@ cargo test --locked --features window,tray --test window_api
 
 | User story | User goal | Flow / state | Pass condition (observable) |
 | -- | -- | -- | -- |
-| "note content should extend" | read a long note | pick a long note | the note pane reaches the window bottom and its buttons show |
-| "scope by the scroll top to down" | browse many notes | scroll the list | the header and the picked note stay where they are |
+| "note content should extend" | read a long note | pick a long note | from 760 x 480 px up, the note pane reaches the window bottom and its buttons show |
+| "scope by the scroll top to down" | browse many notes | scroll the list | from 760 x 480 px up, the header and the picked note stay where they are |
 | "list should just show the good" | find a note | the list | each row shows time, first line, project and at most one mark |
 
 ---

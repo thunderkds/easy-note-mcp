@@ -4069,8 +4069,11 @@ fn hun305_the_list_and_the_note_fill_the_window_and_scroll_on_their_own() {
         ".detail { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column;",
         ".detail > * { flex: 1 0 auto; }",
         ".detail .actions { position: sticky; bottom: 0;",
-        ".edit-text { flex: 1 0 160px; }",
-        ".toast { bottom: 96px; }",
+        ".edit-text { flex: 1 0 auto; }",
+        // Over the list, never over the note's buttons: no wider than the narrowest list.
+        ".toast { left: max(28px, calc(50% - 692px)); right: auto; max-width: 300px; }",
+        // A control that gets the focus is not left behind the pinned buttons.
+        "scroll-padding-bottom: 112px;",
     ] {
         assert!(block.contains(must), "the two-pane block lacks {must}");
     }
@@ -4134,4 +4137,42 @@ fn hun305_a_short_window_leaves_the_list_more_room() {
     }
     let tall = css.find("@media (min-width: 760px) and (min-height: 480px) {");
     assert!(css.find(head) > tall, "the short-window block comes first");
+}
+
+#[test]
+fn hun305_a_focus_refresh_keeps_the_list_where_it_is() {
+    let app = text_of("/app.js");
+    let list = js_function(app, "renderList");
+    assert!(
+        list.contains("rowButtons[focused].focus({ preventScroll: true })"),
+        "a render scrolls the list back to the focused row"
+    );
+    // A shown note is still scrolled to, also when its row has the focus already.
+    let focus = js_function(app, "focusRow");
+    assert!(
+        focus.contains("scrollIntoView({ block: 'nearest' })"),
+        "{focus}"
+    );
+}
+
+#[test]
+fn hun305_a_new_search_or_filter_starts_at_the_top_of_the_list() {
+    let app = text_of("/app.js");
+    assert!(js_function(app, "showFromTop").contains("$('groups').scrollTop = 0;"));
+    for must in [
+        "state.filter = f[0]; showFromTop();",
+        "state.query = value; showFromTop();",
+        "$('search').value = '';\n    showFromTop();",
+    ] {
+        assert!(app.contains(must), "app.js lacks {must}");
+    }
+}
+
+#[test]
+fn hun305_a_low_window_is_one_column_and_long_words_wrap() {
+    let css = text_of("/app.css");
+    let low = css_block(css, "@media (max-height: 479px) {");
+    assert!(low.contains(".detail { flex-basis: 100%; }"), "{low}");
+    assert!(css.find("@media (max-height: 479px) {") > css.find("\n.detail {"));
+    assert!(css.contains(".tag, .ai-tag, .ai-title { overflow-wrap: anywhere; }"));
 }
